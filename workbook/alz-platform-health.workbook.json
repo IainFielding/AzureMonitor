@@ -256,12 +256,19 @@
             "name": "overview-intro"
           },
           {
+            "type": 1,
+            "content": {
+              "json": "### At a glance"
+            },
+            "name": "overview-glance-h"
+          },
+          {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
               "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| extend EventType = tostring(properties.EventType), TrackingId = tostring(properties.TrackingId)\n| summarize Total = dcount(TrackingId),\n    Issues = dcountif(TrackingId, EventType =~ 'ServiceIssue'),\n    Maintenance = dcountif(TrackingId, EventType =~ 'PlannedMaintenance'),\n    Advisories = dcountif(TrackingId, EventType !in~ ('ServiceIssue', 'PlannedMaintenance'))\n| project Service = 'Azure Service Health', Total,\n    Status = case(Issues > 0, 'Unavailable', Total > 0, 'Degraded', 'Available'),\n    Summary = strcat(Issues, ' service issues · ', Maintenance, ' maintenance · ', Advisories, ' advisories')",
-              "size": 0,
-              "title": "Active Service Health events",
+              "size": 3,
+              "title": "",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
               "crossComponentResources": [
@@ -283,31 +290,31 @@
                         "operator": "==",
                         "thresholdValue": "Available",
                         "representation": "success",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Degraded",
                         "representation": "2",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Unavailable",
                         "representation": "4",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Unknown",
                         "representation": "unknown",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "Default",
                         "thresholdValue": null,
                         "representation": "Blank",
-                        "text": "{0}{1}"
+                        "text": "​"
                       }
                     ]
                   }
@@ -327,14 +334,298 @@
               }
             },
             "name": "overview-servicehealth-tile",
-            "customWidth": "20"
+            "customWidth": "12"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| summarize Total = dcount(tostring(properties.resourceId)),\n    Bad = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')\n| project Signal = 'Policy compliance',\n    Display = iff(Total == 0, '—', strcat(round(100.0 * (Total - Bad) / Total, 1), '%')),\n    Detail = strcat(Bad, ' non-compliant resources'),\n    State = case(Total == 0, 'Unknown', Bad == 0, 'Available', 'Degraded')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Display",
+                  "formatter": 1
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-policy",
+            "customWidth": "12"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type in~ ('microsoft.security/securescores', 'microsoft.security/locations/alerts')\n| extend isScore = type =~ 'microsoft.security/securescores',\n    isActiveAlert = type =~ 'microsoft.security/locations/alerts' and tostring(properties.Status) =~ 'Active'\n| summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),\n    Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')\n| project Signal = 'Defender for Cloud',\n    Display = iff(Subs == 0, '—', strcat(round(Score * 100, 0), '%')),\n    Detail = strcat('secure score · ', Alerts, ' alerts (', High, ' high)'),\n    State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Display",
+                  "formatter": 1
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-defender",
+            "customWidth": "12"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.impact) =~ 'High'\n| summarize Total = count(),\n    Reliability = countif(tostring(properties.category) =~ 'HighAvailability'),\n    Security = countif(tostring(properties.category) =~ 'Security')\n| project Signal = 'Advisor (high impact)', Display = tostring(Total),\n    Detail = strcat(Reliability, ' reliability · ', Security, ' security'),\n    State = case(Reliability > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Display",
+                  "formatter": 1
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-advisor",
+            "customWidth": "12"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupjobs'\n| where todatetime(properties.startTime) > ago(1d)\n| summarize Failed = countif(tostring(properties.status) =~ 'Failed'), Jobs = count()\n| project Signal = 'Backup jobs (24h)', Display = tostring(Failed),\n    Detail = strcat(Failed, ' failed of ', Jobs, ' jobs'),\n    State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Display",
+                  "formatter": 1
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-backup",
+            "customWidth": "12"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
               "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{BuildAgentPattern}'\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    routingState = tostring(properties.routingState),\n    ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    recordSetPct = 100.0 * todouble(properties.numberOfRecordSets) / todouble(properties.maxNumberOfRecordSets)\n| extend ConfigHealth = case(\n        provisioning =~ 'Failed', 'Unavailable',\n        routingState =~ 'Failed', 'Unavailable',\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'Unavailable',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended'), 'Unavailable',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n        routingState =~ 'Provisioning', 'Degraded',\n        ingestion =~ 'ApproachingQuota', 'Degraded',\n        recordSetPct >= 80, 'Degraded',\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Degraded',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n        'Available'),\n    ConfigReason = case(\n        provisioning =~ 'Failed', 'Provisioning failed',\n        routingState in~ ('Failed', 'Provisioning'), strcat('Hub routing state: ', routingState),\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'DNS resolver disconnected',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Circuit disabled',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned',\n            strcat('Provider state: ', tostring(properties.serviceProviderProvisioningState)),\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Primary region unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended', 'ApproachingQuota'), strcat('Ingestion: ', ingestion),\n        recordSetPct >= 80, strcat('Record sets at ', round(recordSetPct, 0), '% of limit'),\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Zone not linked to any VNet',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), strcat('Provisioning: ', provisioning),\n        '')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId,\n    Location = location, ConfigHealth, ConfigReason\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health),\n    Reason = iff(isempty(Reason), ConfigReason, Reason)\n| project-away ConfigHealth, ConfigReason\n\n| summarize Total = count(),\n    Healthy = countif(Health == 'Available'),\n    Degraded = countif(Health == 'Degraded'),\n    Unavailable = countif(Health == 'Unavailable'),\n    Unknown = countif(Health == 'Unknown') by Service\n| extend Status = case(Unavailable > 0, 'Unavailable', Degraded > 0, 'Degraded', Healthy == Total, 'Available', 'Unknown')\n| extend Summary = strcat(Healthy, ' healthy · ', Degraded + Unavailable, ' issues · ', Unknown, ' unknown')\n| order by Service asc",
-              "size": 0,
+              "size": 3,
               "title": "Platform services",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -358,31 +649,31 @@
                         "operator": "==",
                         "thresholdValue": "Available",
                         "representation": "success",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Degraded",
                         "representation": "2",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Unavailable",
                         "representation": "4",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Unknown",
                         "representation": "unknown",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "Default",
                         "thresholdValue": null,
                         "representation": "Blank",
-                        "text": "{0}{1}"
+                        "text": "​"
                       }
                     ]
                   }
@@ -401,299 +692,123 @@
                 }
               }
             },
-            "name": "overview-tiles",
-            "customWidth": "80"
+            "name": "overview-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc",
+              "size": 3,
+              "title": "Azure Virtual Desktop session hosts",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No AVD session host data in the selected workspace.",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Status",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Status",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Upgrading",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "NeedsAssistance",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Shutdown",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "NoRecentHeartbeat",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "UpgradeFailed",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "NoHeartbeat",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Hosts",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true
+              }
+            },
+            "name": "overview-avd-host-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
           },
           {
             "type": 1,
             "content": {
-              "json": "### Governance, security and backup"
+              "json": "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
+              "style": "info"
             },
-            "name": "overview-governance-h"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| summarize Total = dcount(tostring(properties.resourceId)),\n    Bad = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')\n| project Signal = 'Policy compliance',\n    Display = iff(Total == 0, '—', strcat(round(100.0 * (Total - Bad) / Total, 1), '%')),\n    Detail = strcat(Bad, ' non-compliant resources'),\n    State = case(Total == 0, 'Unknown', Bad == 0, 'Available', 'Degraded')",
-              "size": 0,
-              "title": "",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "tiles",
-              "tileSettings": {
-                "titleContent": {
-                  "columnMatch": "Signal",
-                  "formatter": 1
-                },
-                "leftContent": {
-                  "columnMatch": "State",
-                  "formatter": 18,
-                  "formatOptions": {
-                    "thresholdsOptions": "icons",
-                    "thresholdsGrid": [
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Available",
-                        "representation": "success",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Degraded",
-                        "representation": "2",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unavailable",
-                        "representation": "4",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unknown",
-                        "representation": "unknown",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "Default",
-                        "thresholdValue": null,
-                        "representation": "Blank",
-                        "text": "{0}{1}"
-                      }
-                    ]
-                  }
-                },
-                "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
-                },
-                "showBorder": true,
-                "secondaryContent": {
-                  "columnMatch": "Detail",
-                  "formatter": 1
-                }
-              }
-            },
-            "name": "overview-policy",
-            "customWidth": "25"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type in~ ('microsoft.security/securescores', 'microsoft.security/locations/alerts')\n| extend isScore = type =~ 'microsoft.security/securescores',\n    isActiveAlert = type =~ 'microsoft.security/locations/alerts' and tostring(properties.Status) =~ 'Active'\n| summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),\n    Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')\n| project Signal = 'Defender for Cloud',\n    Display = iff(Subs == 0, '—', strcat(round(Score * 100, 0), '% secure score')),\n    Detail = strcat(Alerts, ' active alerts (', High, ' high)'),\n    State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')",
-              "size": 0,
-              "title": "",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "tiles",
-              "tileSettings": {
-                "titleContent": {
-                  "columnMatch": "Signal",
-                  "formatter": 1
-                },
-                "leftContent": {
-                  "columnMatch": "State",
-                  "formatter": 18,
-                  "formatOptions": {
-                    "thresholdsOptions": "icons",
-                    "thresholdsGrid": [
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Available",
-                        "representation": "success",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Degraded",
-                        "representation": "2",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unavailable",
-                        "representation": "4",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unknown",
-                        "representation": "unknown",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "Default",
-                        "thresholdValue": null,
-                        "representation": "Blank",
-                        "text": "{0}{1}"
-                      }
-                    ]
-                  }
-                },
-                "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
-                },
-                "showBorder": true,
-                "secondaryContent": {
-                  "columnMatch": "Detail",
-                  "formatter": 1
-                }
-              }
-            },
-            "name": "overview-defender",
-            "customWidth": "25"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.impact) =~ 'High'\n| summarize Total = count(),\n    Reliability = countif(tostring(properties.category) =~ 'HighAvailability'),\n    Security = countif(tostring(properties.category) =~ 'Security')\n| project Signal = 'Advisor (high impact)', Display = tostring(Total),\n    Detail = strcat(Reliability, ' reliability · ', Security, ' security'),\n    State = case(Reliability > 0, 'Degraded', 'Available')",
-              "size": 0,
-              "title": "",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "tiles",
-              "tileSettings": {
-                "titleContent": {
-                  "columnMatch": "Signal",
-                  "formatter": 1
-                },
-                "leftContent": {
-                  "columnMatch": "State",
-                  "formatter": 18,
-                  "formatOptions": {
-                    "thresholdsOptions": "icons",
-                    "thresholdsGrid": [
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Available",
-                        "representation": "success",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Degraded",
-                        "representation": "2",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unavailable",
-                        "representation": "4",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unknown",
-                        "representation": "unknown",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "Default",
-                        "thresholdValue": null,
-                        "representation": "Blank",
-                        "text": "{0}{1}"
-                      }
-                    ]
-                  }
-                },
-                "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
-                },
-                "showBorder": true,
-                "secondaryContent": {
-                  "columnMatch": "Detail",
-                  "formatter": 1
-                }
-              }
-            },
-            "name": "overview-advisor",
-            "customWidth": "25"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupjobs'\n| where todatetime(properties.startTime) > ago(1d)\n| summarize Failed = countif(tostring(properties.status) =~ 'Failed'), Jobs = count()\n| project Signal = 'Backup jobs (24h)', Display = tostring(Failed),\n    Detail = strcat(Failed, ' failed of ', Jobs, ' jobs'),\n    State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')",
-              "size": 0,
-              "title": "",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "tiles",
-              "tileSettings": {
-                "titleContent": {
-                  "columnMatch": "Signal",
-                  "formatter": 1
-                },
-                "leftContent": {
-                  "columnMatch": "State",
-                  "formatter": 18,
-                  "formatOptions": {
-                    "thresholdsOptions": "icons",
-                    "thresholdsGrid": [
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Available",
-                        "representation": "success",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Degraded",
-                        "representation": "2",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unavailable",
-                        "representation": "4",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "Unknown",
-                        "representation": "unknown",
-                        "text": "{0}{1}"
-                      },
-                      {
-                        "operator": "Default",
-                        "thresholdValue": null,
-                        "representation": "Blank",
-                        "text": "{0}{1}"
-                      }
-                    ]
-                  }
-                },
-                "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
-                },
-                "showBorder": true,
-                "secondaryContent": {
-                  "columnMatch": "Detail",
-                  "formatter": 1
-                }
-              }
-            },
-            "name": "overview-backup",
-            "customWidth": "25"
+            "name": "overview-avd-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
           },
           {
             "type": 3,
@@ -4263,7 +4378,7 @@
             "content": {
               "version": "KqlItem/1.0",
               "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| summarize Total = count(), Protected = countif(tobool(properties.enableDdosProtection))\n| project Signal = 'VNets with DDoS Network Protection', Display = strcat(Protected, ' / ', Total),\n    State = case(Total == 0, 'Unknown', Protected == Total, 'Available', 'Degraded')\n| union (\n    resources\n    | where type =~ 'microsoft.network/publicipaddresses'\n    | extend mode = tostring(properties.ddosSettings.protectionMode)\n    | summarize Total = count(), IpProtected = countif(mode =~ 'Enabled'), Disabled = countif(mode =~ 'Disabled')\n    | project Signal = 'Public IPs: IP Protection / explicitly disabled', Display = strcat(IpProtected, ' / ', Disabled),\n        State = case(Disabled > 0, 'Degraded', 'Available'))",
-              "size": 0,
+              "size": 3,
               "title": "Coverage",
               "queryType": 1,
               "resourceType": "microsoft.resourcegraph/resources",
@@ -4286,31 +4401,31 @@
                         "operator": "==",
                         "thresholdValue": "Available",
                         "representation": "success",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Degraded",
                         "representation": "2",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Unavailable",
                         "representation": "4",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Unknown",
                         "representation": "unknown",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "Default",
                         "thresholdValue": null,
                         "representation": "Blank",
-                        "text": "{0}{1}"
+                        "text": "​"
                       }
                     ]
                   }
@@ -6315,7 +6430,7 @@
             "content": {
               "version": "KqlItem/1.0",
               "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc",
-              "size": 0,
+              "size": 3,
               "title": "Session host status",
               "queryType": 0,
               "resourceType": "microsoft.operationalinsights/workspaces",
@@ -6342,55 +6457,55 @@
                         "operator": "==",
                         "thresholdValue": "Available",
                         "representation": "success",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Upgrading",
                         "representation": "2",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "NeedsAssistance",
                         "representation": "2",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Shutdown",
                         "representation": "2",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "Unavailable",
                         "representation": "4",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "NoRecentHeartbeat",
                         "representation": "4",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "UpgradeFailed",
                         "representation": "4",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "==",
                         "thresholdValue": "NoHeartbeat",
                         "representation": "4",
-                        "text": "{0}{1}"
+                        "text": "​"
                       },
                       {
                         "operator": "Default",
                         "thresholdValue": null,
                         "representation": "Blank",
-                        "text": "{0}{1}"
+                        "text": "​"
                       }
                     ]
                   }

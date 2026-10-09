@@ -36,22 +36,26 @@ def _icons(grid):
     return {"thresholdsOptions": "icons", "thresholdsGrid": grid}
 
 
-def _t(op, value, rep):
-    return {"operator": op, "thresholdValue": value, "representation": rep, "text": "{0}{1}"}
+VALUE_TEXT = "{0}{1}"
+ICON_ONLY = "​"  # zero-width space: show the icon without the status word
 
 
-def status_fmt(col, good=(), warn=(), bad=(), neutral=()):
+def _t(op, value, rep, text=VALUE_TEXT):
+    return {"operator": op, "thresholdValue": value, "representation": rep, "text": text}
+
+
+def status_fmt(col, good=(), warn=(), bad=(), neutral=(), text=VALUE_TEXT):
     """Icon formatter for string status columns."""
-    grid = [_t("==", v, "success") for v in good]
-    grid += [_t("==", v, "2") for v in warn]
-    grid += [_t("==", v, "4") for v in bad]
-    grid += [_t("==", v, "unknown") for v in neutral]
-    grid.append(_t("Default", None, "Blank"))
+    grid = [_t("==", v, "success", text) for v in good]
+    grid += [_t("==", v, "2", text) for v in warn]
+    grid += [_t("==", v, "4", text) for v in bad]
+    grid += [_t("==", v, "unknown", text) for v in neutral]
+    grid.append(_t("Default", None, "Blank", text))
     return {"columnMatch": col, "formatter": 18, "formatOptions": _icons(grid)}
 
 
-def health_fmt(col="Health"):
-    return status_fmt(col, good=["Available"], warn=["Degraded"], bad=["Unavailable"], neutral=["Unknown"])
+def health_fmt(col="Health", text=VALUE_TEXT):
+    return status_fmt(col, good=["Available"], warn=["Degraded"], bad=["Unavailable"], neutral=["Unknown"], text=text)
 
 
 def low_is_good(col, warn, crit):
@@ -125,6 +129,7 @@ def _query(name, title, query, *, query_type, resource_type, resources, vis="tab
         content["gridSettings"] = grid
     if tiles:
         content["tileSettings"] = tiles
+        content["size"] = 3
     if chart:
         content["chartSettings"] = chart
     item = {"type": 3, "content": content, "name": name}
@@ -376,8 +381,8 @@ securityresources
 | summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),
     Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')
 | project Signal = 'Defender for Cloud',
-    Display = iff(Subs == 0, '—', strcat(round(Score * 100, 0), '% secure score')),
-    Detail = strcat(Alerts, ' active alerts (', High, ' high)'),
+    Display = iff(Subs == 0, '—', strcat(round(Score * 100, 0), '%')),
+    Detail = strcat('secure score · ', Alerts, ' alerts (', High, ' high)'),
     State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')
 """),
     ("advisor", """
@@ -401,6 +406,25 @@ recoveryservicesresources
     State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')
 """),
 ]
+
+# AVD session host status, shared by the Overview and AVD tabs.
+AVD_LATEST_HOSTS = """
+WVDAgentHealthStatus
+| where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, *) by SessionHostName
+| extend HostPool = tostring(split(_ResourceId, '/')[8])
+| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)
+"""
+AVD_STATUS_TILES_Q = AVD_LATEST_HOSTS + "| summarize Hosts = count() by Status\n| order by Hosts desc"
+AVD_HOST_STATES = dict(good=["Available"], warn=["Upgrading", "NeedsAssistance", "Shutdown"],
+                       bad=["Unavailable", "NoRecentHeartbeat", "UpgradeFailed", "NoHeartbeat"])
+AVD_HOST_STATUS = status_fmt("Status", **AVD_HOST_STATES)
+AVD_STATUS_TILES = {
+    "titleContent": {"columnMatch": "Status", "formatter": 1},
+    "leftContent": status_fmt("Status", **AVD_HOST_STATES, text=ICON_ONLY),
+    "rightContent": {"columnMatch": "Hosts", "formatter": 12, "formatOptions": {"palette": "none"}},
+    "showBorder": True,
+}
 
 SUBSCRIPTION_NAMES = """
 | join kind=leftouter (
@@ -435,7 +459,7 @@ TABS = [
 def state_tiles(title_col, state_col, value_col, detail_col=None):
     t = {
         "titleContent": {"columnMatch": title_col, "formatter": 1},
-        "leftContent": health_fmt(state_col),
+        "leftContent": health_fmt(state_col, text=ICON_ONLY),
         "rightContent": {"columnMatch": value_col, "formatter": 1},
         "showBorder": True,
     }
@@ -506,13 +530,16 @@ servicehealthresources
              "Status comes from **Azure Resource Health** where available; otherwise from the resource's "
              "configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace "
              "ingestion) — see the *Signal* column. Each service tab adds metric-based health.", "info"),
-        arg("overview-servicehealth-tile", "Active Service Health events", service_health_tile_q, vis="tiles",
-            tiles=service_tiles, width=20),
-        arg("overview-tiles", "Platform services", summary_q, vis="tiles", tiles=service_tiles, width=80,
-            no_data="No platform resources found in the selected subscriptions."),
-        text("overview-governance-h", "### Governance, security and backup"),
-        *[arg(f"overview-{key}", "", q, vis="tiles", tiles=state_tiles("Signal", "State", "Display", "Detail"), width=25)
+        text("overview-glance-h", "### At a glance"),
+        arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=12),
+        *[arg(f"overview-{key}", "", q, vis="tiles", tiles=state_tiles("Signal", "State", "Display", "Detail"), width=12)
           for key, q in GOVERNANCE_TILES],
+        arg("overview-tiles", "Platform services", summary_q, vis="tiles", tiles=service_tiles,
+            no_data="No platform resources found in the selected subscriptions."),
+        la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
+           tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
+        text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
+             "info", visible_when=WORKSPACE_UNSET),
         arg("overview-unhealthy", "Resources needing attention", unhealthy_q,
             formatters=[resource_link(), health_fmt()], labels={"id": "Resource"},
             no_data="All platform resources report Available.", width=60),
@@ -1061,15 +1088,7 @@ resources
     Validation = tostring(properties.validationEnvironment),
     ResourceGroup = resourceGroup, Location = location
 """
-    latest_hosts = """
-WVDAgentHealthStatus
-| where TimeGenerated {TimeRange}
-| summarize arg_max(TimeGenerated, *) by SessionHostName
-| extend HostPool = tostring(split(_ResourceId, '/')[8])
-| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)
-"""
-    status_tiles_q = latest_hosts + "| summarize Hosts = count() by Status\n| order by Hosts desc"
-    hosts_q = latest_hosts + """
+    hosts_q = AVD_LATEST_HOSTS + """
 | project SessionHost = SessionHostName, HostPool, Status, LastHeartbeat = TimeGenerated,
     ActiveSessions = column_ifexists('ActiveSessions', int(null)),
     InactiveSessions = column_ifexists('InactiveSessions', int(null)),
@@ -1095,21 +1114,13 @@ WVDConnectionNetworkData
 | summarize P50_RTT_ms = percentile(EstRoundTripTimeInMs, 50), P95_RTT_ms = percentile(EstRoundTripTimeInMs, 95)
     by bin(TimeGenerated, {TimeRange:grain})
 """
-    host_status = status_fmt("Status", good=["Available"], warn=["Upgrading", "NeedsAssistance", "Shutdown"],
-                             bad=["Unavailable", "NoRecentHeartbeat", "UpgradeFailed", "NoHeartbeat"])
-    tiles = {
-        "titleContent": {"columnMatch": "Status", "formatter": 1},
-        "leftContent": host_status,
-        "rightContent": {"columnMatch": "Hosts", "formatter": 12, "formatOptions": {"palette": "none"}},
-        "showBorder": True,
-    }
     return group("tab-avd", [
         arg("avd-pools", "Host pools", pools_q, formatters=[resource_link()], labels={"id": "Host pool"},
             no_data="No AVD host pools found."),
         text("avd-workspace-hint", "Select the **Log Analytics workspace** that receives AVD diagnostics to see "
              "session host health, sessions, errors and connection quality.", "info", visible_when=WORKSPACE_UNSET),
-        la("avd-host-tiles", "Session host status", status_tiles_q, vis="tiles", tiles=tiles),
-        la("avd-hosts", "Session hosts (latest heartbeat)", hosts_q, formatters=[host_status],
+        la("avd-host-tiles", "Session host status", AVD_STATUS_TILES_Q, vis="tiles", tiles=AVD_STATUS_TILES),
+        la("avd-hosts", "Session hosts (latest heartbeat)", hosts_q, formatters=[AVD_HOST_STATUS],
            no_data="No AVD agent health data in this workspace."),
         la("avd-sessions", "Connected sessions and users", sessions_q, vis="timechart", width=50),
         la("avd-rtt", "Connection round-trip time (ms)", rtt_q, vis="timechart", width=50),
