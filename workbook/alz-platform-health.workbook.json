@@ -334,13 +334,13 @@
               }
             },
             "name": "overview-servicehealth-tile",
-            "customWidth": "12"
+            "customWidth": "9"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| summarize Total = dcount(tostring(properties.resourceId)),\n    Bad = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')\n| project Signal = 'Policy compliance',\n    Display = iff(Total == 0, '—', strcat(round(100.0 * (Total - Bad) / Total, 1), '%')),\n    Detail = strcat(Bad, ' non-compliant resources'),\n    State = case(Total == 0, 'Unknown', Bad == 0, 'Available', 'Degraded')",
+              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| summarize Total = dcount(tostring(properties.resourceId)),\n    Bad = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')\n| project Signal = 'Policy compliance',\n    Value = iff(Total == 0, real(null), round(100.0 * (Total - Bad) / Total, 1)),\n    Detail = strcat(Bad, ' non-compliant resources'),\n    State = case(Total == 0, 'Unknown', Bad == 0, 'Available', 'Degraded')",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -394,8 +394,18 @@
                   }
                 },
                 "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
                 },
                 "showBorder": true,
                 "secondaryContent": {
@@ -405,13 +415,13 @@
               }
             },
             "name": "overview-policy",
-            "customWidth": "12"
+            "customWidth": "9"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type in~ ('microsoft.security/securescores', 'microsoft.security/locations/alerts')\n| extend isScore = type =~ 'microsoft.security/securescores',\n    isActiveAlert = type =~ 'microsoft.security/locations/alerts' and tostring(properties.Status) =~ 'Active'\n| summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),\n    Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')\n| project Signal = 'Defender for Cloud',\n    Display = iff(Subs == 0, '—', strcat(round(Score * 100, 0), '%')),\n    Detail = strcat('secure score · ', Alerts, ' alerts (', High, ' high)'),\n    State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')",
+              "query": "securityresources\n| where type in~ ('microsoft.security/securescores', 'microsoft.security/locations/alerts')\n| extend isScore = type =~ 'microsoft.security/securescores',\n    isActiveAlert = type =~ 'microsoft.security/locations/alerts' and tostring(properties.Status) =~ 'Active'\n| summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),\n    Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')\n| project Signal = 'Defender for Cloud',\n    Value = iff(Subs == 0, real(null), round(Score * 100, 0)),\n    Detail = strcat('secure score · ', Alerts, ' alerts (', High, ' high)'),\n    State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -465,8 +475,18 @@
                   }
                 },
                 "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 1
+                    }
+                  }
                 },
                 "showBorder": true,
                 "secondaryContent": {
@@ -476,13 +496,13 @@
               }
             },
             "name": "overview-defender",
-            "customWidth": "12"
+            "customWidth": "9"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.impact) =~ 'High'\n| summarize Total = count(),\n    Reliability = countif(tostring(properties.category) =~ 'HighAvailability'),\n    Security = countif(tostring(properties.category) =~ 'Security')\n| project Signal = 'Advisor (high impact)', Display = tostring(Total),\n    Detail = strcat(Reliability, ' reliability · ', Security, ' security'),\n    State = case(Reliability > 0, 'Degraded', 'Available')",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.impact) =~ 'High'\n| summarize Total = count(),\n    Reliability = countif(tostring(properties.category) =~ 'HighAvailability'),\n    Security = countif(tostring(properties.category) =~ 'Security')\n| project Signal = 'Advisor (high impact)', Value = Total,\n    Detail = strcat(Reliability, ' reliability · ', Security, ' security'),\n    State = case(Reliability > 0, 'Degraded', 'Available')",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -536,8 +556,11 @@
                   }
                 },
                 "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
                 },
                 "showBorder": true,
                 "secondaryContent": {
@@ -547,13 +570,13 @@
               }
             },
             "name": "overview-advisor",
-            "customWidth": "12"
+            "customWidth": "9"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupjobs'\n| where todatetime(properties.startTime) > ago(1d)\n| summarize Failed = countif(tostring(properties.status) =~ 'Failed'), Jobs = count()\n| project Signal = 'Backup jobs (24h)', Display = tostring(Failed),\n    Detail = strcat(Failed, ' failed of ', Jobs, ' jobs'),\n    State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupjobs'\n| where todatetime(properties.startTime) > ago(1d)\n| summarize Failed = countif(tostring(properties.status) =~ 'Failed'), Jobs = count()\n| project Signal = 'Backup jobs (24h)', Value = Failed,\n    Detail = strcat(Failed, ' failed of ', Jobs, ' jobs'),\n    State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -607,8 +630,11 @@
                   }
                 },
                 "rightContent": {
-                  "columnMatch": "Display",
-                  "formatter": 1
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
                 },
                 "showBorder": true,
                 "secondaryContent": {
@@ -618,7 +644,7 @@
               }
             },
             "name": "overview-backup",
-            "customWidth": "12"
+            "customWidth": "9"
           },
           {
             "type": 3,
@@ -698,7 +724,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc",
+              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'Offline', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc",
               "size": 3,
               "title": "Azure Virtual Desktop session hosts",
               "queryType": 0,
@@ -743,19 +769,7 @@
                       },
                       {
                         "operator": "==",
-                        "thresholdValue": "Shutdown",
-                        "representation": "2",
-                        "text": "​"
-                      },
-                      {
-                        "operator": "==",
                         "thresholdValue": "Unavailable",
-                        "representation": "4",
-                        "text": "​"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "NoRecentHeartbeat",
                         "representation": "4",
                         "text": "​"
                       },
@@ -769,6 +783,18 @@
                         "operator": "==",
                         "thresholdValue": "NoHeartbeat",
                         "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Offline",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Shutdown",
+                        "representation": "unknown",
                         "text": "​"
                       },
                       {
@@ -6429,7 +6455,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc",
+              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'Offline', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc",
               "size": 3,
               "title": "Session host status",
               "queryType": 0,
@@ -6473,19 +6499,7 @@
                       },
                       {
                         "operator": "==",
-                        "thresholdValue": "Shutdown",
-                        "representation": "2",
-                        "text": "​"
-                      },
-                      {
-                        "operator": "==",
                         "thresholdValue": "Unavailable",
-                        "representation": "4",
-                        "text": "​"
-                      },
-                      {
-                        "operator": "==",
-                        "thresholdValue": "NoRecentHeartbeat",
                         "representation": "4",
                         "text": "​"
                       },
@@ -6499,6 +6513,18 @@
                         "operator": "==",
                         "thresholdValue": "NoHeartbeat",
                         "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Offline",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Shutdown",
+                        "representation": "unknown",
                         "text": "​"
                       },
                       {
@@ -6531,7 +6557,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)\n\n| project SessionHost = SessionHostName, HostPool, Status, LastHeartbeat = TimeGenerated,\n    ActiveSessions = column_ifexists('ActiveSessions', int(null)),\n    InactiveSessions = column_ifexists('InactiveSessions', int(null)),\n    AgentVersion = column_ifexists('AgentVersion', '')\n| order by Status asc, SessionHost asc",
+              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'Offline', Status)\n\n| project SessionHost = SessionHostName, HostPool, Status, LastHeartbeat = TimeGenerated,\n    ActiveSessions = column_ifexists('ActiveSessions', int(null)),\n    InactiveSessions = column_ifexists('InactiveSessions', int(null)),\n    AgentVersion = column_ifexists('AgentVersion', '')\n| order by Status asc, SessionHost asc",
               "size": 0,
               "title": "Session hosts (latest heartbeat)",
               "queryType": 0,
@@ -6574,19 +6600,7 @@
                         },
                         {
                           "operator": "==",
-                          "thresholdValue": "Shutdown",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
                           "thresholdValue": "Unavailable",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "NoRecentHeartbeat",
                           "representation": "4",
                           "text": "{0}{1}"
                         },
@@ -6600,6 +6614,18 @@
                           "operator": "==",
                           "thresholdValue": "NoHeartbeat",
                           "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Offline",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Shutdown",
+                          "representation": "unknown",
                           "text": "{0}{1}"
                         },
                         {

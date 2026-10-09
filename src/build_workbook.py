@@ -363,17 +363,17 @@ resources
 # Governance / security / backup signals for the Overview tiles. Each table needs its own query:
 # ARG does not allow these tables to be combined in one union.
 GOVERNANCE_TILES = [
-    ("policy", """
+    ("policy", "%", """
 policyresources
 | where type =~ 'microsoft.policyinsights/policystates'
 | summarize Total = dcount(tostring(properties.resourceId)),
     Bad = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')
 | project Signal = 'Policy compliance',
-    Display = iff(Total == 0, '—', strcat(round(100.0 * (Total - Bad) / Total, 1), '%')),
+    Value = iff(Total == 0, real(null), round(100.0 * (Total - Bad) / Total, 1)),
     Detail = strcat(Bad, ' non-compliant resources'),
     State = case(Total == 0, 'Unknown', Bad == 0, 'Available', 'Degraded')
 """),
-    ("defender", """
+    ("defender", "%", """
 securityresources
 | where type in~ ('microsoft.security/securescores', 'microsoft.security/locations/alerts')
 | extend isScore = type =~ 'microsoft.security/securescores',
@@ -381,27 +381,27 @@ securityresources
 | summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),
     Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')
 | project Signal = 'Defender for Cloud',
-    Display = iff(Subs == 0, '—', strcat(round(Score * 100, 0), '%')),
+    Value = iff(Subs == 0, real(null), round(Score * 100, 0)),
     Detail = strcat('secure score · ', Alerts, ' alerts (', High, ' high)'),
     State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')
 """),
-    ("advisor", """
+    ("advisor", "", """
 advisorresources
 | where type =~ 'microsoft.advisor/recommendations'
 | where tostring(properties.impact) =~ 'High'
 | summarize Total = count(),
     Reliability = countif(tostring(properties.category) =~ 'HighAvailability'),
     Security = countif(tostring(properties.category) =~ 'Security')
-| project Signal = 'Advisor (high impact)', Display = tostring(Total),
+| project Signal = 'Advisor (high impact)', Value = Total,
     Detail = strcat(Reliability, ' reliability · ', Security, ' security'),
     State = case(Reliability > 0, 'Degraded', 'Available')
 """),
-    ("backup", """
+    ("backup", "", """
 recoveryservicesresources
 | where type =~ 'microsoft.recoveryservices/vaults/backupjobs'
 | where todatetime(properties.startTime) > ago(1d)
 | summarize Failed = countif(tostring(properties.status) =~ 'Failed'), Jobs = count()
-| project Signal = 'Backup jobs (24h)', Display = tostring(Failed),
+| project Signal = 'Backup jobs (24h)', Value = Failed,
     Detail = strcat(Failed, ' failed of ', Jobs, ' jobs'),
     State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')
 """),
@@ -413,11 +413,12 @@ WVDAgentHealthStatus
 | where TimeGenerated {TimeRange}
 | summarize arg_max(TimeGenerated, *) by SessionHostName
 | extend HostPool = tostring(split(_ResourceId, '/')[8])
-| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)
+| extend Status = iff(TimeGenerated < ago(30m), 'Offline', Status)
 """
 AVD_STATUS_TILES_Q = AVD_LATEST_HOSTS + "| summarize Hosts = count() by Status\n| order by Hosts desc"
-AVD_HOST_STATES = dict(good=["Available"], warn=["Upgrading", "NeedsAssistance", "Shutdown"],
-                       bad=["Unavailable", "NoRecentHeartbeat", "UpgradeFailed", "NoHeartbeat"])
+# 'Offline' = no heartbeat for 30 min, which is normal for deallocated hosts (Start VM on Connect).
+AVD_HOST_STATES = dict(good=["Available"], warn=["Upgrading", "NeedsAssistance"],
+                       bad=["Unavailable", "UpgradeFailed", "NoHeartbeat"], neutral=["Offline", "Shutdown"])
 AVD_HOST_STATUS = status_fmt("Status", **AVD_HOST_STATES)
 AVD_STATUS_TILES = {
     "titleContent": {"columnMatch": "Status", "formatter": 1},
@@ -454,6 +455,18 @@ TABS = [
     ("management", "Monitoring & Backup"),
     ("throughput", "Throughput"),
 ]
+
+
+# Width (%) of each "At a glance" tile slot; tiles are a fixed ~140px wide.
+GLANCE_WIDTH = 9
+
+
+def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
+    t = state_tiles(title_col, state_col, value_col, detail_col)
+    t["rightContent"] = {"columnMatch": value_col, "formatter": 12, "formatOptions": {"palette": "none"}}
+    if unit == "%":
+        t["rightContent"]["numberFormat"] = {"unit": 1, "options": {"style": "decimal", "maximumFractionDigits": 1}}
+    return t
 
 
 def state_tiles(title_col, state_col, value_col, detail_col=None):
@@ -523,17 +536,16 @@ servicehealthresources
 """
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
-    service_tiles = state_tiles("Service", "Status", "Total", "Summary")
-    service_tiles["rightContent"] = {"columnMatch": "Total", "formatter": 12, "formatOptions": {"palette": "none"}}
+    service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
     return group("tab-overview", [
         text("overview-intro",
              "Status comes from **Azure Resource Health** where available; otherwise from the resource's "
              "configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace "
              "ingestion) — see the *Signal* column. Each service tab adds metric-based health.", "info"),
         text("overview-glance-h", "### At a glance"),
-        arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=12),
-        *[arg(f"overview-{key}", "", q, vis="tiles", tiles=state_tiles("Signal", "State", "Display", "Detail"), width=12)
-          for key, q in GOVERNANCE_TILES],
+        arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=GLANCE_WIDTH),
+        *[arg(f"overview-{key}", "", q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail", unit),
+              width=GLANCE_WIDTH) for key, unit, q in GOVERNANCE_TILES],
         arg("overview-tiles", "Platform services", summary_q, vis="tiles", tiles=service_tiles,
             no_data="No platform resources found in the selected subscriptions."),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
