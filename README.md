@@ -11,33 +11,41 @@ platform services in an Enterprise Scale (Azure Landing Zone) deployment.
 
 ## Tabs
 
+Built for a **Virtual WAN** based landing zone.
+
 | Tab | Data source | What it shows |
 |---|---|---|
-| Overview | Resource Graph | Per-service health tiles, unhealthy resources, fired alerts, active Service Health events, full inventory |
-| Azure Firewall | Metrics, Logs* | Health %, SNAT utilisation, throughput, latency probe, rule hits, top denied flows* |
-| ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, circuit bits/s, gateway CPU/PPS/routes, connections |
-| VPN Gateways | Metrics, Logs* | Tunnel bandwidth, BGP peer status, packet drops, P2S connections, tunnel events* |
-| Build Agents | Metrics | VMSS / VM / Managed DevOps Pool inventory, CPU, memory, network |
-| Azure VMware Solution | Metrics | CPU, memory and vSAN usage per cluster (75% vSAN SLA threshold) |
+| Overview | Resource Graph | Service Health event summary, per-service health tiles, Policy / Defender / Advisor / Backup tiles, unhealthy resources, fired alerts, active Service Health events, full inventory |
+| Virtual WAN | Resource Graph, Metrics | WANs and hubs (routing state, routing units), hub BGP peers, spoke VM utilisation, routes, spoke peering state |
+| Azure Firewall | Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, denied flows*, threat intel & IDPS* |
+| ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
+| VPN | Metrics, Logs* | vWAN S2S & P2S gateways, VPN sites, connections, tunnel bandwidth, BGP status, drops, tunnel events* |
+| Shared Services | Resource Graph, Metrics | Bastion, DDoS coverage & attacks, DNS Private Resolver, Private DNS zone limits/links, Key Vault health |
+| Build Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
+| Azure VMware Solution | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
 | Azure Virtual Desktop | Logs* | Session host status, sessions/users, connection RTT, top errors |
 | Storage | Metrics | Availability, latency, transactions by response type (throttling), Azure Files (FSLogix) |
-| Throughput | Metrics, Logs* | Firewall, ExpressRoute, VPN, storage and AVD bandwidth side by side |
+| Governance & Security | Resource Graph | Policy compliance, Defender secure score/controls/alerts/recommendations, Advisor recommendations |
+| Monitoring & Backup | Resource Graph, Logs* | Workspace caps & ingestion status, ingestion by table*, workspace errors*, agent heartbeats*, backup vaults/jobs/items, Site Recovery |
+| Throughput | Metrics, Logs* | Hub, firewall, ExpressRoute, VPN, P2S, storage and AVD bandwidth side by side |
 
 \* Log panels appear once a **Log Analytics workspace** is selected, and need the matching diagnostic
-settings (`AZFWNetworkRule`/`AZFWApplicationRule`, VPN `TunnelDiagnosticLog`, AVD `WVD*` tables).
+settings (`AZFW*` resource-specific firewall tables, VPN `TunnelDiagnosticLog`, AVD `WVD*` tables,
+Azure Monitor Agent / VM insights on build agents).
 
 ## Parameters
 
 - **Subscriptions** – defaults to all you can see.
 - **Time range** – applies to metrics and log panels.
 - **Log Analytics workspace** – optional; enables the log panels.
-- **Build agent name pattern** – regex matched against VM and scale set names to identify build agents.
+- **Build agent name pattern** – regex matched against scale set names to identify build agent pools.
 
 ## Health signal
 
 Overview status uses Azure Resource Health where Resource Graph has a record for the resource; otherwise
-it falls back to configuration state (provisioning state, ExpressRoute circuit/provider state, storage
-primary status, VM power state). The *Signal* column shows which was used.
+it falls back to configuration state (provisioning state, hub routing state, ExpressRoute circuit/provider
+state, DNS resolver state, Private DNS limits/links, workspace ingestion status, storage primary status).
+The *Signal* column shows which was used.
 
 ## Editing
 
