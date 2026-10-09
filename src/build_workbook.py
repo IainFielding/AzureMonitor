@@ -276,7 +276,8 @@ Q_ER_GATEWAYS = "resources\n| where type =~ 'microsoft.network/expressroutegatew
 Q_VPN_GATEWAYS = "resources\n| where type =~ 'microsoft.network/vpngateways'"
 Q_P2S_GATEWAYS = "resources\n| where type =~ 'microsoft.network/p2svpngateways'"
 Q_AVS = "resources\n| where type =~ 'microsoft.avs/privateclouds'"
-Q_STORAGE = "resources\n| where type =~ 'microsoft.storage/storageaccounts'"
+Q_STORAGE = ("resources\n| where type =~ 'microsoft.storage/storageaccounts'"
+             "\n| where name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'")
 Q_AGENT_VMSS = ("resources\n| where type =~ 'microsoft.compute/virtualmachinescalesets'"
                 "\n| where name matches regex @'{BuildAgentPattern}'")
 Q_BASTIONS = "resources\n| where type =~ 'microsoft.network/bastionhosts'"
@@ -957,8 +958,8 @@ resources
             ("sessions", SUM, "Sessions", None),
             ("usage_user", AVG, "CPU usage", None),
             ("used", AVG, "Memory used", None),
-        ], width=50),
-        metrics("shared-bastion-sessions", "Bastion sessions", bns, "Bastions", [m(bns, "sessions", SUM)], width=50),
+        ]),
+        metrics("shared-bastion-sessions", "Bastion sessions", bns, "Bastions", [m(bns, "sessions", SUM)]),
         text("shared-ddos-h", "### DDoS Protection"),
         arg("shared-ddos-coverage", "Coverage", ddos_coverage_q, vis="tiles",
             tiles=state_tiles("Signal", "State", "Display"), width=40),
@@ -1112,7 +1113,7 @@ resources
 | project id,
     PoolType = tostring(properties.hostPoolType),
     LoadBalancing = tostring(properties.loadBalancerType),
-    MaxSessions = toint(properties.maxSessionLimit),
+    MaxSessions = iff(tostring(properties.hostPoolType) =~ 'Personal', int(null), toint(properties.maxSessionLimit)),
     AppGroupType = tostring(properties.preferredAppGroupType),
     StartVmOnConnect = tostring(properties.startVMOnConnect),
     Validation = tostring(properties.validationEnvironment),
@@ -1421,7 +1422,7 @@ recoveryservicesresources
 
 
 def throughput_tab():
-    fw, hub = "microsoft.network/azurefirewalls", "microsoft.network/virtualhubs"
+    fw = "microsoft.network/azurefirewalls"
     er, erg = "microsoft.network/expressroutecircuits", "microsoft.network/expressroutegateways"
     vpn, p2s = "microsoft.network/vpngateways", "microsoft.network/p2svpngateways"
     st = "microsoft.storage/storageaccounts"
@@ -1433,7 +1434,6 @@ WVDConnectionNetworkData
     return group("tab-throughput", [
         text("tp-intro", "Traffic across the platform's network edge and data services for the selected time range.", "info"),
         params("tp-params", [
-            resource_param("TpHubs", "Hubs", Q_HUBS, hidden_when_locked=True),
             resource_param("TpFirewalls", "Firewalls", Q_FIREWALLS, hidden_when_locked=True),
             resource_param("TpCircuits", "Circuits", Q_CIRCUITS, hidden_when_locked=True),
             resource_param("TpErGateways", "ER gateways", Q_ER_GATEWAYS, hidden_when_locked=True),
@@ -1441,7 +1441,7 @@ WVDConnectionNetworkData
             resource_param("TpP2SGateways", "P2S gateways", Q_P2S_GATEWAYS, hidden_when_locked=True),
             resource_param("TpStorage", "Storage accounts", Q_STORAGE, hidden_when_locked=True),
         ]),
-        metrics("tp-hub", "vWAN hub router data processed", hub, "TpHubs", [m(hub, "VirtualHubDataProcessed", SUM)], width=50),
+        metrics("tp-fw-data", "Azure Firewall data processed", fw, "TpFirewalls", [m(fw, "DataProcessed", SUM)], width=50),
         metrics("tp-fw", "Azure Firewall throughput", fw, "TpFirewalls", [m(fw, "Throughput", AVG)], width=50),
         metrics("tp-er", "ExpressRoute circuits (bits/s in & out)", er, "TpCircuits",
                 [m(er, "BitsInPerSecond", AVG), m(er, "BitsOutPerSecond", AVG)], width=50),
@@ -1522,6 +1522,17 @@ def global_params():
             "isRequired": True,
             "value": "(?i)(agent|build|ado|devops|runner)",
             "description": "Regex matched against scale set names to identify build agent pools.",
+        },
+        {
+            "id": gid("param-StoragePattern"),
+            "version": "KqlParameterItem/1.0",
+            "name": "StoragePattern",
+            "label": "Storage account pattern",
+            "type": 1,
+            "isRequired": True,
+            "value": "(?i)(fslogix|profile|avd|wvd)",
+            "description": "Regex matched against storage account and resource group names on the Storage and "
+                           "Throughput tabs. Metric charts handle at most 200 accounts; use '.' for all.",
         },
         {
             "id": gid("param-selectedTab"),

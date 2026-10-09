@@ -113,6 +113,16 @@
             "description": "Regex matched against scale set names to identify build agent pools."
           },
           {
+            "id": "c741300e-f3ce-565a-9071-5aa8a7794bf9",
+            "version": "KqlParameterItem/1.0",
+            "name": "StoragePattern",
+            "label": "Storage account pattern",
+            "type": 1,
+            "isRequired": true,
+            "value": "(?i)(fslogix|profile|avd|wvd)",
+            "description": "Regex matched against storage account and resource group names on the Storage and Throughput tabs. Metric charts handle at most 200 accounts; use '.' for all."
+          },
+          {
             "id": "0254091d-5f4a-54d3-a698-78249209378c",
             "version": "KqlParameterItem/1.0",
             "name": "selectedTab",
@@ -4682,8 +4692,7 @@
                 "filter": true
               }
             },
-            "name": "shared-bastion-kpis",
-            "customWidth": "50"
+            "name": "shared-bastion-kpis"
           },
           {
             "type": 10,
@@ -4712,8 +4721,7 @@
               "title": "Bastion sessions",
               "showOpenInMe": true
             },
-            "name": "shared-bastion-sessions",
-            "customWidth": "50"
+            "name": "shared-bastion-sessions"
           },
           {
             "type": 1,
@@ -6832,7 +6840,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id,\n    PoolType = tostring(properties.hostPoolType),\n    LoadBalancing = tostring(properties.loadBalancerType),\n    MaxSessions = toint(properties.maxSessionLimit),\n    AppGroupType = tostring(properties.preferredAppGroupType),\n    StartVmOnConnect = tostring(properties.startVMOnConnect),\n    Validation = tostring(properties.validationEnvironment),\n    ResourceGroup = resourceGroup, Location = location",
+              "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id,\n    PoolType = tostring(properties.hostPoolType),\n    LoadBalancing = tostring(properties.loadBalancerType),\n    MaxSessions = iff(tostring(properties.hostPoolType) =~ 'Personal', int(null), toint(properties.maxSessionLimit)),\n    AppGroupType = tostring(properties.preferredAppGroupType),\n    StartVmOnConnect = tostring(properties.startVMOnConnect),\n    Validation = tostring(properties.validationEnvironment),\n    ResourceGroup = resourceGroup, Location = location",
               "size": 0,
               "title": "Host pools",
               "queryType": 1,
@@ -7188,7 +7196,7 @@
                   "multiSelect": true,
                   "quote": "'",
                   "delimiter": ",",
-                  "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id",
+                  "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| where name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'\n| project id",
                   "crossComponentResources": [
                     "{Subscription}"
                   ],
@@ -7570,7 +7578,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id,\n    Kind = kind, Sku = tostring(sku.name),\n    Primary = tostring(properties.statusOfPrimary),\n    Secondary = tostring(properties.statusOfSecondary),\n    PublicNetwork = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = array_length(properties.privateEndpointConnections),\n    MinTls = tostring(properties.minimumTlsVersion),\n    ResourceGroup = resourceGroup, Location = location",
+              "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| where name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'\n| project id,\n    Kind = kind, Sku = tostring(sku.name),\n    Primary = tostring(properties.statusOfPrimary),\n    Secondary = tostring(properties.statusOfSecondary),\n    PublicNetwork = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = array_length(properties.privateEndpointConnections),\n    MinTls = tostring(properties.minimumTlsVersion),\n    ResourceGroup = resourceGroup, Location = location",
               "size": 0,
               "title": "Storage accounts",
               "queryType": 1,
@@ -8782,34 +8790,6 @@
               "version": "KqlParameterItem/1.0",
               "parameters": [
                 {
-                  "id": "e6e6e7ec-309a-5d22-a8a9-b918331f6f98",
-                  "version": "KqlParameterItem/1.0",
-                  "name": "TpHubs",
-                  "label": "Hubs",
-                  "type": 5,
-                  "isRequired": false,
-                  "multiSelect": true,
-                  "quote": "'",
-                  "delimiter": ",",
-                  "query": "resources\n| where type =~ 'microsoft.network/virtualhubs'\n| project id",
-                  "crossComponentResources": [
-                    "{Subscription}"
-                  ],
-                  "typeSettings": {
-                    "additionalResourceOptions": [
-                      "value::all"
-                    ],
-                    "showDefault": false
-                  },
-                  "defaultValue": "value::all",
-                  "value": [
-                    "value::all"
-                  ],
-                  "queryType": 1,
-                  "resourceType": "microsoft.resourcegraph/resources",
-                  "isHiddenWhenLocked": true
-                },
-                {
                   "id": "f06b0ed8-533f-5cff-b364-e6bc72c27937",
                   "version": "KqlParameterItem/1.0",
                   "name": "TpFirewalls",
@@ -8959,7 +8939,7 @@
                   "multiSelect": true,
                   "quote": "'",
                   "delimiter": ",",
-                  "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id",
+                  "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| where name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'\n| project id",
                   "crossComponentResources": [
                     "{Subscription}"
                   ],
@@ -8987,15 +8967,15 @@
           {
             "type": 10,
             "content": {
-              "chartId": "workbook940ecbf8-4dfa-5d15-b9be-b0bcbbf81360",
+              "chartId": "workbookc0dbbd0d-2044-5368-8df5-304d66eaaa7f",
               "version": "MetricsItem/2.0",
               "size": 0,
               "chartType": 2,
-              "resourceType": "microsoft.network/virtualhubs",
+              "resourceType": "microsoft.network/azurefirewalls",
               "metricScope": 0,
-              "resourceParameter": "TpHubs",
+              "resourceParameter": "TpFirewalls",
               "resourceIds": [
-                "{TpHubs}"
+                "{TpFirewalls}"
               ],
               "timeContextFromParameter": "TimeRange",
               "timeContext": {
@@ -9003,15 +8983,15 @@
               },
               "metrics": [
                 {
-                  "namespace": "microsoft.network/virtualhubs",
-                  "metric": "microsoft.network/virtualhubs--VirtualHubDataProcessed",
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--DataProcessed",
                   "aggregation": 1
                 }
               ],
-              "title": "vWAN hub router data processed",
+              "title": "Azure Firewall data processed",
               "showOpenInMe": true
             },
-            "name": "tp-hub",
+            "name": "tp-fw-data",
             "customWidth": "50"
           },
           {
