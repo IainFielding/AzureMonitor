@@ -58,22 +58,28 @@ def health_fmt(col="Health", text=VALUE_TEXT):
     return status_fmt(col, good=["Available"], warn=["Degraded"], bad=["Unavailable"], neutral=["Unknown"], text=text)
 
 
-def low_is_good(col, warn, crit):
+def _with_digits(fmt, digits):
+    if digits is not None:
+        fmt["numberFormat"] = {"unit": 0, "options": {"style": "decimal", "maximumFractionDigits": digits}}
+    return fmt
+
+
+def low_is_good(col, warn, crit, digits=None):
     """Icon formatter for numeric columns where higher values are worse (CPU, SNAT...)."""
-    return {"columnMatch": col, "formatter": 18, "formatOptions": _icons([
+    return _with_digits({"columnMatch": col, "formatter": 18, "formatOptions": _icons([
         _t(">=", str(crit), "4"),
         _t(">=", str(warn), "2"),
         _t("Default", None, "success"),
-    ])}
+    ])}, digits)
 
 
-def high_is_good(col, warn, crit):
+def high_is_good(col, warn, crit, digits=None):
     """Icon formatter for numeric columns where lower values are worse (availability...)."""
-    return {"columnMatch": col, "formatter": 18, "formatOptions": _icons([
+    return _with_digits({"columnMatch": col, "formatter": 18, "formatOptions": _icons([
         _t("<", str(crit), "4"),
         _t("<", str(warn), "2"),
         _t("Default", None, "success"),
-    ])}
+    ])}, digits)
 
 
 def resource_link(col="id"):
@@ -101,13 +107,23 @@ def text(name, md, style=None, visible_when=None):
     return item
 
 
+# Items with few rows: size to content ("Full") rather than reserving a fixed medium-height panel.
+FULL_HEIGHT = {
+    "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
+    "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
+    "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
+    "shared-dns-resolvers", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis",
+    "gov-score", "mgmt-vaults",
+}
+
+
 def _query(name, title, query, *, query_type, resource_type, resources, vis="table",
            formatters=None, labels=None, tiles=None, chart=None, width=None, size=0,
            no_data=None, group_by=None, visible_when=None, time=False):
     content = {
         "version": "KqlItem/1.0",
         "query": query.strip(),
-        "size": size,
+        "size": 3 if name in FULL_HEIGHT else size,
         "title": title,
         "queryType": query_type,
         "resourceType": resource_type,
@@ -169,7 +185,7 @@ def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=
     content = {
         "chartId": "workbook" + gid(name),
         "version": "MetricsItem/2.0",
-        "size": size,
+        "size": 3 if name in FULL_HEIGHT else size,
         "chartType": 0 if grid else 2,
         "resourceType": resource_type,
         "metricScope": 0,
@@ -182,12 +198,14 @@ def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=
         "showOpenInMe": True,
     }
     if grid:
-        content["gridFormatType"] = 1
-        content["visualization"] = "table"
-        timelines = [hidden(f"{s['metric']} Timeline") for s in specs]
+        # No gridFormatType: the default is one row per resource with a column per metric.
+        timelines = [{"columnMatch": f"{s['metric']} Timeline$", "formatter": 21,
+                      "formatOptions": {"palette": "blue"}} for s in specs]
+        timeline_labels = {f"{k} Timeline": f"{v} trend" for k, v in (labels or {}).items()}
         content["gridSettings"] = {
             "formatters": [hidden("Subscription"), resource_link("Name")] + timelines + (formatters or []),
-            "labelSettings": [{"columnId": k, "label": v} for k, v in (labels or {}).items()],
+            "labelSettings": [{"columnId": k, "label": v}
+                              for k, v in {**(labels or {}), **timeline_labels, "Name": "Resource"}.items()],
             "filter": True,
         }
     item = {"type": 10, "content": content, "name": name}
@@ -389,11 +407,10 @@ securityresources
 advisorresources
 | where type =~ 'microsoft.advisor/recommendations'
 | where tostring(properties.impact) =~ 'High'
-| summarize Total = count(),
-    Reliability = countif(tostring(properties.category) =~ 'HighAvailability'),
-    Security = countif(tostring(properties.category) =~ 'Security')
-| project Signal = 'Advisor (high impact)', Value = Total,
-    Detail = strcat(Reliability, ' reliability · ', Security, ' security'),
+| summarize Problems = dcount(tostring(properties.shortDescription.problem)), Total = count(),
+    Reliability = countif(tostring(properties.category) =~ 'HighAvailability')
+| project Signal = 'Advisor high-impact issues', Value = Problems,
+    Detail = strcat(Total, ' affected resources (', Reliability, ' reliability)'),
     State = case(Reliability > 0, 'Degraded', 'Available')
 """),
     ("backup", "", """
@@ -458,14 +475,14 @@ TABS = [
 
 
 # Width (%) of each "At a glance" tile slot; tiles are a fixed ~140px wide.
-GLANCE_WIDTH = 9
+GLANCE_WIDTH = 12
 
 
 def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
     t = state_tiles(title_col, state_col, value_col, detail_col)
     t["rightContent"] = {"columnMatch": value_col, "formatter": 12, "formatOptions": {"palette": "none"}}
     if unit == "%":
-        t["rightContent"]["numberFormat"] = {"unit": 1, "options": {"style": "decimal", "maximumFractionDigits": 1}}
+        t["rightContent"]["numberFormat"] = {"unit": 1, "options": {"style": "decimal", "maximumFractionDigits": 0}}
     return t
 
 
@@ -585,10 +602,10 @@ resources
     RoutingState = tostring(properties.routingState),
     RoutingPreference = tostring(properties.hubRoutingPreference),
     MinRoutingUnits = toint(properties.virtualRouterAutoScaleConfiguration.minCapacity),
-    Secured = isnotempty(tostring(properties.azureFirewall.id)),
-    ExpressRoute = isnotempty(tostring(properties.expressRouteGateway.id)),
-    S2SVpn = isnotempty(tostring(properties.vpnGateway.id)),
-    P2SVpn = isnotempty(tostring(properties.p2SVpnGateway.id)),
+    Secured = iff(isnotempty(tostring(properties.azureFirewall.id)), 'Yes', 'No'),
+    ExpressRoute = iff(isnotempty(tostring(properties.expressRouteGateway.id)), 'Yes', 'No'),
+    S2SVpn = iff(isnotempty(tostring(properties.vpnGateway.id)), 'Yes', 'No'),
+    P2SVpn = iff(isnotempty(tostring(properties.p2SVpnGateway.id)), 'Yes', 'No'),
     Provisioning = tostring(properties.provisioningState),
     Location = location
 """
@@ -614,6 +631,7 @@ resources
         arg("vwan-hubs", "Virtual hubs", hubs_q, formatters=[
             resource_link(), PROVISIONING,
             status_fmt("RoutingState", good=["Provisioned"], warn=["Provisioning"], bad=["Failed"], neutral=["None"]),
+            *[status_fmt(c, good=["Yes"], neutral=["No"]) for c in ("Secured", "ExpressRoute", "S2SVpn", "P2SVpn")],
         ], labels={"id": "Hub", "MinRoutingUnits": "Min routing units"}, no_data="No virtual hubs found."),
         metric_grid("vwan-kpis", "Hub router metrics (over time range)", ns, "Hubs", [
             ("SpokeVMUtilization", MAX, "Spoke VM utilisation % (max)", ("low", 80, 95)),
@@ -646,7 +664,7 @@ def firewall_tab():
     Policy = tostring(split(tostring(properties.firewallPolicy.id), '/')[8]),
     PublicIPs = toint(properties.hubIPAddresses.publicIPs['count']),
     PrivateIP = coalesce(tostring(properties.hubIPAddresses.privateIPAddress), tostring(properties.ipConfigurations[0].properties.privateIPAddress)),
-    Zones = tostring(zones),
+    Zones = strcat_array(zones, ','),
     Provisioning = tostring(properties.provisioningState),
     ResourceGroup = resourceGroup, Location = location
 """
@@ -1195,7 +1213,8 @@ policyresources
 | where tostring(properties.complianceState) =~ 'NonCompliant'
 | extend assignmentId = tolower(tostring(properties.policyAssignmentId)),
     definitionId = tolower(tostring(properties.policyDefinitionId))
-| summarize Resources = dcount(tostring(properties.resourceId)) by assignmentId, definitionId
+| extend refId = tostring(properties.policyDefinitionReferenceId)
+| summarize Resources = dcount(tostring(properties.resourceId)) by assignmentId, definitionId, refId
 | join kind=leftouter (
     policyresources
     | where type =~ 'microsoft.authorization/policyassignments'
@@ -1206,10 +1225,13 @@ policyresources
     | where type =~ 'microsoft.authorization/policydefinitions'
     | project definitionId = tolower(id), Policy = tostring(properties.displayName)
   ) on definitionId
-| project Assignment = coalesce(Assignment, tostring(split(assignmentId, '/')[-1])),
-    Policy = coalesce(Policy, tostring(split(definitionId, '/')[-1])),
-    Resources
-| order by Resources desc
+| extend Assignment = coalesce(Assignment, tostring(split(assignmentId, '/')[-1])),
+    Policy = coalesce(Policy,
+        iff(isnotempty(refId) and not(refId matches regex '^[0-9a-fA-F-]{36}$'), refId, ''),
+        tostring(split(definitionId, '/')[-1]))
+| summarize Resources = max(Resources), Assignments = make_set(Assignment) by Policy
+| project Policy, Resources, Assignments = strcat_array(Assignments, ', ')
+| top 100 by Resources desc
 """
     score_q = """
 securityresources
@@ -1262,12 +1284,12 @@ advisorresources
     return group("tab-governance", [
         text("gov-policy-h", "### Azure Policy"),
         arg("gov-compliance", "Compliance by subscription", compliance_q,
-            formatters=[high_is_good("CompliancePct", 90, 70)], labels={"CompliancePct": "Compliant %"}, width=40),
-        arg("gov-noncompliant", "Non-compliant policies", noncompliant_q, width=60,
+            formatters=[high_is_good("CompliancePct", 90, 70, digits=1)], labels={"CompliancePct": "Compliant %"}, width=40),
+        arg("gov-noncompliant", "Top non-compliant policies", noncompliant_q, width=60,
             no_data="No non-compliant resources."),
         text("gov-defender-h", "### Microsoft Defender for Cloud"),
         arg("gov-score", "Secure score by subscription", score_q,
-            formatters=[high_is_good("ScorePct", 80, 50)], labels={"ScorePct": "Score %"}, width=40),
+            formatters=[high_is_good("ScorePct", 80, 50, digits=0)], labels={"ScorePct": "Score %"}, width=40),
         arg("gov-controls", "Security controls with unhealthy resources", controls_q, width=60),
         arg("gov-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
         arg("gov-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
