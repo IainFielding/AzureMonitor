@@ -1,0 +1,4608 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform services: connectivity (Firewall, ExpressRoute, VPN), Azure VMware Solution, Azure Virtual Desktop, storage and build agents."
+      },
+      "name": "header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "6fb88fd0-0ff2-564a-a68d-1cc442865222",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "de359d64-ce5f-557f-9fa5-f8e8881c251f",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "104319c1-4e89-5093-b6b8-297b084cdd30",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Optional. Used for AVD, firewall and VPN log panels."
+          },
+          {
+            "id": "aab5ea20-872e-5374-b34c-4e70e595333e",
+            "version": "KqlParameterItem/1.0",
+            "name": "BuildAgentPattern",
+            "label": "Build agent name pattern",
+            "type": 1,
+            "isRequired": true,
+            "value": "(?i)(agent|build|ado|devops|runner)",
+            "description": "Regex matched against VM / scale set names to identify build agents."
+          },
+          {
+            "id": "0254091d-5f4a-54d3-a698-78249209378c",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "global-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "71faec23-3d5b-5147-8ecd-c404779c9ebc",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "76763860-4a6c-5006-a4ef-754a04d61d3b",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Azure Firewall",
+            "subTarget": "firewall",
+            "style": "link"
+          },
+          {
+            "id": "2c84f768-2072-5197-a1fb-e8053fdbe515",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "ExpressRoute",
+            "subTarget": "expressroute",
+            "style": "link"
+          },
+          {
+            "id": "05f59e69-8c7f-5b3f-8aad-3b592ff9551a",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "VPN Gateways",
+            "subTarget": "vpn",
+            "style": "link"
+          },
+          {
+            "id": "d81650d5-fbf2-56fe-909b-d11516beb706",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Build Agents",
+            "subTarget": "buildagents",
+            "style": "link"
+          },
+          {
+            "id": "f8fd2b1f-8a63-53bb-96bf-d0128e97eb69",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Azure VMware Solution",
+            "subTarget": "avs",
+            "style": "link"
+          },
+          {
+            "id": "af21678b-143c-55b1-bc8e-1a4cd909718e",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Azure Virtual Desktop",
+            "subTarget": "avd",
+            "style": "link"
+          },
+          {
+            "id": "0cdbb931-021f-5102-bbf8-a5d25ebe266b",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage",
+            "subTarget": "storage",
+            "style": "link"
+          },
+          {
+            "id": "38b090c7-e9be-5560-82e9-a0e677c60219",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Throughput",
+            "subTarget": "throughput",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Status comes from **Azure Resource Health** where available; otherwise it falls back to the resource's configuration state (provisioning, circuit/provider state, power state) — see the *Signal* column. Use each service tab for metric-based health (e.g. Firewall health %, BGP availability).",
+              "style": "info"
+            },
+            "name": "overview-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/connections', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.devopsinfrastructure/pools', 'microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines')\n| where type !in~ ('microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines') or name matches regex @'{BuildAgentPattern}'\n| extend gatewayType = tostring(properties.gatewayType), connectionType = tostring(properties.connectionType)\n| extend Service = case(\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type =~ 'microsoft.network/connections' and connectionType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/virtualnetworkgateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/connections'), 'VPN Gateway',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    powerState = tostring(properties.extended.instanceView.powerState.code)\n| extend ConfigHealth = case(\n    provisioning =~ 'Failed', 'Unavailable',\n    tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n    tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n    powerState =~ 'PowerState/stopped', 'Degraded',\n    type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n    provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n    provisioning =~ 'Succeeded' or isempty(provisioning), 'Available',\n    'Unknown')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId, Location = location, ConfigHealth\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.reasonType),\n        Detail = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health)\n\n| summarize Total = count(),\n    Healthy = countif(Health == 'Available'),\n    Degraded = countif(Health == 'Degraded'),\n    Unavailable = countif(Health == 'Unavailable'),\n    Unknown = countif(Health == 'Unknown') by Service\n| extend Status = case(Unavailable > 0, 'Unavailable', Degraded > 0, 'Degraded', Healthy == Total, 'Available', 'Unknown')\n| extend Summary = strcat(Healthy, ' healthy · ', Degraded + Unavailable, ' issues · ', Unknown, ' unknown')\n| order by Service asc",
+              "size": 0,
+              "title": "Platform service health",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "noDataMessage": "No platform resources found in the selected subscriptions.",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Service",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Status",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Total",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 17,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 0
+                    }
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Summary",
+                  "formatter": 1
+                },
+                "showBorder": true
+              }
+            },
+            "name": "overview-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/connections', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.devopsinfrastructure/pools', 'microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines')\n| where type !in~ ('microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines') or name matches regex @'{BuildAgentPattern}'\n| extend gatewayType = tostring(properties.gatewayType), connectionType = tostring(properties.connectionType)\n| extend Service = case(\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type =~ 'microsoft.network/connections' and connectionType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/virtualnetworkgateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/connections'), 'VPN Gateway',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    powerState = tostring(properties.extended.instanceView.powerState.code)\n| extend ConfigHealth = case(\n    provisioning =~ 'Failed', 'Unavailable',\n    tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n    tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n    powerState =~ 'PowerState/stopped', 'Degraded',\n    type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n    provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n    provisioning =~ 'Succeeded' or isempty(provisioning), 'Available',\n    'Unknown')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId, Location = location, ConfigHealth\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.reasonType),\n        Detail = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health)\n\n| where Health != 'Available'\n| project id, Service, Health, Signal, Reason, Detail, Since, ResourceGroup, Location\n| order by case(Health == 'Unavailable', 0, Health == 'Degraded', 1, 2) asc, Service asc",
+              "size": 0,
+              "title": "Resources needing attention",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "All platform resources report Available.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  }
+                ]
+              }
+            },
+            "name": "overview-unhealthy",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "alertsmanagementresources\n| where type =~ 'microsoft.alertsmanagement/alerts'\n| extend e = properties.essentials\n| where tostring(e.monitorCondition) =~ 'Fired' and tostring(e.alertState) !~ 'Closed'\n| where tolower(tostring(e.targetResourceType)) in~ ('microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/connections', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.devopsinfrastructure/pools', 'microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines')\n| project Severity = tostring(e.severity), Alert = name, Target = tostring(e.targetResource),\n    State = tostring(e.alertState), Fired = todatetime(e.startDateTime), SubscriptionId = subscriptionId\n| order by Severity asc, Fired desc",
+              "size": 0,
+              "title": "Fired alerts on platform resources",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No fired alerts.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sev0",
+                          "representation": "Sev0",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sev1",
+                          "representation": "Sev1",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sev2",
+                          "representation": "Sev2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sev3",
+                          "representation": "Sev3",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sev4",
+                          "representation": "Sev4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Target",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "overview-alerts",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| project Title = tostring(properties.Title), EventType = tostring(properties.EventType),\n    Level = tostring(properties.Level), TrackingId = tostring(properties.TrackingId),\n    ImpactStart = todatetime(tolong(properties.ImpactStartTime)), SubscriptionId = subscriptionId\n| summarize Subscriptions = dcount(SubscriptionId) by Title, EventType, Level, TrackingId, ImpactStart\n| order by ImpactStart desc",
+              "size": 0,
+              "title": "Active Azure Service Health events",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No active Service Health events.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "EventType",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "PlannedMaintenance",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "HealthAdvisory",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ServiceIssue",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "overview-servicehealth"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/connections', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.devopsinfrastructure/pools', 'microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines')\n| where type !in~ ('microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines') or name matches regex @'{BuildAgentPattern}'\n| extend gatewayType = tostring(properties.gatewayType), connectionType = tostring(properties.connectionType)\n| extend Service = case(\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type =~ 'microsoft.network/connections' and connectionType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/virtualnetworkgateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/connections'), 'VPN Gateway',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    powerState = tostring(properties.extended.instanceView.powerState.code)\n| extend ConfigHealth = case(\n    provisioning =~ 'Failed', 'Unavailable',\n    tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n    tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n    powerState =~ 'PowerState/stopped', 'Degraded',\n    type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n    provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n    provisioning =~ 'Succeeded' or isempty(provisioning), 'Available',\n    'Unknown')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId, Location = location, ConfigHealth\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.reasonType),\n        Detail = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health)\n\n| project id, Service, Health, Signal, Reason, Since, Type, ResourceGroup, Location\n| order by Service asc",
+              "size": 0,
+              "title": "All platform resources",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Type",
+                    "formatter": 5
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Service"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "overview-all"
+          }
+        ]
+      },
+      "name": "tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "67b69122-767c-55d9-83a3-6c4eb83de3f5",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Firewalls",
+                  "label": "Firewalls",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "firewall-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| project id,\n    Tier = tostring(properties.sku.tier),\n    Deployment = iff(isnotempty(tostring(properties.virtualHub.id)), 'vWAN hub', 'Hub VNet'),\n    Policy = tostring(split(tostring(properties.firewallPolicy.id), '/')[8]),\n    PrivateIP = coalesce(tostring(properties.ipConfigurations[0].properties.privateIPAddress), tostring(properties.hubIPAddresses.privateIPAddress)),\n    Zones = tostring(zones),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Firewalls",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Azure Firewalls found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Firewall"
+                  }
+                ]
+              }
+            },
+            "name": "firewall-inventory"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook4b0f767a-4c7c-552a-9265-7eb90ea1b80d",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallHealth",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--SNATPortUtilization",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--Throughput",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallLatencyPng",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--DataProcessed",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridFormatType": 1,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallHealth Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--SNATPortUtilization Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--Throughput Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallLatencyPng Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--DataProcessed Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallHealth$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--SNATPortUtilization$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallLatencyPng$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "20",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "10",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--FirewallHealth",
+                    "label": "Health %"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--SNATPortUtilization",
+                    "label": "Max SNAT %"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--Throughput",
+                    "label": "Avg throughput"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--FirewallLatencyPng",
+                    "label": "Latency probe (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--DataProcessed",
+                    "label": "Data processed"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "firewall-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook6ba50567-8aec-548d-896c-eac7f8c01026",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallHealth",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Health state %",
+              "showOpenInMe": true
+            },
+            "name": "firewall-health",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookdd7d380d-8956-53f5-8b7b-77d696ee2ab0",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--Throughput",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Throughput",
+              "showOpenInMe": true
+            },
+            "name": "firewall-throughput",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook1c9002a6-0f7a-56c8-ade3-746cc21ffe6a",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--SNATPortUtilization",
+                  "aggregation": 3
+                }
+              ],
+              "title": "SNAT port utilisation % (max)",
+              "showOpenInMe": true
+            },
+            "name": "firewall-snat",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookb7c06800-9356-5ea2-9ab6-f4fbc02d633f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallLatencyPng",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Latency probe (ms)",
+              "showOpenInMe": true
+            },
+            "name": "firewall-latency",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook2ec22a6a-9907-577a-b407-0f937f11ef78",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--NetworkRuleHit",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--ApplicationRuleHit",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Rule hits",
+              "showOpenInMe": true
+            },
+            "name": "firewall-rulehits"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see denied traffic (requires resource-specific firewall logs: `AZFWNetworkRule`, `AZFWApplicationRule`).",
+              "style": "info"
+            },
+            "name": "firewall-logs-hint"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (AZFWNetworkRule | where TimeGenerated {TimeRange} | where Action == 'Deny'\n        | project TimeGenerated, Rule = 'Network', SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol),\n    (AZFWApplicationRule | where TimeGenerated {TimeRange} | where Action == 'Deny'\n        | project TimeGenerated, Rule = 'Application', SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol)\n| summarize Hits = count(), LastSeen = max(TimeGenerated) by Rule, SourceIp, Destination, Protocol\n| top 50 by Hits desc",
+              "size": 0,
+              "title": "Top denied flows",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No denied flows (or structured firewall logs are not enabled).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "firewall-denied",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-firewall",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "firewall"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "eb32a71a-68ef-570f-8676-4cd8ca94d553",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Circuits",
+                  "label": "Circuits",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/expressroutecircuits'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "2920fdce-dca4-5d43-a049-b9784fe34277",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ErGateways",
+                  "label": "ER gateways",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/virtualnetworkgateways' and tostring(properties.gatewayType) =~ 'ExpressRoute'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "er-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/expressroutecircuits'\n| project id,\n    CircuitState = tostring(properties.circuitProvisioningState),\n    ProviderState = tostring(properties.serviceProviderProvisioningState),\n    Provider = tostring(properties.serviceProviderProperties.serviceProviderName),\n    PeeringLocation = coalesce(tostring(properties.serviceProviderProperties.peeringLocation), tostring(properties.peeringLocation)),\n    BandwidthMbps = coalesce(tolong(properties.serviceProviderProperties.bandwidthInMbps), tolong(properties.bandwidthInGbps) * 1000),\n    Sku = strcat(tostring(sku.tier), ' / ', tostring(sku.family)),\n    Peerings = array_length(properties.peerings),\n    GlobalReach = tostring(properties.globalReachEnabled),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Circuits",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No ExpressRoute circuits found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "CircuitState",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ProviderState",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Provisioned",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Provisioning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NotProvisioned",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deprovisioning",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Circuit"
+                  }
+                ]
+              }
+            },
+            "name": "er-circuits"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook23a9b68b-74fc-5db8-97f6-aec89889eae9",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuits",
+              "resourceIds": [
+                "{Circuits}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BgpAvailability",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--ArpAvailability",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BitsInPerSecond",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BitsOutPerSecond",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Circuit key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridFormatType": 1,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/expressroutecircuits--BgpAvailability Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/expressroutecircuits--ArpAvailability Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/expressroutecircuits--BitsInPerSecond Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/expressroutecircuits--BitsOutPerSecond Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/expressroutecircuits--BgpAvailability$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99.9",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/expressroutecircuits--ArpAvailability$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99.9",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.network/expressroutecircuits--BgpAvailability",
+                    "label": "BGP availability %"
+                  },
+                  {
+                    "columnId": "microsoft.network/expressroutecircuits--ArpAvailability",
+                    "label": "ARP availability %"
+                  },
+                  {
+                    "columnId": "microsoft.network/expressroutecircuits--BitsInPerSecond",
+                    "label": "Avg bits in/s"
+                  },
+                  {
+                    "columnId": "microsoft.network/expressroutecircuits--BitsOutPerSecond",
+                    "label": "Avg bits out/s"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "er-circuit-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookd0eeedf4-c0a0-56bf-9a14-29c8b437f469",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuits",
+              "resourceIds": [
+                "{Circuits}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BgpAvailability",
+                  "aggregation": 4,
+                  "splitBy": "PeeringType",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "BGP availability % by peering",
+              "showOpenInMe": true
+            },
+            "name": "er-bgp",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook713bb8bc-4b1b-5073-8f72-6bfd421235f9",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuits",
+              "resourceIds": [
+                "{Circuits}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--ArpAvailability",
+                  "aggregation": 4,
+                  "splitBy": "PeeringType",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "ARP availability % by peering",
+              "showOpenInMe": true
+            },
+            "name": "er-arp",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook3db498a4-289c-5478-9952-dba6299efd70",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "Circuits",
+              "resourceIds": [
+                "{Circuits}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BitsInPerSecond",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BitsOutPerSecond",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Circuit throughput (bits/s)",
+              "showOpenInMe": true
+            },
+            "name": "er-bits"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where (type =~ 'microsoft.network/virtualnetworkgateways' and tostring(properties.gatewayType) =~ 'ExpressRoute')\n    or type =~ 'microsoft.network/expressroutegateways'\n| extend vwan = type =~ 'microsoft.network/expressroutegateways'\n| project id,\n    Deployment = iff(vwan, 'vWAN hub', 'Hub VNet'),\n    Sku = iff(vwan, strcat(tostring(properties.autoScaleConfiguration.bounds.min), ' scale unit(s)'), tostring(properties.sku.name)),\n    AttachedTo = iff(vwan, tostring(split(tostring(properties.virtualHub.id), '/')[8]),\n        tostring(split(tostring(properties.ipConfigurations[0].properties.subnet.id), '/')[8])),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "ExpressRoute gateways",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No ExpressRoute gateways found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Gateway"
+                  }
+                ]
+              }
+            },
+            "name": "er-gateways",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/connections' and tostring(properties.connectionType) =~ 'ExpressRoute'\n| project id,\n    Gateway = tostring(split(tostring(properties.virtualNetworkGateway1.id), '/')[8]),\n    Circuit = tostring(split(tostring(properties.peer.id), '/')[8]),\n    RoutingWeight = toint(properties.routingWeight),\n    FastPath = tostring(properties.expressRouteGatewayBypass),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup",
+              "size": 0,
+              "title": "Gateway connections",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No ExpressRoute connections found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Connection"
+                  }
+                ]
+              }
+            },
+            "name": "er-connections",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook43261105-32ac-51bc-aa7e-dd28d281d1ec",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "ErGateways",
+              "resourceIds": [
+                "{ErGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--ExpressRouteGatewayCpuUtilization",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Gateway CPU %",
+              "showOpenInMe": true
+            },
+            "name": "er-gw-cpu",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookc050a95c-2d7e-541d-bea5-740d59daf004",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "ErGateways",
+              "resourceIds": [
+                "{ErGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--ExpressRouteGatewayPacketsPerSecond",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Gateway packets/s",
+              "showOpenInMe": true
+            },
+            "name": "er-gw-pps",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook0aa5e611-fa05-5559-8a5f-47a57d990a4e",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "ErGateways",
+              "resourceIds": [
+                "{ErGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--ExpressRouteGatewayCountOfRoutesLearnedFromPeer",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Routes learned from peer",
+              "showOpenInMe": true
+            },
+            "name": "er-gw-routes",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookcc4ef966-5dd7-5c7c-ae36-3bb894b1ad5d",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "ErGateways",
+              "resourceIds": [
+                "{ErGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--ErGatewayConnectionBitsInPerSecond",
+                  "aggregation": 4,
+                  "splitBy": "ConnectionName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Connection bits in/s by connection",
+              "showOpenInMe": true
+            },
+            "name": "er-gw-conn-bits",
+            "customWidth": "50"
+          }
+        ]
+      },
+      "name": "tab-expressroute",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "expressroute"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "1e48a1ef-aedf-594c-8e72-74b7bea5c8c0",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "VpnGateways",
+                  "label": "VPN gateways",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/virtualnetworkgateways' and tostring(properties.gatewayType) =~ 'Vpn'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "d1742f42-7817-505c-aab9-999c00093c9b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "VwanVpnGateways",
+                  "label": "vWAN VPN gateways",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/vpngateways'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "vpn-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where (type =~ 'microsoft.network/virtualnetworkgateways' and tostring(properties.gatewayType) =~ 'Vpn')\n    or type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways')\n| extend vwan = type !~ 'microsoft.network/virtualnetworkgateways'\n| project id,\n    Deployment = iff(vwan, 'vWAN hub', 'Hub VNet'),\n    Sku = iff(vwan, strcat(tostring(properties.vpnGatewayScaleUnit), ' scale unit(s)'), tostring(properties.sku.name)),\n    Generation = tostring(properties.vpnGatewayGeneration),\n    ActiveActive = tostring(properties.activeActive),\n    Bgp = tostring(properties.enableBgp),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "VPN gateways",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No VPN gateways found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Gateway"
+                  }
+                ]
+              }
+            },
+            "name": "vpn-gateways"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook0a3c37b6-0ef1-52f6-8549-4f90c0640ca8",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateways",
+              "resourceIds": [
+                "{VpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--AverageBandwidth",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--TunnelAverageBandwidth",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--P2SConnectionCount",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--TunnelIngressPacketDropCount",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--TunnelEgressPacketDropCount",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Gateway key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridFormatType": 1,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/virtualnetworkgateways--AverageBandwidth Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/virtualnetworkgateways--TunnelAverageBandwidth Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/virtualnetworkgateways--P2SConnectionCount Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/virtualnetworkgateways--TunnelIngressPacketDropCount Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.network/virtualnetworkgateways--TunnelEgressPacketDropCount Timeline",
+                    "formatter": 5
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.network/virtualnetworkgateways--AverageBandwidth",
+                    "label": "Avg S2S bandwidth"
+                  },
+                  {
+                    "columnId": "microsoft.network/virtualnetworkgateways--TunnelAverageBandwidth",
+                    "label": "Avg tunnel bandwidth"
+                  },
+                  {
+                    "columnId": "microsoft.network/virtualnetworkgateways--P2SConnectionCount",
+                    "label": "Max P2S connections"
+                  },
+                  {
+                    "columnId": "microsoft.network/virtualnetworkgateways--TunnelIngressPacketDropCount",
+                    "label": "Ingress drops"
+                  },
+                  {
+                    "columnId": "microsoft.network/virtualnetworkgateways--TunnelEgressPacketDropCount",
+                    "label": "Egress drops"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "vpn-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbooke76cf703-28db-51a5-831f-376d059a7298",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateways",
+              "resourceIds": [
+                "{VpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--TunnelAverageBandwidth",
+                  "aggregation": 4,
+                  "splitBy": "ConnectionName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Tunnel bandwidth by connection",
+              "showOpenInMe": true
+            },
+            "name": "vpn-tunnel-bw",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook7757926d-ea17-5b89-95dd-a2cdb7e40296",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateways",
+              "resourceIds": [
+                "{VpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--BgpPeerStatus",
+                  "aggregation": 4,
+                  "splitBy": "BgpPeerAddress",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "BGP peer status (1 = up) by peer",
+              "showOpenInMe": true
+            },
+            "name": "vpn-bgp",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook5a517c24-eb04-5cef-ba3c-729ed9d62557",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateways",
+              "resourceIds": [
+                "{VpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--TunnelIngressPacketDropCount",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--TunnelEgressPacketDropCount",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Tunnel packet drops",
+              "showOpenInMe": true
+            },
+            "name": "vpn-drops",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookfd7d3527-b3bc-5e29-89a3-97773826c80d",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "VpnGateways",
+              "resourceIds": [
+                "{VpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--P2SConnectionCount",
+                  "aggregation": 3
+                }
+              ],
+              "title": "P2S connections",
+              "showOpenInMe": true
+            },
+            "name": "vpn-p2s",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookf268cb94-fa6a-56d5-bbc2-16eadf21b45d",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/vpngateways",
+              "metricScope": 0,
+              "resourceParameter": "VwanVpnGateways",
+              "resourceIds": [
+                "{VwanVpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/vpngateways",
+                  "metric": "microsoft.network/vpngateways--TunnelAverageBandwidth",
+                  "aggregation": 4
+                }
+              ],
+              "title": "vWAN VPN tunnel bandwidth",
+              "showOpenInMe": true
+            },
+            "name": "vwan-vpn-tunnel-bw"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/connections' and tostring(properties.connectionType) in~ ('IPsec', 'Vnet2Vnet')\n| project id,\n    Gateway = tostring(split(tostring(properties.virtualNetworkGateway1.id), '/')[8]),\n    Remote = coalesce(tostring(split(tostring(properties.localNetworkGateway2.id), '/')[8]),\n        tostring(split(tostring(properties.virtualNetworkGateway2.id), '/')[8])),\n    Type = tostring(properties.connectionType),\n    Protocol = tostring(properties.connectionProtocol),\n    Bgp = tostring(properties.enableBgp),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup",
+              "size": 0,
+              "title": "Site-to-site / VNet-to-VNet connections",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No VPN connections found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Connection"
+                  }
+                ]
+              }
+            },
+            "name": "vpn-connections"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureDiagnostics\n| where TimeGenerated {TimeRange}\n| where Category == 'TunnelDiagnosticLog'\n| project TimeGenerated, Gateway = Resource,\n    RemoteIP = column_ifexists('remoteIP_s', ''),\n    Status = column_ifexists('status_s', ''),\n    Reason = column_ifexists('stateChangeReason_s', '')\n| order by TimeGenerated desc\n| take 200",
+              "size": 0,
+              "title": "Tunnel connect/disconnect events",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No tunnel events (or gateway diagnostic logs are not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "vpn-tunnel-events",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-vpn",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "vpn"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Build agents are found by **name** using the *Build agent name pattern* parameter at the top (a regex applied to VM and scale set names). Managed DevOps Pools are always included.",
+              "style": "info"
+            },
+            "name": "agents-intro"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "ea7073ba-7561-54d0-bbb6-ca5d63a1f2fa",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "AgentScaleSets",
+                  "label": "Agent scale sets",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.compute/virtualmachinescalesets'\n| where name matches regex @'{BuildAgentPattern}'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "f0e7d02d-59d7-54e8-8755-a6f78bd623a1",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "AgentVms",
+                  "label": "Agent VMs",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{BuildAgentPattern}'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "agents-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachinescalesets', 'microsoft.compute/virtualmachines', 'microsoft.devopsinfrastructure/pools')\n| where type =~ 'microsoft.devopsinfrastructure/pools' or name matches regex @'{BuildAgentPattern}'\n| extend Kind = case(type =~ 'microsoft.devopsinfrastructure/pools', 'Managed DevOps Pool',\n    type =~ 'microsoft.compute/virtualmachinescalesets', 'Scale set', 'Virtual machine')\n| extend PowerState = iff(type =~ 'microsoft.compute/virtualmachines',\n    tostring(split(tostring(properties.extended.instanceView.powerState.code), '/')[1]), '')\n| project id, Kind, PowerState,\n    Size = case(type =~ 'microsoft.compute/virtualmachines', tostring(properties.hardwareProfile.vmSize),\n        type =~ 'microsoft.compute/virtualmachinescalesets', tostring(sku.name),\n        tostring(properties.fabricProfile.sku.name)),\n    Capacity = case(type =~ 'microsoft.compute/virtualmachinescalesets', tolong(sku.capacity),\n        type =~ 'microsoft.devopsinfrastructure/pools', tolong(properties.maximumConcurrency), tolong(1)),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location\n| order by Kind asc",
+              "size": 0,
+              "title": "Build agent infrastructure",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No build agents matched the name pattern.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PowerState",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "running",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stopped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "starting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stopping",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "deallocated",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "deallocating",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  }
+                ]
+              }
+            },
+            "name": "agents-inventory"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook85968e14-df2c-5421-b51f-31924bce7df8",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.compute/virtualmachinescalesets",
+              "metricScope": 0,
+              "resourceParameter": "AgentScaleSets",
+              "resourceIds": [
+                "{AgentScaleSets}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachinescalesets",
+                  "metric": "microsoft.compute/virtualmachinescalesets--Percentage CPU",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.compute/virtualmachinescalesets",
+                  "metric": "microsoft.compute/virtualmachinescalesets--Available Memory Bytes",
+                  "aggregation": 2
+                },
+                {
+                  "namespace": "microsoft.compute/virtualmachinescalesets",
+                  "metric": "microsoft.compute/virtualmachinescalesets--Network In Total",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.compute/virtualmachinescalesets",
+                  "metric": "microsoft.compute/virtualmachinescalesets--Network Out Total",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Scale set metrics (over time range)",
+              "showOpenInMe": true,
+              "gridFormatType": 1,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachinescalesets--Percentage CPU Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachinescalesets--Available Memory Bytes Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachinescalesets--Network In Total Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachinescalesets--Network Out Total Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachinescalesets--Percentage CPU$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "95",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "80",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.compute/virtualmachinescalesets--Percentage CPU",
+                    "label": "Avg CPU %"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachinescalesets--Available Memory Bytes",
+                    "label": "Min available memory"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachinescalesets--Network In Total",
+                    "label": "Network in"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachinescalesets--Network Out Total",
+                    "label": "Network out"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "agents-vmss-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookf572bdbd-18dc-59ee-a988-64bcdef42669",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.compute/virtualmachinescalesets",
+              "metricScope": 0,
+              "resourceParameter": "AgentScaleSets",
+              "resourceIds": [
+                "{AgentScaleSets}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachinescalesets",
+                  "metric": "microsoft.compute/virtualmachinescalesets--Percentage CPU",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Scale set CPU %",
+              "showOpenInMe": true
+            },
+            "name": "agents-vmss-cpu",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbooke6a4818e-e4b3-5291-a405-2e7c5545840e",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.compute/virtualmachinescalesets",
+              "metricScope": 0,
+              "resourceParameter": "AgentScaleSets",
+              "resourceIds": [
+                "{AgentScaleSets}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachinescalesets",
+                  "metric": "microsoft.compute/virtualmachinescalesets--Network In Total",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.compute/virtualmachinescalesets",
+                  "metric": "microsoft.compute/virtualmachinescalesets--Network Out Total",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Scale set network",
+              "showOpenInMe": true
+            },
+            "name": "agents-vmss-net",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook67ddf707-d10a-5b08-92db-e2ef4c5147f4",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.compute/virtualmachines",
+              "metricScope": 0,
+              "resourceParameter": "AgentVms",
+              "resourceIds": [
+                "{AgentVms}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--Percentage CPU",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Agent VM CPU %",
+              "showOpenInMe": true
+            },
+            "name": "agents-vm-cpu",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook9219ccc6-b5ce-5878-bb50-7568036eedd5",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.compute/virtualmachines",
+              "metricScope": 0,
+              "resourceParameter": "AgentVms",
+              "resourceIds": [
+                "{AgentVms}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--Available Memory Bytes",
+                  "aggregation": 2
+                }
+              ],
+              "title": "Agent VM available memory",
+              "showOpenInMe": true
+            },
+            "name": "agents-vm-mem",
+            "customWidth": "50"
+          }
+        ]
+      },
+      "name": "tab-buildagents",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "buildagents"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "557483b6-3f80-5ae2-a219-515b679eb796",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "PrivateClouds",
+                  "label": "Private clouds",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.avs/privateclouds'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "avs-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.avs/privateclouds'\n| project id,\n    Sku = tostring(sku.name),\n    MgmtClusterHosts = toint(properties.managementCluster.clusterSize),\n    NetworkBlock = tostring(properties.networkBlock),\n    Internet = tostring(properties.internet),\n    Availability = tostring(properties.availability.strategy),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Private clouds",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No AVS private clouds found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Private cloud"
+                  }
+                ]
+              }
+            },
+            "name": "avs-inventory"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "AVS requires **25% vSAN slack space** to stay within SLA — keep datastore usage below 75%.",
+              "style": "warning"
+            },
+            "name": "avs-vsan-note"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook913d96af-17fa-54ed-981d-b9fb85832155",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.avs/privateclouds",
+              "metricScope": 0,
+              "resourceParameter": "PrivateClouds",
+              "resourceIds": [
+                "{PrivateClouds}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--EffectiveCpuAverage",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--UsageAverage",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--DiskUsedPercentage",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--UsedLatest",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--CapacityLatest",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridFormatType": 1,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--EffectiveCpuAverage Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--UsageAverage Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--DiskUsedPercentage Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--UsedLatest Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--CapacityLatest Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--EffectiveCpuAverage$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "80",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--UsageAverage$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "80",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.avs/privateclouds--DiskUsedPercentage$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "75",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.avs/privateclouds--EffectiveCpuAverage",
+                    "label": "CPU %"
+                  },
+                  {
+                    "columnId": "microsoft.avs/privateclouds--UsageAverage",
+                    "label": "Memory %"
+                  },
+                  {
+                    "columnId": "microsoft.avs/privateclouds--DiskUsedPercentage",
+                    "label": "vSAN used % (max)"
+                  },
+                  {
+                    "columnId": "microsoft.avs/privateclouds--UsedLatest",
+                    "label": "Datastore used"
+                  },
+                  {
+                    "columnId": "microsoft.avs/privateclouds--CapacityLatest",
+                    "label": "Datastore capacity"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "avs-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookbc01e22e-f4c4-5cb1-af53-ce1c3fb55bd5",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.avs/privateclouds",
+              "metricScope": 0,
+              "resourceParameter": "PrivateClouds",
+              "resourceIds": [
+                "{PrivateClouds}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--EffectiveCpuAverage",
+                  "aggregation": 4,
+                  "splitBy": "clustername",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "CPU % by cluster",
+              "showOpenInMe": true
+            },
+            "name": "avs-cpu",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookff6aad52-ce32-5d90-83cc-a170abba430e",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.avs/privateclouds",
+              "metricScope": 0,
+              "resourceParameter": "PrivateClouds",
+              "resourceIds": [
+                "{PrivateClouds}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--UsageAverage",
+                  "aggregation": 4,
+                  "splitBy": "clustername",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Memory % by cluster",
+              "showOpenInMe": true
+            },
+            "name": "avs-mem",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookdafc78e2-cfbe-530f-824d-5eefd9ef6151",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.avs/privateclouds",
+              "metricScope": 0,
+              "resourceParameter": "PrivateClouds",
+              "resourceIds": [
+                "{PrivateClouds}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.avs/privateclouds",
+                  "metric": "microsoft.avs/privateclouds--DiskUsedPercentage",
+                  "aggregation": 3,
+                  "splitBy": "clustername",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "vSAN datastore used % by cluster",
+              "showOpenInMe": true
+            },
+            "name": "avs-disk"
+          }
+        ]
+      },
+      "name": "tab-avs",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "avs"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id,\n    PoolType = tostring(properties.hostPoolType),\n    LoadBalancing = tostring(properties.loadBalancerType),\n    MaxSessions = toint(properties.maxSessionLimit),\n    AppGroupType = tostring(properties.preferredAppGroupType),\n    StartVmOnConnect = tostring(properties.startVMOnConnect),\n    Validation = tostring(properties.validationEnvironment),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Host pools",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No AVD host pools found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Host pool"
+                  }
+                ]
+              }
+            },
+            "name": "avd-pools"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select the **Log Analytics workspace** that receives AVD diagnostics to see session host health, sessions, errors and connection quality.",
+              "style": "info"
+            },
+            "name": "avd-workspace-hint"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc",
+              "size": 0,
+              "title": "Session host status",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Status",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Status",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Upgrading",
+                        "representation": "2",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "NeedsAssistance",
+                        "representation": "2",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Shutdown",
+                        "representation": "2",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "NoRecentHeartbeat",
+                        "representation": "4",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "UpgradeFailed",
+                        "representation": "4",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "NoHeartbeat",
+                        "representation": "4",
+                        "text": "{0}{1}"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "{0}{1}"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Hosts",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true
+              }
+            },
+            "name": "avd-host-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'NoRecentHeartbeat', Status)\n\n| project SessionHost = SessionHostName, HostPool, Status, LastHeartbeat = TimeGenerated,\n    ActiveSessions = column_ifexists('ActiveSessions', int(null)),\n    InactiveSessions = column_ifexists('InactiveSessions', int(null)),\n    AgentVersion = column_ifexists('AgentVersion', '')\n| order by Status asc, SessionHost asc",
+              "size": 0,
+              "title": "Session hosts (latest heartbeat)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No AVD agent health data in this workspace.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Upgrading",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NeedsAssistance",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Shutdown",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NoRecentHeartbeat",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "UpgradeFailed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NoHeartbeat",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "avd-hosts",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDConnections\n| where TimeGenerated {TimeRange}\n| where State == 'Connected'\n| summarize Sessions = dcount(CorrelationId), Users = dcount(UserName) by bin(TimeGenerated, {TimeRange:grain})",
+              "size": 0,
+              "title": "Connected sessions and users",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "avd-sessions",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDConnectionNetworkData\n| where TimeGenerated {TimeRange}\n| summarize P50_RTT_ms = percentile(EstRoundTripTimeInMs, 50), P95_RTT_ms = percentile(EstRoundTripTimeInMs, 95)\n    by bin(TimeGenerated, {TimeRange:grain})",
+              "size": 0,
+              "title": "Connection round-trip time (ms)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "avd-rtt",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDErrors\n| where TimeGenerated {TimeRange}\n| summarize Errors = count(), Users = dcount(UserName), LastSeen = max(TimeGenerated), Message = take_any(Message)\n    by Source, CodeSymbolic, ServiceError\n| top 25 by Errors desc",
+              "size": 0,
+              "title": "Top connection errors",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No AVD errors in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "avd-errors",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-avd",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "avd"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "13d3b803-0c39-5250-b801-71d1cac034b1",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "StorageAccounts",
+                  "label": "Storage accounts",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "storage-params"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook0945f7c8-aec2-5a8b-973b-5c2f5ea29f85",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--Availability",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--SuccessE2ELatency",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--SuccessServerLatency",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--Transactions",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--UsedCapacity",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridFormatType": 1,
+              "visualization": "table",
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--Availability Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--SuccessE2ELatency Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--SuccessServerLatency Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--Transactions Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--UsedCapacity Timeline",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--Availability$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99.9",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--SuccessE2ELatency$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "500",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "100",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.storage/storageaccounts--SuccessServerLatency$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "200",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "50",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.storage/storageaccounts--Availability",
+                    "label": "Availability %"
+                  },
+                  {
+                    "columnId": "microsoft.storage/storageaccounts--SuccessE2ELatency",
+                    "label": "E2E latency (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.storage/storageaccounts--SuccessServerLatency",
+                    "label": "Server latency (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.storage/storageaccounts--Transactions",
+                    "label": "Transactions"
+                  },
+                  {
+                    "columnId": "microsoft.storage/storageaccounts--UsedCapacity",
+                    "label": "Used capacity"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "storage-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook9e1fbd4c-2717-5e8b-a98b-fc021e558b21",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--Availability",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Availability %",
+              "showOpenInMe": true
+            },
+            "name": "storage-availability",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook64b8d6ab-1d32-567f-83df-7b077761affc",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--SuccessE2ELatency",
+                  "aggregation": 4
+                }
+              ],
+              "title": "End-to-end latency (ms)",
+              "showOpenInMe": true
+            },
+            "name": "storage-latency",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookd81a4d45-9ac3-53ed-aae3-be04863670f9",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--Transactions",
+                  "aggregation": 1,
+                  "splitBy": "ResponseType",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Transactions by response type (watch for throttling)",
+              "showOpenInMe": true
+            },
+            "name": "storage-tx-response",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook00d66767-4b1f-5070-bcb4-2db8d6c00a03",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts/fileservices",
+                  "metric": "microsoft.storage/storageaccounts/fileservices--Transactions",
+                  "aggregation": 1,
+                  "splitBy": "ResponseType",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Azure Files transactions by response type (FSLogix)",
+              "showOpenInMe": true
+            },
+            "name": "storage-files-tx",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id,\n    Kind = kind, Sku = tostring(sku.name),\n    Primary = tostring(properties.statusOfPrimary),\n    Secondary = tostring(properties.statusOfSecondary),\n    PublicNetwork = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = array_length(properties.privateEndpointConnections),\n    MinTls = tostring(properties.minimumTlsVersion),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Storage accounts",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Primary",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Secondary",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PublicNetwork",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Storage account"
+                  }
+                ]
+              }
+            },
+            "name": "storage-inventory"
+          }
+        ]
+      },
+      "name": "tab-storage",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "storage"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Traffic across the platform's network edge and data services for the selected time range.",
+              "style": "info"
+            },
+            "name": "tp-intro"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "f06b0ed8-533f-5cff-b364-e6bc72c27937",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "TpFirewalls",
+                  "label": "Firewalls",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "isHiddenWhenLocked": true
+                },
+                {
+                  "id": "80083531-cd4d-5b02-a8f9-df5f293753b2",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "TpCircuits",
+                  "label": "Circuits",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/expressroutecircuits'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "isHiddenWhenLocked": true
+                },
+                {
+                  "id": "f1faaa72-9f42-5aae-8fcf-512198f2ade7",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "TpErGateways",
+                  "label": "ER gateways",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/virtualnetworkgateways' and tostring(properties.gatewayType) =~ 'ExpressRoute'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "isHiddenWhenLocked": true
+                },
+                {
+                  "id": "800c3a76-dcbd-5562-8826-9d6caf51d623",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "TpVpnGateways",
+                  "label": "VPN gateways",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/virtualnetworkgateways' and tostring(properties.gatewayType) =~ 'Vpn'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "isHiddenWhenLocked": true
+                },
+                {
+                  "id": "e9e964f0-f726-54c5-8c85-e2ee1e0475b2",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "TpStorage",
+                  "label": "Storage accounts",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources",
+                  "isHiddenWhenLocked": true
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "tp-params"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook46ae5180-d4b9-5ef6-af88-ef724e5cb6cb",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "TpFirewalls",
+              "resourceIds": [
+                "{TpFirewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--Throughput",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Azure Firewall throughput",
+              "showOpenInMe": true
+            },
+            "name": "tp-fw",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookc0dbbd0d-2044-5368-8df5-304d66eaaa7f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "TpFirewalls",
+              "resourceIds": [
+                "{TpFirewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--DataProcessed",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Azure Firewall data processed",
+              "showOpenInMe": true
+            },
+            "name": "tp-fw-data",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook1a474f1e-7186-515c-8283-0f19b536400a",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/expressroutecircuits",
+              "metricScope": 0,
+              "resourceParameter": "TpCircuits",
+              "resourceIds": [
+                "{TpCircuits}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BitsInPerSecond",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/expressroutecircuits",
+                  "metric": "microsoft.network/expressroutecircuits--BitsOutPerSecond",
+                  "aggregation": 4
+                }
+              ],
+              "title": "ExpressRoute circuits (bits/s in & out)",
+              "showOpenInMe": true
+            },
+            "name": "tp-er",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookd7b4de96-d612-5b71-ab77-429391eecbf5",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "TpErGateways",
+              "resourceIds": [
+                "{TpErGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--ErGatewayConnectionBitsInPerSecond",
+                  "aggregation": 4,
+                  "splitBy": "ConnectionName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "ExpressRoute gateway connections (bits/s in)",
+              "showOpenInMe": true
+            },
+            "name": "tp-er-gw",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook4d4edb24-dccf-5cc2-9b34-42d57ecbc9f0",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "TpVpnGateways",
+              "resourceIds": [
+                "{TpVpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--AverageBandwidth",
+                  "aggregation": 4
+                }
+              ],
+              "title": "VPN gateway S2S bandwidth",
+              "showOpenInMe": true
+            },
+            "name": "tp-vpn",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook746828ee-dc58-503d-8fef-4e0b747ee364",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/virtualnetworkgateways",
+              "metricScope": 0,
+              "resourceParameter": "TpVpnGateways",
+              "resourceIds": [
+                "{TpVpnGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/virtualnetworkgateways",
+                  "metric": "microsoft.network/virtualnetworkgateways--TunnelAverageBandwidth",
+                  "aggregation": 4,
+                  "splitBy": "ConnectionName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "VPN tunnel bandwidth by connection",
+              "showOpenInMe": true
+            },
+            "name": "tp-vpn-tunnels",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook6862b7a9-5fdf-5864-bcd1-4de545a164ff",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "TpStorage",
+              "resourceIds": [
+                "{TpStorage}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--Ingress",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.storage/storageaccounts",
+                  "metric": "microsoft.storage/storageaccounts--Egress",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Storage ingress / egress",
+              "showOpenInMe": true
+            },
+            "name": "tp-storage",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDConnectionNetworkData\n| where TimeGenerated {TimeRange}\n| summarize AvgBandwidth_KBps = avg(EstAvailableBandwidthKBps) by bin(TimeGenerated, {TimeRange:grain})",
+              "size": 0,
+              "title": "AVD available bandwidth (KBps)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "tp-avd-bw",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-throughput",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "throughput"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
