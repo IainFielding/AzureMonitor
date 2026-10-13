@@ -712,6 +712,130 @@ AzureActivity
     ImpairedMinutes, LongestMinutes, LastIncident
 | order by AvailabilityPct asc
 """
+    # Issues board: one tile per check, each a count of things wrong, with the tab that has the detail.
+    # Resource Graph cannot union its tables, so there is one query per table; each packs its checks into rows.
+    def issue_rows(checks):
+        """checks: list of (label, count column, tab, state when the count is above zero)."""
+        packs = ",\n    ".join(f"pack('Check', '{label}', 'Count', {col}, 'Tab', '{tab}', 'Severity', '{state}')"
+                               for label, col, tab, state in checks)
+        return f"""| extend rows = pack_array(
+    {packs})
+| mv-expand r = rows
+| extend Count = tolong(r.Count)
+| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),
+    State = iff(Count > 0, tostring(r.Severity), 'Available')
+| order by Count desc
+"""
+
+    issues_resources_q = """
+resources
+| where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',
+    'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',
+    'microsoft.network/virtualnetworks', 'microsoft.network/applicationgateways', 'microsoft.compute/disks',
+    'microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')
+| extend endpointState = coalesce(
+    tostring(properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status),
+    tostring(properties.manualPrivateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status))
+| summarize
+    Endpoints = countif(type =~ 'microsoft.network/privateendpoints' and endpointState !~ 'Approved'),
+    Peerings = countif(type =~ 'microsoft.network/virtualnetworks' and tostring(properties.virtualNetworkPeerings) contains 'Disconnected'),
+    Gateways = countif(type =~ 'microsoft.network/applicationgateways' and tostring(properties.operationalState) !~ 'Running'),
+    ThreatIntelOff = countif(type =~ 'microsoft.network/firewallpolicies' and tostring(properties.threatIntelMode) =~ 'Off'),
+    WafDetection = countif(type endswith 'webapplicationfirewallpolicies' and tostring(properties.policySettings.mode) =~ 'Detection'),
+    RulesDisabled = countif(type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',
+        'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),
+    GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),
+    Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))
+""" + issue_rows([
+        ("Private endpoints not approved", "Endpoints", "Shared", "Unavailable"),
+        ("VNets with a disconnected peering", "Peerings", "Virtual WAN", "Unavailable"),
+        ("Application gateways not running", "Gateways", "App Delivery", "Unavailable"),
+        ("Firewall policies with threat intel off", "ThreatIntelOff", "Firewall", "Degraded"),
+        ("WAF policies in detection mode", "WafDetection", "App Delivery", "Degraded"),
+        ("Alert rules disabled", "RulesDisabled", "Monitoring & Backup", "Degraded"),
+        ("Action groups disabled", "GroupsDisabled", "Monitoring & Backup", "Degraded"),
+        ("Unattached disks", "Disks", "Governance", "Degraded"),
+    ])
+    issues_health_q = health_transitions.strip() + f"""
+| where To in ('Unavailable', 'Degraded')
+| extend parts = split(id, '/')
+| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
+| summarize Impaired = dcount(id)
+""" + issue_rows([("Resources with a health incident", "Impaired", "Overview, below", "Degraded")])
+    issues_patch_q = """
+patchassessmentresources
+| where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
+| summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),
+    Reboot = countif(tobool(properties.rebootPending))
+""" + issue_rows([
+        ("Machines missing critical patches", "Critical", "Governance", "Unavailable"),
+        ("Machines pending a reboot", "Reboot", "Governance", "Degraded"),
+    ])
+    issues_retirement_q = """
+advisorresources
+| where type =~ 'microsoft.advisor/recommendations'
+| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'
+| extend retires = todatetime(properties.extendedProperties.retirementDate)
+| summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)
+""" + issue_rows([("Retirements within 90 days", "Soon", "Governance", "Degraded")])
+    issues_exemptions_q = """
+policyresources
+| where type =~ 'microsoft.authorization/policyexemptions'
+| extend expires = todatetime(properties.expiresOn)
+| summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)
+""" + issue_rows([
+        ("Policy exemptions expired", "Expired", "Governance", "Degraded"),
+        ("Policy exemptions expiring in 30 days", "Expiring", "Governance", "Degraded"),
+    ])
+    issues_defender_q = """
+securityresources
+| where type =~ 'microsoft.security/pricings'
+| where not(tobool(properties.deprecated))
+| summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')
+""" + issue_rows([("Subscriptions with a Defender plan off", "PlansOff", "Security", "Degraded")])
+    issues_access_q = """
+authorizationresources
+| where type =~ 'microsoft.authorization/roleassignments'
+| where tolower(tostring(properties.roleDefinitionId)) endswith '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'
+| extend scope = tolower(tostring(properties.scope))
+| where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3
+| summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)
+| summarize DirectOwners = countif(principalType =~ 'User')
+""" + issue_rows([("Owners assigned directly to users", "DirectOwners", "Security", "Degraded")])
+    # Log checks. A leg whose table is missing from the workspace is skipped, so its tile is simply absent.
+    issues_logs_q = f"""
+union isfuzzy=true
+    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),
+    (NWConnectionMonitorTestResult | where TimeGenerated {{TimeRange}}
+        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName
+        | summarize Count = countif(TestResult == 'Fail')
+        | extend Check = 'Connectivity tests failing', Tab = 'Connectivity', Severity = 'Unavailable'),
+    (WVDAgentHealthStatus | where TimeGenerated {{TimeRange}}
+        | summarize arg_max(TimeGenerated, Status) by SessionHostName
+        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))
+        | extend Check = 'AVD session hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),
+    (Heartbeat | where TimeGenerated {{TimeRange}}
+        | summarize lastSeen = max(TimeGenerated) by Computer
+        | summarize Count = countif(lastSeen < ago(15m))
+        | extend Check = 'Machines that stopped reporting', Tab = 'Monitoring & Backup', Severity = 'Degraded'),
+    (AzureActivity | where TimeGenerated {{TimeRange}}
+        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')
+        | extend parts = split(tolower(_ResourceId), '/')
+        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),
+            strcat(tostring(parts[6]), '/', tostring(parts[7])))
+        | where type in~ ({TYPE_LIST}, 'microsoft.resources/deployments')
+        | summarize Count = count()
+        | extend Check = 'Failed operations and deployments', Tab = 'Overview, below', Severity = 'Degraded'),
+    (SecurityIncident | where TimeGenerated {{TimeRange}}
+        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber
+        | summarize Count = countif(Status != 'Closed' and Severity == 'High')
+        | extend Check = 'Sentinel high-severity incidents open', Tab = 'Security', Severity = 'Unavailable')
+| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')
+| order by Count desc
+"""
+    issue_tiles = big_number_tiles("Check", "State", "Count", "Where")
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -721,6 +845,17 @@ AzureActivity
              "configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace "
              "ingestion) — see the *Signal* column. Each service tab adds metric-based health. *Health state changes* "
              "and *Recent changes* further down show what happened earlier in the time range.", "info"),
+        text("overview-issues-h", "### Issues"),
+        text("overview-issues-note", "One tile per check, drawn from every tab. The number is how many things the check "
+             "found wrong; a green tick means none. The line under it names the tab that has the detail.", "info"),
+        arg("overview-issues-resources", "", issues_resources_q, vis="tiles", tiles=issue_tiles),
+        arg("overview-issues-health", "", issues_health_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        arg("overview-issues-patch", "", issues_patch_q, vis="tiles", tiles=issue_tiles, width=2 * GLANCE_WIDTH),
+        arg("overview-issues-retirement", "", issues_retirement_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        arg("overview-issues-exemptions", "", issues_exemptions_q, vis="tiles", tiles=issue_tiles, width=2 * GLANCE_WIDTH),
+        arg("overview-issues-defender", "", issues_defender_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        arg("overview-issues-access", "", issues_access_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        la("overview-issues-logs", "", issues_logs_q, vis="tiles", tiles=issue_tiles),
         text("overview-glance-h", "### At a glance"),
         arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=GLANCE_WIDTH),
         *[arg(f"overview-{key}", "", q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail", unit),
