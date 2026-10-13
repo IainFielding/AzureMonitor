@@ -900,7 +900,7 @@
             "content": {
               "chartId": "workbook24c76bc3-e766-53fc-83a3-e235e7b35e6f",
               "version": "MetricsItem/2.0",
-              "size": 4,
+              "size": 3,
               "chartType": -1,
               "resourceType": "microsoft.avs/privateclouds",
               "metricScope": 0,
@@ -987,7 +987,7 @@
               }
             },
             "name": "overview-avs-cpu",
-            "customWidth": "12",
+            "customWidth": "22",
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
               "comparison": "isNotEqualTo",
@@ -999,7 +999,7 @@
             "content": {
               "chartId": "workbook3358f129-037d-51da-a051-ec2bdcd64f5e",
               "version": "MetricsItem/2.0",
-              "size": 4,
+              "size": 3,
               "chartType": -1,
               "resourceType": "microsoft.avs/privateclouds",
               "metricScope": 0,
@@ -1086,7 +1086,7 @@
               }
             },
             "name": "overview-avs-mem",
-            "customWidth": "12",
+            "customWidth": "22",
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
               "comparison": "isNotEqualTo",
@@ -1098,7 +1098,7 @@
             "content": {
               "chartId": "workbook12e70e93-7a33-56b9-aaad-252ff9b4ac67",
               "version": "MetricsItem/2.0",
-              "size": 4,
+              "size": 3,
               "chartType": -1,
               "resourceType": "microsoft.avs/privateclouds",
               "metricScope": 0,
@@ -1185,7 +1185,7 @@
               }
             },
             "name": "overview-avs-vsan",
-            "customWidth": "12",
+            "customWidth": "22",
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
               "comparison": "isNotEqualTo",

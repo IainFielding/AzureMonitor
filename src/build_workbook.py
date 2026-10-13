@@ -231,7 +231,7 @@ def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=
         }
     if tiles:
         # One tile per resource and metric; the rows carry Metric, Value, Timeline and Name (the resource).
-        content.update({"chartType": -1, "gridFormatType": 1, "tileSettings": tiles, "size": 4})
+        content.update({"chartType": -1, "gridFormatType": 1, "tileSettings": tiles, "size": 3})
     item = {"type": 10, "content": content, "name": name}
     if width:
         item["customWidth"] = str(width)
@@ -511,6 +511,8 @@ TABS = [
 
 # Width (%) of each "At a glance" tile slot; tiles are a fixed ~140px wide.
 GLANCE_WIDTH = 12
+# Each AVS metric gets one tile per private cloud, so its slot is wide enough for a few side by side.
+AVS_METRIC_WIDTH = 22
 
 
 def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
@@ -719,11 +721,11 @@ AzureActivity
         arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
             tiles=big_number_tiles("Signal", "State", "Value", "Detail"), width=GLANCE_WIDTH, visible_when=avs_found),
         metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), width=AVS_METRIC_WIDTH, visible_when=avs_found),
         metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), width=AVS_METRIC_WIDTH, visible_when=avs_found),
         metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
-                tiles=metric_tiles(70, 75), width=GLANCE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(70, 75), width=AVS_METRIC_WIDTH, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
