@@ -485,16 +485,16 @@ SUBSCRIPTION_NAMES = """
 TABS = [
     ("overview", "Overview"),
     ("vwan", "Virtual WAN"),
-    ("firewall", "Azure Firewall"),
+    ("firewall", "Firewall"),
     ("expressroute", "ExpressRoute"),
     ("vpn", "VPN"),
-    ("connectivity", "Connectivity Tests"),
+    ("connectivity", "Connectivity"),
     ("shared", "Shared Services"),
     ("buildagents", "Build Agents"),
-    ("avs", "Azure VMware Solution"),
-    ("avd", "Azure Virtual Desktop"),
+    ("avs", "AVS"),
+    ("avd", "AVD"),
     ("storage", "Storage"),
-    ("governance", "Governance & Security"),
+    ("governance", "Governance"),
     ("management", "Monitoring & Backup"),
     ("capacity", "Capacity"),
     ("throughput", "Throughput"),
@@ -831,7 +831,7 @@ AZFWDnsQuery
         text("firewall-policy-note", "A policy attached to no firewall is flagged. Rule counts are totals across the "
              "policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. "
              "The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on "
-             "the Governance & Security tab.", "info"),
+             "the Governance tab.", "info"),
         text("firewall-logs-hint", "Select a **Log Analytics workspace** at the top to see denied traffic, threat "
              "detections and DNS proxy queries (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).", "info", visible_when=WORKSPACE_UNSET),
         la("firewall-denied", "Top denied flows", denied_q, width=50,

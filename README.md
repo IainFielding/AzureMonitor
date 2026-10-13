@@ -17,16 +17,16 @@ Built for a **Virtual WAN** based landing zone.
 |---|---|---|
 | Overview | Resource Graph | Service Health event summary, per-service health tiles, Policy / Defender / Advisor / Backup tiles, unhealthy resources, fired alerts, active Service Health events, health state changes over the time range, recent changes (who changed what), full inventory |
 | Virtual WAN | Resource Graph, Metrics | WANs and hubs (routing state, routing units), hub BGP peers, spoke VM utilisation, routes, spoke peering state |
-| Azure Firewall | Resource Graph, Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, firewall policy posture (threat intel, IDPS, TLS inspection, DNS proxy, rule counts), denied flows*, threat intel & IDPS*, DNS proxy queries* |
+| Firewall | Resource Graph, Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, firewall policy posture (threat intel, IDPS, TLS inspection, DNS proxy, rule counts), denied flows*, threat intel & IDPS*, DNS proxy queries* |
 | ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
 | VPN | Metrics, Logs* | vWAN S2S & P2S gateways, VPN sites, connections, tunnel bandwidth, BGP status, drops, tunnel events* |
-| Connectivity Tests | Resource Graph, Logs* | Network Watcher connection monitors, latest result per test*, packet loss and round-trip time by path* |
+| Connectivity | Resource Graph, Logs* | Network Watcher connection monitors, latest result per test*, packet loss and round-trip time by path* |
 | Shared Services | Resource Graph, Metrics | Bastion, DDoS coverage & attacks, DNS Private Resolver, Private DNS zone limits/links, Key Vault health |
 | Build Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
-| Azure VMware Solution | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
-| Azure Virtual Desktop | Logs* | Session host status, sessions/users, connection RTT, top errors |
+| AVS (Azure VMware Solution) | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
+| AVD (Azure Virtual Desktop) | Logs* | Session host status, sessions/users, connection RTT, top errors |
 | Storage | Metrics | Availability, latency, transactions by response type (throttling), Azure Files (FSLogix) transactions, used capacity and quota by share |
-| Governance & Security | Resource Graph, Logs* | Service retirements, planned maintenance, AVD registration tokens, Key Vault expiry events*, Policy compliance, Defender secure score/controls/alerts/recommendations, pending patches by machine (Azure Update Manager), Advisor recommendations |
+| Governance | Resource Graph, Logs* | Service retirements, planned maintenance, AVD registration tokens, Key Vault expiry events*, Policy compliance, Defender secure score/controls/alerts/recommendations, pending patches by machine (Azure Update Manager), Advisor recommendations |
 | Monitoring & Backup | Resource Graph, Logs* | Workspace caps & ingestion status, ingestion by table*, workspace errors*, agent heartbeats*, platform resources with no alert rule, disabled or silent alert rules, backup vaults/jobs/items, Site Recovery |
 | Capacity | Resource Graph, Resource Manager | vCPU and compute quotas by subscription and region, network quotas for one subscription and region, subnet address utilisation |
 | Throughput | Metrics, Logs* | Hub, firewall, ExpressRoute, VPN, P2S, storage and AVD bandwidth side by side |

@@ -163,7 +163,7 @@
             "id": "76763860-4a6c-5006-a4ef-754a04d61d3b",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Azure Firewall",
+            "linkLabel": "Firewall",
             "subTarget": "firewall",
             "style": "link"
           },
@@ -187,7 +187,7 @@
             "id": "7b073570-5245-5086-9669-054ecf785402",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Connectivity Tests",
+            "linkLabel": "Connectivity",
             "subTarget": "connectivity",
             "style": "link"
           },
@@ -211,7 +211,7 @@
             "id": "f8fd2b1f-8a63-53bb-96bf-d0128e97eb69",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Azure VMware Solution",
+            "linkLabel": "AVS",
             "subTarget": "avs",
             "style": "link"
           },
@@ -219,7 +219,7 @@
             "id": "af21678b-143c-55b1-bc8e-1a4cd909718e",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Azure Virtual Desktop",
+            "linkLabel": "AVD",
             "subTarget": "avd",
             "style": "link"
           },
@@ -235,7 +235,7 @@
             "id": "c8d87e30-617c-52a0-842a-48801efc18f9",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Governance & Security",
+            "linkLabel": "Governance",
             "subTarget": "governance",
             "style": "link"
           },
@@ -2989,7 +2989,7 @@
           {
             "type": 1,
             "content": {
-              "json": "A policy attached to no firewall is flagged. Rule counts are totals across the policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on the Governance & Security tab.",
+              "json": "A policy attached to no firewall is flagged. Rule counts are totals across the policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on the Governance tab.",
               "style": "info"
             },
             "name": "firewall-policy-note"
