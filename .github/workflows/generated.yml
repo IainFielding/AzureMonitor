@@ -1,0 +1,40 @@
+# Keeps the generated files in step with the scripts that generate them.
+#
+# The workbook JSON and both Grafana dashboards are build output: nobody edits them by hand, and the
+# dashboards are derived from the workbook definition. This check regenerates all three and fails when
+# the committed copies differ, which catches a forgotten regenerate, a hand edit, and a change to the
+# workbook that was not carried into the dashboards.
+name: Generated files
+
+on:
+  pull_request:
+    branches: ["**"]
+
+# The check only reads the repository, so the token is limited to that.
+permissions:
+  contents: read
+
+jobs:
+  check-generated:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out the pull request
+        uses: actions/checkout@v7
+
+      - name: Regenerate the workbook and the Grafana dashboards
+        run: |
+          python3 src/build_workbook.py
+          python3 src/build_grafana.py
+
+      - name: Fail if the committed files differ
+        run: |
+          if ! git diff --exit-code --stat -- workbook grafana; then
+            echo ""
+            echo "::error::The generated files are out of date."
+            echo "Run these and commit the result:"
+            echo "    python src/build_workbook.py"
+            echo "    python src/build_grafana.py"
+            exit 1
+          fi
+          echo "Generated files match the scripts."

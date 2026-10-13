@@ -3593,7 +3593,8 @@ def workbook():
 
 def main():
     OUT.parent.mkdir(parents=True, exist_ok=True)
-    OUT.write_text(json.dumps(workbook(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
+    # newline="\n" keeps the output byte-identical on Windows and Linux; CI regenerates it and compares.
+    OUT.write_text(json.dumps(workbook(), indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
     print(f"Wrote {OUT}")
 
 

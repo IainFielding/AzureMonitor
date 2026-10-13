@@ -1,0 +1,2267 @@
+{
+  "uid": "alz-platform-overview",
+  "title": "Enterprise Scale Platform Overview",
+  "description": "The Overview of the platform health workbook: issues, at-a-glance tiles and resources needing attention.",
+  "tags": [
+    "alz-platform-health"
+  ],
+  "schemaVersion": 39,
+  "version": 1,
+  "editable": true,
+  "graphTooltip": 1,
+  "refresh": "",
+  "timezone": "browser",
+  "time": {
+    "from": "now-24h",
+    "to": "now"
+  },
+  "annotations": {
+    "list": []
+  },
+  "links": [],
+  "templating": {
+    "list": [
+      {
+        "name": "ds",
+        "label": "Data source",
+        "type": "datasource",
+        "query": "grafana-azure-monitor-datasource",
+        "current": {},
+        "options": [],
+        "refresh": 1
+      },
+      {
+        "name": "Subscription",
+        "label": "Subscriptions",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-azure-monitor-datasource",
+          "uid": "${ds}"
+        },
+        "query": {
+          "queryType": "Azure Subscriptions",
+          "refId": "A"
+        },
+        "definition": "Azure Subscriptions",
+        "multi": true,
+        "includeAll": true,
+        "refresh": 1,
+        "sort": 1,
+        "current": {
+          "text": "All",
+          "value": "$__all"
+        },
+        "options": []
+      },
+      {
+        "name": "WorkspaceSubscription",
+        "label": "Workspace subscription",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-azure-monitor-datasource",
+          "uid": "${ds}"
+        },
+        "query": {
+          "queryType": "Azure Subscriptions",
+          "refId": "A"
+        },
+        "definition": "Azure Subscriptions",
+        "multi": false,
+        "includeAll": false,
+        "refresh": 1,
+        "sort": 1,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "Workspace",
+        "label": "Log Analytics workspace",
+        "type": "query",
+        "datasource": {
+          "type": "grafana-azure-monitor-datasource",
+          "uid": "${ds}"
+        },
+        "query": {
+          "queryType": "Azure Workspaces",
+          "refId": "A",
+          "subscription": "$WorkspaceSubscription"
+        },
+        "definition": "Azure Workspaces",
+        "multi": true,
+        "includeAll": false,
+        "refresh": 1,
+        "sort": 1,
+        "current": {},
+        "options": []
+      },
+      {
+        "name": "BuildAgentPattern",
+        "label": "Build agent name pattern",
+        "type": "textbox",
+        "query": "(?i)(agent|build|ado|devops|runner)",
+        "current": {
+          "text": "(?i)(agent|build|ado|devops|runner)",
+          "value": "(?i)(agent|build|ado|devops|runner)"
+        },
+        "options": [
+          {
+            "text": "(?i)(agent|build|ado|devops|runner)",
+            "value": "(?i)(agent|build|ado|devops|runner)",
+            "selected": true
+          }
+        ],
+        "description": "Regex matched against scale set names to identify build agent pools."
+      },
+      {
+        "name": "DcPattern",
+        "label": "Domain controller name pattern",
+        "type": "textbox",
+        "query": "(?i)(dc|adds)",
+        "current": {
+          "text": "(?i)(dc|adds)",
+          "value": "(?i)(dc|adds)"
+        },
+        "options": [
+          {
+            "text": "(?i)(dc|adds)",
+            "value": "(?i)(dc|adds)",
+            "selected": true
+          }
+        ],
+        "description": "Regex matched against virtual machine and computer names on the Identity tab."
+      },
+      {
+        "name": "StoragePattern",
+        "label": "Storage account pattern",
+        "type": "textbox",
+        "query": "(?i)(fslogix|profile|avd|wvd)",
+        "current": {
+          "text": "(?i)(fslogix|profile|avd|wvd)",
+          "value": "(?i)(fslogix|profile|avd|wvd)"
+        },
+        "options": [
+          {
+            "text": "(?i)(fslogix|profile|avd|wvd)",
+            "value": "(?i)(fslogix|profile|avd|wvd)",
+            "selected": true
+          }
+        ],
+        "description": "Regex matched against storage account and resource group names on the Storage and Throughput tabs. Metric charts handle at most 200 accounts; use '.' for all."
+      }
+    ]
+  },
+  "panels": [
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "# Enterprise Scale Platform Overview\nThe Overview of the platform health workbook: issues, at-a-glance tiles and resources needing attention. Generated from the Azure Monitor workbook in this repository by `src/build_grafana.py`: change it there, not here."
+      },
+      "id": 1,
+      "gridPos": {
+        "h": 3,
+        "w": 24,
+        "x": 0,
+        "y": 0
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "Status comes from **Azure Resource Health** where available; otherwise from the resource's configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace ingestion) — see the *Signal* column. Each service tab adds metric-based health. *History and inventory* at the bottom of this tab loads health state changes, availability, recent changes and the full inventory when asked."
+      },
+      "id": 2,
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 3
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "### Issues"
+      },
+      "id": 3,
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 7
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "One tile per check, drawn from every tab. The number is how many things the check found wrong; a green tick means none. The line under it names the tab that has the detail. *Defender plans off* counts subscriptions, *Exemptions expiring* looks 30 days ahead, and *High incidents open* is Sentinel."
+      },
+      "id": 4,
+      "gridPos": {
+        "h": 4,
+        "w": 24,
+        "x": 0,
+        "y": 9
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "resources\n| where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n    'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',\n    'microsoft.network/virtualnetworks', 'microsoft.network/applicationgateways', 'microsoft.compute/disks',\n    'microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')\n| extend endpointState = coalesce(\n    tostring(properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status),\n    tostring(properties.manualPrivateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status))\n| summarize\n    Endpoints = countif(type =~ 'microsoft.network/privateendpoints' and endpointState !~ 'Approved'),\n    Peerings = countif(type =~ 'microsoft.network/virtualnetworks' and tostring(properties.virtualNetworkPeerings) contains 'Disconnected'),\n    Gateways = countif(type =~ 'microsoft.network/applicationgateways' and tostring(properties.operationalState) !~ 'Running'),\n    ThreatIntelOff = countif(type =~ 'microsoft.network/firewallpolicies' and tostring(properties.threatIntelMode) =~ 'Off'),\n    WafDetection = countif(type endswith 'webapplicationfirewallpolicies' and tostring(properties.policySettings.mode) =~ 'Detection'),\n    RulesDisabled = countif(type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n        'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),\n    GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),\n    Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))\n| extend rows = pack_array(\n    pack('Check', 'Endpoints not approved', 'Count', Endpoints, 'Tab', 'Shared', 'Severity', 'Unavailable'),\n    pack('Check', 'Peerings disconnected', 'Count', Peerings, 'Tab', 'Virtual WAN', 'Severity', 'Unavailable'),\n    pack('Check', 'App gateways stopped', 'Count', Gateways, 'Tab', 'App Delivery', 'Severity', 'Unavailable'),\n    pack('Check', 'Threat intel off', 'Count', ThreatIntelOff, 'Tab', 'Firewall', 'Severity', 'Degraded'),\n    pack('Check', 'WAF in detection mode', 'Count', WafDetection, 'Tab', 'App Delivery', 'Severity', 'Degraded'),\n    pack('Check', 'Alert rules disabled', 'Count', RulesDisabled, 'Tab', 'Monitoring', 'Severity', 'Degraded'),\n    pack('Check', 'Action groups disabled', 'Count', GroupsDisabled, 'Tab', 'Monitoring', 'Severity', 'Degraded'),\n    pack('Check', 'Unattached disks', 'Count', Disks, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 5,
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 13
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('${__from:date:iso}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded')\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'${BuildAgentPattern:raw}'\n| summarize Impaired = dcount(id)\n| extend rows = pack_array(\n    pack('Check', 'Health incidents', 'Count', Impaired, 'Tab', 'Overview, History', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 6,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 19
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "patchassessmentresources\n| where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n| summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),\n    Reboot = countif(tobool(properties.rebootPending))\n| extend rows = pack_array(\n    pack('Check', 'Critical patches due', 'Count', Critical, 'Tab', 'Governance', 'Severity', 'Unavailable'),\n    pack('Check', 'Reboot pending', 'Count', Reboot, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 7,
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 3,
+        "y": 19
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend retires = todatetime(properties.extendedProperties.retirementDate)\n| summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)\n| extend rows = pack_array(\n    pack('Check', 'Retiring in 90 days', 'Count', Soon, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 8,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 19
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "policyresources\n| where type =~ 'microsoft.authorization/policyexemptions'\n| extend expires = todatetime(properties.expiresOn)\n| summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)\n| extend rows = pack_array(\n    pack('Check', 'Exemptions expired', 'Count', Expired, 'Tab', 'Governance', 'Severity', 'Degraded'),\n    pack('Check', 'Exemptions expiring', 'Count', Expiring, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 9,
+      "gridPos": {
+        "h": 4,
+        "w": 6,
+        "x": 12,
+        "y": 19
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "securityresources\n| where type =~ 'microsoft.security/pricings'\n| where not(tobool(properties.deprecated))\n| summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')\n| extend rows = pack_array(\n    pack('Check', 'Defender plans off', 'Count', PlansOff, 'Tab', 'Security', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 10,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 18,
+        "y": 19
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| where tolower(tostring(properties.roleDefinitionId)) endswith '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'\n| extend scope = tolower(tostring(properties.scope))\n| where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3\n| summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n| summarize DirectOwners = countif(principalType =~ 'User')\n| extend rows = pack_array(\n    pack('Check', 'Owners set on users', 'Count', DirectOwners, 'Tab', 'Security', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 11,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 21,
+        "y": 19
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (Heartbeat | where $__timeFilter(TimeGenerated)\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "resultFormat": "table",
+            "resources": [
+              "$Workspace"
+            ],
+            "dashboardTime": false,
+            "timeColumn": "TimeGenerated"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 12,
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 23
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "### At a glance"
+      },
+      "id": 13,
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 29
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| extend EventType = tostring(properties.EventType), TrackingId = tostring(properties.TrackingId)\n| summarize Total = dcount(TrackingId),\n    Issues = dcountif(TrackingId, EventType =~ 'ServiceIssue'),\n    Maintenance = dcountif(TrackingId, EventType =~ 'PlannedMaintenance'),\n    Advisories = dcountif(TrackingId, EventType !in~ ('ServiceIssue', 'PlannedMaintenance'))\n| project Service = 'Azure Service Health', Total,\n    Status = case(Issues > 0, 'Unavailable', Total > 0, 'Degraded', 'Available'),\n    Summary = strcat(Issues, ' service issues · ', Maintenance, ' maintenance · ', Advisories, ' advisories')\n| extend TileName = strcat(case(Status == 'Available', '🟢 ', Status == 'Degraded', '🟠 ', Status == 'Unavailable', '🔴 ', Status == 'Unknown', '⚪ ', ''), tostring(Service))\n| project Name = TileName, Value = todouble(Total)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 14,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 31
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| summarize Total = dcount(tostring(properties.resourceId)),\n    Bad = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')\n| project Signal = 'Policy compliance',\n    Value = iff(Total == 0, real(null), round(100.0 * (Total - Bad) / Total, 1)),\n    Detail = strcat(Bad, ' non-compliant resources'),\n    State = case(Total == 0, 'Unknown', Bad == 0, 'Available', 'Degraded')\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Signal))\n| project Name = TileName, Value = todouble(Value)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 15,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 3,
+        "y": 31
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "securityresources\n| where type in~ ('microsoft.security/securescores', 'microsoft.security/locations/alerts')\n| extend isScore = type =~ 'microsoft.security/securescores',\n    isActiveAlert = type =~ 'microsoft.security/locations/alerts' and tostring(properties.Status) =~ 'Active'\n| summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),\n    Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')\n| project Signal = 'Defender for Cloud',\n    Value = iff(Subs == 0, real(null), round(Score * 100, 0)),\n    Detail = strcat('secure score · ', Alerts, ' alerts (', High, ' high)'),\n    State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Signal))\n| project Name = TileName, Value = todouble(Value)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 16,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 6,
+        "y": 31
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.impact) =~ 'High'\n| summarize Problems = dcount(tostring(properties.shortDescription.problem)), Total = count(),\n    Reliability = countif(tostring(properties.category) =~ 'HighAvailability')\n| project Signal = 'Advisor high-impact issues', Value = Problems,\n    Detail = strcat(Total, ' affected resources (', Reliability, ' reliability)'),\n    State = case(Reliability > 0, 'Degraded', 'Available')\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Signal))\n| project Name = TileName, Value = todouble(Value)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 17,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 9,
+        "y": 31
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupjobs'\n| where todatetime(properties.startTime) > ago(1d)\n| summarize Failed = countif(tostring(properties.status) =~ 'Failed'), Jobs = count()\n| project Signal = 'Backup jobs (24h)', Value = Failed,\n    Detail = strcat(Failed, ' failed of ', Jobs, ' jobs'),\n    State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Signal))\n| project Name = TileName, Value = todouble(Value)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 18,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 12,
+        "y": 31
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Platform services",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'${BuildAgentPattern:raw}'\n| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'\n| where type !~ 'microsoft.cognitiveservices/accounts' or kind in~ ('AIServices', 'OpenAI')\n| where type !~ 'microsoft.machinelearningservices/workspaces' or kind in~ ('Hub', 'Project')\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    routingState = tostring(properties.routingState),\n    ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    recordSetPct = 100.0 * todouble(properties.numberOfRecordSets) / todouble(properties.maxNumberOfRecordSets)\n| extend ConfigHealth = case(\n        provisioning =~ 'Failed', 'Unavailable',\n        routingState =~ 'Failed', 'Unavailable',\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'Unavailable',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended'), 'Unavailable',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n        routingState =~ 'Provisioning', 'Degraded',\n        ingestion =~ 'ApproachingQuota', 'Degraded',\n        recordSetPct >= 80, 'Degraded',\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Degraded',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n        'Available'),\n    ConfigReason = case(\n        provisioning =~ 'Failed', 'Provisioning failed',\n        routingState in~ ('Failed', 'Provisioning'), strcat('Hub routing state: ', routingState),\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'DNS resolver disconnected',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Circuit disabled',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned',\n            strcat('Provider state: ', tostring(properties.serviceProviderProvisioningState)),\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Primary region unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended', 'ApproachingQuota'), strcat('Ingestion: ', ingestion),\n        recordSetPct >= 80, strcat('Record sets at ', round(recordSetPct, 0), '% of limit'),\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Zone not linked to any VNet',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), strcat('Provisioning: ', provisioning),\n        '')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId,\n    Location = location, ConfigHealth, ConfigReason\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health),\n    Reason = iff(isempty(Reason), ConfigReason, Reason)\n| project-away ConfigHealth, ConfigReason\n\n| summarize Total = count(),\n    Healthy = countif(Health == 'Available'),\n    Degraded = countif(Health == 'Degraded'),\n    Unavailable = countif(Health == 'Unavailable'),\n    Unknown = countif(Health == 'Unknown') by Service\n| extend Status = case(Unavailable > 0, 'Unavailable', Degraded > 0, 'Degraded', Healthy == Total, 'Available', 'Unknown')\n| extend Summary = strcat(Healthy, ' healthy · ', Degraded + Unavailable, ' issues · ', Unknown, ' unknown')\n| order by Service asc\n| extend TileName = strcat(case(Status == 'Available', '🟢 ', Status == 'Degraded', '🟠 ', Status == 'Unavailable', '🔴 ', Status == 'Unknown', '⚪ ', ''), tostring(Service))\n| project Name = TileName, Value = todouble(Total)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No platform resources found in the selected subscriptions."
+        },
+        "overrides": []
+      },
+      "id": 19,
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 35
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "### Azure VMware Solution at a glance"
+      },
+      "id": 20,
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 41
+      }
+    },
+    {
+      "type": "stat",
+      "title": "",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "resources\n| where type =~ 'microsoft.avs/privateclouds'\n| extend provisioning = tostring(properties.provisioningState)\n| summarize Clouds = count(), Hosts = sum(toint(properties.managementCluster.clusterSize)),\n    Failed = countif(provisioning =~ 'Failed'), Busy = countif(provisioning !in~ ('Succeeded', 'Failed'))\n| project Signal = 'Private clouds', Value = Clouds, Detail = strcat(Hosts, ' management cluster hosts'),\n    State = case(Failed > 0, 'Unavailable', Busy > 0, 'Degraded', 'Available')\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Signal))\n| project Name = TileName, Value = todouble(Value)",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No data"
+        },
+        "overrides": []
+      },
+      "id": 21,
+      "gridPos": {
+        "h": 4,
+        "w": 3,
+        "x": 0,
+        "y": 43
+      }
+    },
+    {
+      "type": "stat",
+      "title": "Azure Virtual Desktop session hosts",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Log Analytics",
+          "azureLogAnalytics": {
+            "query": "WVDAgentHealthStatus\n| where $__timeFilter(TimeGenerated)\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'Offline', Status)\n| summarize Hosts = count() by Status\n| order by Hosts desc\n| extend TileName = strcat(case(Status == 'Available', '🟢 ', Status == 'Upgrading', '🟠 ', Status == 'NeedsAssistance', '🟠 ', Status == 'Unavailable', '🔴 ', Status == 'UpgradeFailed', '🔴 ', Status == 'NoHeartbeat', '🔴 ', Status == 'Offline', '⚪ ', Status == 'Shutdown', '⚪ ', ''), tostring(Status))\n| project Name = TileName, Value = todouble(Hosts)",
+            "resultFormat": "table",
+            "resources": [
+              "$Workspace"
+            ],
+            "dashboardTime": false,
+            "timeColumn": "TimeGenerated"
+          }
+        }
+      ],
+      "options": {
+        "reduceOptions": {
+          "values": true,
+          "calcs": [
+            "lastNotNull"
+          ],
+          "fields": "/^Value$/",
+          "limit": 60
+        },
+        "textMode": "value_and_name",
+        "colorMode": "none",
+        "graphMode": "none",
+        "justifyMode": "center",
+        "orientation": "auto",
+        "wideLayout": false
+      },
+      "fieldConfig": {
+        "defaults": {
+          "noValue": "No AVD session host data in the selected workspace."
+        },
+        "overrides": []
+      },
+      "id": 22,
+      "gridPos": {
+        "h": 6,
+        "w": 24,
+        "x": 0,
+        "y": 47
+      }
+    },
+    {
+      "type": "table",
+      "title": "Resources needing attention",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'${BuildAgentPattern:raw}'\n| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'\n| where type !~ 'microsoft.cognitiveservices/accounts' or kind in~ ('AIServices', 'OpenAI')\n| where type !~ 'microsoft.machinelearningservices/workspaces' or kind in~ ('Hub', 'Project')\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    routingState = tostring(properties.routingState),\n    ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    recordSetPct = 100.0 * todouble(properties.numberOfRecordSets) / todouble(properties.maxNumberOfRecordSets)\n| extend ConfigHealth = case(\n        provisioning =~ 'Failed', 'Unavailable',\n        routingState =~ 'Failed', 'Unavailable',\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'Unavailable',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended'), 'Unavailable',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n        routingState =~ 'Provisioning', 'Degraded',\n        ingestion =~ 'ApproachingQuota', 'Degraded',\n        recordSetPct >= 80, 'Degraded',\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Degraded',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n        'Available'),\n    ConfigReason = case(\n        provisioning =~ 'Failed', 'Provisioning failed',\n        routingState in~ ('Failed', 'Provisioning'), strcat('Hub routing state: ', routingState),\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'DNS resolver disconnected',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Circuit disabled',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned',\n            strcat('Provider state: ', tostring(properties.serviceProviderProvisioningState)),\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Primary region unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended', 'ApproachingQuota'), strcat('Ingestion: ', ingestion),\n        recordSetPct >= 80, strcat('Record sets at ', round(recordSetPct, 0), '% of limit'),\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Zone not linked to any VNet',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), strcat('Provisioning: ', provisioning),\n        '')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId,\n    Location = location, ConfigHealth, ConfigReason\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health),\n    Reason = iff(isempty(Reason), ConfigReason, Reason)\n| project-away ConfigHealth, ConfigReason\n\n| where Health != 'Available'\n| project id, Service, Health, Signal, Reason, Since, ResourceGroup, Location\n| order by case(Health == 'Unavailable', 0, Health == 'Degraded', 1, 2) asc, Service asc",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "inspect": true
+          },
+          "noValue": "All platform resources report Available."
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "id"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^.*/([^/]+)$",
+                      "result": {
+                        "index": 0,
+                        "text": "$1"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open in the Azure portal",
+                    "targetBlank": true,
+                    "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                  }
+                ]
+              },
+              {
+                "id": "displayName",
+                "value": "Resource"
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Health"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Available": {
+                        "index": 0,
+                        "text": "Available",
+                        "color": "green"
+                      },
+                      "Degraded": {
+                        "index": 1,
+                        "text": "Degraded",
+                        "color": "orange"
+                      },
+                      "Unavailable": {
+                        "index": 2,
+                        "text": "Unavailable",
+                        "color": "red"
+                      },
+                      "Unknown": {
+                        "index": 3,
+                        "text": "Unknown",
+                        "color": "#808080"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "id": 23,
+      "gridPos": {
+        "h": 9,
+        "w": 14,
+        "x": 0,
+        "y": 53
+      }
+    },
+    {
+      "type": "table",
+      "title": "Fired alerts on platform resources",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "alertsmanagementresources\n| where type =~ 'microsoft.alertsmanagement/alerts'\n| extend e = properties.essentials\n| where tostring(e.monitorCondition) =~ 'Fired' and tostring(e.alertState) !~ 'Closed'\n| where tolower(tostring(e.targetResourceType)) in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| project Severity = tostring(e.severity), Alert = name, Target = tostring(e.targetResource),\n    State = tostring(e.alertState), Fired = todatetime(e.startDateTime)\n| order by Severity asc, Fired desc",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "inspect": true
+          },
+          "noValue": "No fired alerts."
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Severity"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "Sev0": {
+                        "index": 0,
+                        "text": "Sev0",
+                        "color": "dark-red"
+                      },
+                      "Sev1": {
+                        "index": 1,
+                        "text": "Sev1",
+                        "color": "red"
+                      },
+                      "Sev2": {
+                        "index": 2,
+                        "text": "Sev2",
+                        "color": "orange"
+                      },
+                      "Sev3": {
+                        "index": 3,
+                        "text": "Sev3",
+                        "color": "yellow"
+                      },
+                      "Sev4": {
+                        "index": 4,
+                        "text": "Sev4",
+                        "color": "blue"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          },
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "Target"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "regex",
+                    "options": {
+                      "pattern": "^.*/([^/]+)$",
+                      "result": {
+                        "index": 0,
+                        "text": "$1"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "links",
+                "value": [
+                  {
+                    "title": "Open in the Azure portal",
+                    "targetBlank": true,
+                    "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                  }
+                ]
+              }
+            ]
+          }
+        ]
+      },
+      "id": 24,
+      "gridPos": {
+        "h": 9,
+        "w": 10,
+        "x": 14,
+        "y": 53
+      }
+    },
+    {
+      "type": "table",
+      "title": "Active Azure Service Health events",
+      "datasource": {
+        "type": "grafana-azure-monitor-datasource",
+        "uid": "${ds}"
+      },
+      "targets": [
+        {
+          "refId": "A",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "queryType": "Azure Resource Graph",
+          "subscriptions": [
+            "$Subscription"
+          ],
+          "azureResourceGraph": {
+            "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| project Title = tostring(properties.Title), EventType = tostring(properties.EventType),\n    Level = tostring(properties.Level), TrackingId = tostring(properties.TrackingId),\n    ImpactStart = todatetime(tolong(properties.ImpactStartTime)), SubscriptionId = subscriptionId\n| summarize Subscriptions = dcount(SubscriptionId) by Title, EventType, Level, TrackingId, ImpactStart\n| order by ImpactStart desc",
+            "resultFormat": "table"
+          }
+        }
+      ],
+      "options": {
+        "showHeader": true,
+        "cellHeight": "sm",
+        "footer": {
+          "show": false
+        }
+      },
+      "fieldConfig": {
+        "defaults": {
+          "custom": {
+            "filterable": true,
+            "inspect": true
+          },
+          "noValue": "No active Service Health events."
+        },
+        "overrides": [
+          {
+            "matcher": {
+              "id": "byName",
+              "options": "EventType"
+            },
+            "properties": [
+              {
+                "id": "mappings",
+                "value": [
+                  {
+                    "type": "value",
+                    "options": {
+                      "PlannedMaintenance": {
+                        "index": 0,
+                        "text": "PlannedMaintenance",
+                        "color": "orange"
+                      },
+                      "HealthAdvisory": {
+                        "index": 1,
+                        "text": "HealthAdvisory",
+                        "color": "orange"
+                      },
+                      "ServiceIssue": {
+                        "index": 2,
+                        "text": "ServiceIssue",
+                        "color": "red"
+                      }
+                    }
+                  }
+                ]
+              },
+              {
+                "id": "custom.cellOptions",
+                "value": {
+                  "type": "color-text"
+                }
+              }
+            ]
+          }
+        ]
+      },
+      "id": 25,
+      "gridPos": {
+        "h": 9,
+        "w": 24,
+        "x": 0,
+        "y": 62
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "### History and inventory"
+      },
+      "id": 26,
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 71
+      }
+    },
+    {
+      "type": "text",
+      "title": "",
+      "transparent": true,
+      "options": {
+        "mode": "markdown",
+        "content": "**Not shown here:** 3 metric charts from this tab of the workbook. A Grafana metrics query covers one subscription and region, and the data source cannot call Resource Manager; open the workbook for these."
+      },
+      "id": 27,
+      "gridPos": {
+        "h": 2,
+        "w": 24,
+        "x": 0,
+        "y": 73
+      }
+    },
+    {
+      "type": "row",
+      "title": "Health history, availability, changes and failed operations",
+      "collapsed": true,
+      "id": 28,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 75
+      },
+      "panels": [
+        {
+          "type": "table",
+          "title": "Health state changes (time range, up to 14 days)",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Resource Graph",
+              "subscriptions": [
+                "$Subscription"
+              ],
+              "azureResourceGraph": {
+                "query": "healthresourcechanges\n| where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('${__from:date:iso}')\n| extend state = properties.changes['properties.availabilityState']\n| where isnotempty(tostring(state.newValue))\n| extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'${BuildAgentPattern:raw}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| project Time, id, Service, Previous = tostring(state.previousValue), Health = tostring(state.newValue)\n| order by Time desc\n| take 500",
+                "resultFormat": "table"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No Resource Health state changes on platform resources in the time range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "id"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Resource"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Previous"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Available": {
+                            "index": 0,
+                            "text": "Available",
+                            "color": "green"
+                          },
+                          "Degraded": {
+                            "index": 1,
+                            "text": "Degraded",
+                            "color": "orange"
+                          },
+                          "Unavailable": {
+                            "index": 2,
+                            "text": "Unavailable",
+                            "color": "red"
+                          },
+                          "Unknown": {
+                            "index": 3,
+                            "text": "Unknown",
+                            "color": "#808080"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "From"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Health"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Available": {
+                            "index": 0,
+                            "text": "Available",
+                            "color": "green"
+                          },
+                          "Degraded": {
+                            "index": 1,
+                            "text": "Degraded",
+                            "color": "orange"
+                          },
+                          "Unavailable": {
+                            "index": 2,
+                            "text": "Unavailable",
+                            "color": "red"
+                          },
+                          "Unknown": {
+                            "index": 3,
+                            "text": "Unknown",
+                            "color": "#808080"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "To"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 29,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 76
+          }
+        },
+        {
+          "type": "table",
+          "title": "Availability over the time range (resources with health incidents, up to 14 days)",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Resource Graph",
+              "subscriptions": [
+                "$Subscription"
+              ],
+              "azureResourceGraph": {
+                "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('${__from:date:iso}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded') and From !in ('Unavailable', 'Degraded')\n| project id, Start = Time\n| join kind=leftouter (\n    healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('${__from:date:iso}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n    | where To !in ('Unavailable', 'Degraded') and From in ('Unavailable', 'Degraded')\n    | project id, End = Time\n  ) on id\n| extend End = iff(isnull(End) or End <= Start, now(), End)\n| summarize Recovered = min(End) by id, Start\n| extend Minutes = datetime_diff('minute', Recovered, Start)\n| summarize Incidents = count(), ImpairedMinutes = sum(Minutes), LongestMinutes = max(Minutes), LastIncident = max(Start) by id\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'${BuildAgentPattern:raw}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend windowMin = datetime_diff('minute', now(), todatetime('${__from:date:iso}'))\n| extend windowMin = iff(windowMin > 20160, 20160, windowMin)\n| project id, Service, AvailabilityPct = round(100.0 - 100.0 * ImpairedMinutes / windowMin, 3), Incidents,\n    ImpairedMinutes, LongestMinutes, LastIncident\n| order by AvailabilityPct asc",
+                "resultFormat": "table"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No platform resource left the Available state in the time range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "id"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Resource"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "AvailabilityPct"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 99.0
+                        },
+                        {
+                          "color": "green",
+                          "value": 99.9
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 3
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Available %"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ImpairedMinutes"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Minutes impaired"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LongestMinutes"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Longest incident (min)"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LastIncident"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Last incident"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 30,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 85
+          }
+        },
+        {
+          "type": "table",
+          "title": "Recent changes to platform resources (time range, up to 14 days)",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Resource Graph",
+              "subscriptions": [
+                "$Subscription"
+              ],
+              "azureResourceGraph": {
+                "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('${__from:date:iso}')\n| extend id = tolower(tostring(properties.targetResourceId)),\n    type = tolower(tostring(properties.targetResourceType)), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(split(id, '/')[8]) matches regex @'${BuildAgentPattern:raw}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| project Time, id, Service, ChangeType = tostring(properties.changeType),\n    Properties = strcat_array(bag_keys(properties.changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy),\n    Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| order by Time desc\n| take 500",
+                "resultFormat": "table"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No changes to platform resources in the time range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "id"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Resource"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ChangeType"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Delete": {
+                            "index": 0,
+                            "text": "Delete",
+                            "color": "orange"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Change"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Properties"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Properties changed"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ChangedBy"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Changed by"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 31,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 94
+          }
+        },
+        {
+          "type": "table",
+          "title": "Failed operations and deployments on platform resources",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Log Analytics",
+              "azureLogAnalytics": {
+                "query": "AzureActivity\n| where $__timeFilter(TimeGenerated)\n| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n| extend parts = split(tolower(_ResourceId), '/')\n| extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n    strcat(tostring(parts[6]), '/', tostring(parts[7])))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| summarize Failures = count(), LastSeen = max(TimeGenerated),\n    Error = take_any(substring(tostring(props.statusMessage), 0, 300))\n    by Operation = OperationNameValue, ResourceId = _ResourceId, Caller\n| top 100 by LastSeen desc",
+                "resultFormat": "table",
+                "resources": [
+                  "$Workspace"
+                ],
+                "dashboardTime": false,
+                "timeColumn": "TimeGenerated"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No failed operations in the time range (or the activity log is not sent to this workspace)."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ResourceId"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Resource"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LastSeen"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Last seen"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 32,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 103
+          }
+        }
+      ]
+    },
+    {
+      "type": "row",
+      "title": "All platform resources",
+      "collapsed": true,
+      "id": 33,
+      "gridPos": {
+        "h": 1,
+        "w": 24,
+        "x": 0,
+        "y": 76
+      },
+      "panels": [
+        {
+          "type": "table",
+          "title": "All platform resources",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Resource Graph",
+              "subscriptions": [
+                "$Subscription"
+              ],
+              "azureResourceGraph": {
+                "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'${BuildAgentPattern:raw}'\n| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'\n| where type !~ 'microsoft.cognitiveservices/accounts' or kind in~ ('AIServices', 'OpenAI')\n| where type !~ 'microsoft.machinelearningservices/workspaces' or kind in~ ('Hub', 'Project')\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    routingState = tostring(properties.routingState),\n    ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    recordSetPct = 100.0 * todouble(properties.numberOfRecordSets) / todouble(properties.maxNumberOfRecordSets)\n| extend ConfigHealth = case(\n        provisioning =~ 'Failed', 'Unavailable',\n        routingState =~ 'Failed', 'Unavailable',\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'Unavailable',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended'), 'Unavailable',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n        routingState =~ 'Provisioning', 'Degraded',\n        ingestion =~ 'ApproachingQuota', 'Degraded',\n        recordSetPct >= 80, 'Degraded',\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Degraded',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n        'Available'),\n    ConfigReason = case(\n        provisioning =~ 'Failed', 'Provisioning failed',\n        routingState in~ ('Failed', 'Provisioning'), strcat('Hub routing state: ', routingState),\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'DNS resolver disconnected',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Circuit disabled',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned',\n            strcat('Provider state: ', tostring(properties.serviceProviderProvisioningState)),\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Primary region unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended', 'ApproachingQuota'), strcat('Ingestion: ', ingestion),\n        recordSetPct >= 80, strcat('Record sets at ', round(recordSetPct, 0), '% of limit'),\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Zone not linked to any VNet',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), strcat('Provisioning: ', provisioning),\n        '')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId,\n    Location = location, ConfigHealth, ConfigReason\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health),\n    Reason = iff(isempty(Reason), ConfigReason, Reason)\n| project-away ConfigHealth, ConfigReason\n\n| project id, Service, Health, Signal, Reason, Type, ResourceGroup, Location\n| order by Service asc",
+                "resultFormat": "table"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No data"
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "id"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Resource"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Health"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Available": {
+                            "index": 0,
+                            "text": "Available",
+                            "color": "green"
+                          },
+                          "Degraded": {
+                            "index": 1,
+                            "text": "Degraded",
+                            "color": "orange"
+                          },
+                          "Unavailable": {
+                            "index": 2,
+                            "text": "Unavailable",
+                            "color": "red"
+                          },
+                          "Unknown": {
+                            "index": 3,
+                            "text": "Unknown",
+                            "color": "#808080"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Type"
+                },
+                "properties": [
+                  {
+                    "id": "custom.hidden",
+                    "value": true
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 34,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 77
+          }
+        }
+      ]
+    }
+  ]
+}
