@@ -661,6 +661,40 @@ AzureActivity
     by Operation = OperationNameValue, ResourceId = _ResourceId, Caller
 | top 100 by LastSeen desc
 """
+    # Availability from the same transitions. Resource Graph has no window functions, so each start of an
+    # impaired period (Unavailable or Degraded) is joined to every recovery of that resource and the earliest
+    # later one is kept; a period with no later recovery is still open and runs to now.
+    health_transitions = """
+    healthresourcechanges
+    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'
+    | extend Time = todatetime(properties.changeAttributes.timestamp)
+    | where Time >= todatetime('{TimeRange:startISO}')
+    | extend state = properties.changes['properties.availabilityState']
+    | extend To = tostring(state.newValue), From = tostring(state.previousValue)
+    | where isnotempty(To)
+    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])"""
+    availability_q = health_transitions.strip() + f"""
+| where To in ('Unavailable', 'Degraded') and From !in ('Unavailable', 'Degraded')
+| project id, Start = Time
+| join kind=leftouter ({health_transitions}
+    | where To !in ('Unavailable', 'Degraded') and From in ('Unavailable', 'Degraded')
+    | project id, End = Time
+  ) on id
+| extend End = iff(isnull(End) or End <= Start, now(), End)
+| summarize Recovered = min(End) by id, Start
+| extend Minutes = datetime_diff('minute', Recovered, Start)
+| summarize Incidents = count(), ImpairedMinutes = sum(Minutes), LongestMinutes = max(Minutes), LastIncident = max(Start) by id
+| extend parts = split(id, '/')
+| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
+{SERVICE_CASE}
+| extend windowMin = datetime_diff('minute', now(), todatetime('{{TimeRange:startISO}}'))
+| extend windowMin = iff(windowMin > 20160, 20160, windowMin)
+| project id, Service, AvailabilityPct = round(100.0 - 100.0 * ImpairedMinutes / windowMin, 3), Incidents,
+    ImpairedMinutes, LongestMinutes, LastIncident
+| order by AvailabilityPct asc
+"""
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -703,6 +737,11 @@ AzureActivity
             formatters=[resource_link(), health_fmt("Previous"), health_fmt()],
             labels={"id": "Resource", "Previous": "From", "Health": "To"},
             no_data="No Resource Health state changes on platform resources in the time range."),
+        arg("overview-availability", "Availability over the time range (resources with health incidents, up to 14 days)",
+            availability_q, formatters=[resource_link(), high_is_good("AvailabilityPct", 99.9, 99, digits=3)],
+            labels={"id": "Resource", "AvailabilityPct": "Available %", "ImpairedMinutes": "Minutes impaired",
+                    "LongestMinutes": "Longest incident (min)", "LastIncident": "Last incident"},
+            no_data="No platform resource left the Available state in the time range."),
         arg("overview-changes", "Recent changes to platform resources (time range, up to 14 days)", changes_q,
             formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
             labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},

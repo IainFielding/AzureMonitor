@@ -15,7 +15,7 @@ Built for a **Virtual WAN** based landing zone.
 
 | Tab | Data source | What it shows |
 |---|---|---|
-| Overview | Resource Graph, Metrics, Logs* | Service Health event summary, per-service health tiles, Policy / Defender / Advisor / Backup tiles, Azure VMware Solution tiles (private clouds, CPU, memory, vSAN used), unhealthy resources, fired alerts, active Service Health events, health state changes over the time range, recent changes (who changed what), failed operations and deployments*, full inventory |
+| Overview | Resource Graph, Metrics, Logs* | Service Health event summary, per-service health tiles, Policy / Defender / Advisor / Backup tiles, Azure VMware Solution tiles (private clouds, CPU, memory, vSAN used), unhealthy resources, fired alerts, active Service Health events, health state changes over the time range, availability % per resource, recent changes (who changed what), failed operations and deployments*, full inventory |
 | Virtual WAN | Resource Graph, Metrics | WANs and hubs (routing state, routing units), hub BGP peers, spoke VM utilisation, routes, spoke peering state |
 | Firewall | Resource Graph, Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, firewall policy posture (threat intel, IDPS, TLS inspection, DNS proxy, rule counts), denied flows*, threat intel & IDPS*, DNS proxy queries* |
 | ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
@@ -53,6 +53,10 @@ The *Signal* column shows which was used.
 Those are current states. *Health state changes* lists the Resource Health transitions during the time
 range, so an outage that has already recovered still shows. It covers only resource types that report
 to Resource Health, and Resource Graph keeps 14 days.
+
+*Availability over the time range* turns those transitions into a percentage per resource. Time spent
+Unavailable or Degraded counts as impaired. Resources with no incident are not listed, and an incident that
+began before the time range (or more than 14 days ago) is not counted.
 
 ## Editing
 

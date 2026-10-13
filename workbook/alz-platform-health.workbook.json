@@ -1627,6 +1627,93 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
+              "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded') and From !in ('Unavailable', 'Degraded')\n| project id, Start = Time\n| join kind=leftouter (\n    healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n    | where To !in ('Unavailable', 'Degraded') and From in ('Unavailable', 'Degraded')\n    | project id, End = Time\n  ) on id\n| extend End = iff(isnull(End) or End <= Start, now(), End)\n| summarize Recovered = min(End) by id, Start\n| extend Minutes = datetime_diff('minute', Recovered, Start)\n| summarize Incidents = count(), ImpairedMinutes = sum(Minutes), LongestMinutes = max(Minutes), LastIncident = max(Start) by id\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| extend windowMin = datetime_diff('minute', now(), todatetime('{TimeRange:startISO}'))\n| extend windowMin = iff(windowMin > 20160, 20160, windowMin)\n| project id, Service, AvailabilityPct = round(100.0 - 100.0 * ImpairedMinutes / windowMin, 3), Incidents,\n    ImpairedMinutes, LongestMinutes, LastIncident\n| order by AvailabilityPct asc",
+              "size": 0,
+              "title": "Availability over the time range (resources with health incidents, up to 14 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No platform resource left the Available state in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "AvailabilityPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99.9",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 3
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "AvailabilityPct",
+                    "label": "Available %"
+                  },
+                  {
+                    "columnId": "ImpairedMinutes",
+                    "label": "Minutes impaired"
+                  },
+                  {
+                    "columnId": "LongestMinutes",
+                    "label": "Longest incident (min)"
+                  },
+                  {
+                    "columnId": "LastIncident",
+                    "label": "Last incident"
+                  }
+                ]
+              }
+            },
+            "name": "overview-availability"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
               "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)),\n    type = tolower(tostring(properties.targetResourceType)), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(split(id, '/')[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| project Time, id, Service, ChangeType = tostring(properties.changeType),\n    Properties = strcat_array(bag_keys(properties.changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy),\n    Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| order by Time desc\n| take 500",
               "size": 0,
               "title": "Recent changes to platform resources (time range, up to 14 days)",
