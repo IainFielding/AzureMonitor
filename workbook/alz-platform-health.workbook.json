@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, monitoring and backup."
+        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, monitoring and backup."
       },
       "name": "header"
     },
@@ -181,6 +181,14 @@
             "linkTarget": "parameter",
             "linkLabel": "VPN",
             "subTarget": "vpn",
+            "style": "link"
+          },
+          {
+            "id": "7b073570-5245-5086-9669-054ecf785402",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Connectivity Tests",
+            "subTarget": "connectivity",
             "style": "link"
           },
           {
@@ -4564,6 +4572,431 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "vpn"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "End-to-end reachability from **Network Watcher Connection Monitor** tests. The other network tabs show each component's own metrics, which can all be healthy while a route between on-premises, the hub and a spoke is broken. Tests have to exist first: create them in Network Watcher and send their results to the selected workspace.",
+              "style": "info"
+            },
+            "name": "conn-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/networkwatchers/connectionmonitors'\n| project id,\n    Endpoints = array_length(properties.endpoints),\n    TestGroups = array_length(properties.testGroups),\n    TestConfigurations = array_length(properties.testConfigurations),\n    Workspace = tostring(split(tostring(properties.outputs[0].workspaceSettings.workspaceResourceId), '/')[8]),\n    Provisioning = tostring(properties.provisioningState),\n    Location = location",
+              "size": 3,
+              "title": "Connection monitors",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No connection monitors found in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Connection monitor"
+                  },
+                  {
+                    "columnId": "TestGroups",
+                    "label": "Test groups"
+                  },
+                  {
+                    "columnId": "TestConfigurations",
+                    "label": "Test configurations"
+                  }
+                ]
+              }
+            },
+            "name": "conn-monitors"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select the **Log Analytics workspace** that receives Connection Monitor results to see test status, packet loss and latency.",
+              "style": "info"
+            },
+            "name": "conn-workspace-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize arg_max(TimeGenerated, TestResult), Checks = sum(ChecksTotal), Failed = sum(ChecksFailed),\n    AvgRttMs = round(avg(AvgRoundTripTimeMs), 1), MaxRttMs = round(max(MaxRoundTripTimeMs), 1),\n    FailedRuns = countif(TestResult == 'Fail')\n    by Monitor, TestGroupName, SourceName, DestinationName, DestinationPort, Protocol\n| summarize Tests = count() by TestResult\n| order by Tests desc",
+              "size": 3,
+              "title": "Tests by latest result",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Connection Monitor results in the selected workspace.",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "TestResult",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "TestResult",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Pass",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Warning",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Fail",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Indeterminate",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Tests",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true
+              }
+            },
+            "name": "conn-result-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize arg_max(TimeGenerated, TestResult), Checks = sum(ChecksTotal), Failed = sum(ChecksFailed),\n    AvgRttMs = round(avg(AvgRoundTripTimeMs), 1), MaxRttMs = round(max(MaxRoundTripTimeMs), 1),\n    FailedRuns = countif(TestResult == 'Fail')\n    by Monitor, TestGroupName, SourceName, DestinationName, DestinationPort, Protocol\n| project Monitor, TestGroup = TestGroupName, Source = SourceName,\n    Destination = iff(isnotempty(DestinationPort), strcat(DestinationName, ':', DestinationPort), DestinationName),\n    Protocol, TestResult, LossPct = round(100.0 * Failed / Checks, 2), AvgRttMs, MaxRttMs, FailedRuns,\n    LastResult = TimeGenerated\n| order by case(TestResult == 'Fail', 0, TestResult == 'Warning', 1, TestResult == 'Indeterminate', 2, 3) asc, LossPct desc",
+              "size": 0,
+              "title": "Tests (latest result, loss and latency over time range)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Connection Monitor results in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TestResult",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Pass",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Fail",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Indeterminate",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "LossPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "5",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 2
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "FailedRuns",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TestGroup",
+                    "label": "Test group"
+                  },
+                  {
+                    "columnId": "TestResult",
+                    "label": "Result"
+                  },
+                  {
+                    "columnId": "LossPct",
+                    "label": "Loss %"
+                  },
+                  {
+                    "columnId": "AvgRttMs",
+                    "label": "Avg RTT (ms)"
+                  },
+                  {
+                    "columnId": "MaxRttMs",
+                    "label": "Max RTT (ms)"
+                  },
+                  {
+                    "columnId": "FailedRuns",
+                    "label": "Failed runs"
+                  },
+                  {
+                    "columnId": "LastResult",
+                    "label": "Last result"
+                  }
+                ]
+              }
+            },
+            "name": "conn-results",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize LossPct = round(100.0 * sum(ChecksFailed) / sum(ChecksTotal), 2) by bin(TimeGenerated, {TimeRange:grain}), Path = strcat(SourceName, ' → ', DestinationName)",
+              "size": 0,
+              "title": "Checks failed % by path",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "conn-loss",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize AvgRttMs = avg(AvgRoundTripTimeMs) by bin(TimeGenerated, {TimeRange:grain}), Path = strcat(SourceName, ' → ', DestinationName)",
+              "size": 0,
+              "title": "Average round-trip time (ms) by path",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "conn-rtt",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-connectivity",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "connectivity"
       }
     },
     {

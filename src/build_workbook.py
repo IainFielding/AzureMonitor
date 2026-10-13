@@ -112,7 +112,7 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis",
     "gov-score", "mgmt-vaults",
 }
 
@@ -467,6 +467,7 @@ TABS = [
     ("firewall", "Azure Firewall"),
     ("expressroute", "ExpressRoute"),
     ("vpn", "VPN"),
+    ("connectivity", "Connectivity Tests"),
     ("shared", "Shared Services"),
     ("buildagents", "Build Agents"),
     ("avs", "Azure VMware Solution"),
@@ -925,6 +926,68 @@ AzureDiagnostics
         la("vpn-tunnel-events", "Tunnel connect/disconnect events", tunnel_q,
            no_data="No tunnel events (or gateway diagnostic logs are not sent to this workspace)."),
     ], tab="vpn")
+
+
+def connectivity_tab():
+    monitors_q = """
+resources
+| where type =~ 'microsoft.network/networkwatchers/connectionmonitors'
+| project id,
+    Endpoints = array_length(properties.endpoints),
+    TestGroups = array_length(properties.testGroups),
+    TestConfigurations = array_length(properties.testConfigurations),
+    Workspace = tostring(split(tostring(properties.outputs[0].workspaceSettings.workspaceResourceId), '/')[8]),
+    Provisioning = tostring(properties.provisioningState),
+    Location = location
+"""
+    tests = """
+NWConnectionMonitorTestResult
+| where TimeGenerated {TimeRange}
+| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])
+"""
+    # One row per test: the latest result, with loss and latency over the whole time range.
+    latest = tests + """| summarize arg_max(TimeGenerated, TestResult), Checks = sum(ChecksTotal), Failed = sum(ChecksFailed),
+    AvgRttMs = round(avg(AvgRoundTripTimeMs), 1), MaxRttMs = round(max(MaxRoundTripTimeMs), 1),
+    FailedRuns = countif(TestResult == 'Fail')
+    by Monitor, TestGroupName, SourceName, DestinationName, DestinationPort, Protocol
+"""
+    tiles_q = latest + "| summarize Tests = count() by TestResult\n| order by Tests desc"
+    results_q = latest + """| project Monitor, TestGroup = TestGroupName, Source = SourceName,
+    Destination = iff(isnotempty(DestinationPort), strcat(DestinationName, ':', DestinationPort), DestinationName),
+    Protocol, TestResult, LossPct = round(100.0 * Failed / Checks, 2), AvgRttMs, MaxRttMs, FailedRuns,
+    LastResult = TimeGenerated
+| order by case(TestResult == 'Fail', 0, TestResult == 'Warning', 1, TestResult == 'Indeterminate', 2, 3) asc, LossPct desc
+"""
+    by_path = "by bin(TimeGenerated, {TimeRange:grain}), Path = strcat(SourceName, ' → ', DestinationName)\n"
+    loss_q = tests + "| summarize LossPct = round(100.0 * sum(ChecksFailed) / sum(ChecksTotal), 2) " + by_path
+    rtt_q = tests + "| summarize AvgRttMs = avg(AvgRoundTripTimeMs) " + by_path
+    result_states = dict(good=["Pass"], warn=["Warning"], bad=["Fail"], neutral=["Indeterminate"])
+    return group("tab-connectivity", [
+        text("conn-intro",
+             "End-to-end reachability from **Network Watcher Connection Monitor** tests. The other network tabs show "
+             "each component's own metrics, which can all be healthy while a route between on-premises, the hub and "
+             "a spoke is broken. Tests have to exist first: create them in Network Watcher and send their results "
+             "to the selected workspace.", "info"),
+        arg("conn-monitors", "Connection monitors", monitors_q, formatters=[resource_link(), PROVISIONING],
+            labels={"id": "Connection monitor", "TestGroups": "Test groups", "TestConfigurations": "Test configurations"},
+            no_data="No connection monitors found in the selected subscriptions."),
+        text("conn-workspace-hint", "Select the **Log Analytics workspace** that receives Connection Monitor results "
+             "to see test status, packet loss and latency.", "info", visible_when=WORKSPACE_UNSET),
+        la("conn-result-tiles", "Tests by latest result", tiles_q, vis="tiles", tiles={
+            "titleContent": {"columnMatch": "TestResult", "formatter": 1},
+            "leftContent": status_fmt("TestResult", **result_states, text=ICON_ONLY),
+            "rightContent": {"columnMatch": "Tests", "formatter": 12, "formatOptions": {"palette": "none"}},
+            "showBorder": True,
+        }, no_data="No Connection Monitor results in the selected workspace."),
+        la("conn-results", "Tests (latest result, loss and latency over time range)", results_q, formatters=[
+            status_fmt("TestResult", **result_states), low_is_good("LossPct", 1, 5, digits=2),
+            low_is_good("FailedRuns", 1, 1),
+        ], labels={"TestGroup": "Test group", "TestResult": "Result", "LossPct": "Loss %", "AvgRttMs": "Avg RTT (ms)",
+                   "MaxRttMs": "Max RTT (ms)", "FailedRuns": "Failed runs", "LastResult": "Last result"},
+           no_data="No Connection Monitor results in the time range."),
+        la("conn-loss", "Checks failed % by path", loss_q, vis="timechart", width=50),
+        la("conn-rtt", "Average round-trip time (ms) by path", rtt_q, vis="timechart", width=50),
+    ], tab="connectivity")
 
 
 def shared_tab():
@@ -1607,7 +1670,7 @@ def workbook():
         "items": [
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
-                 "ExpressRoute, VPN), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, "
+                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, "
                  "build agents, governance, monitoring and backup."),
             global_params(),
             tabs(),
@@ -1616,6 +1679,7 @@ def workbook():
             firewall_tab(),
             expressroute_tab(),
             vpn_tab(),
+            connectivity_tab(),
             shared_tab(),
             buildagents_tab(),
             avs_tab(),

@@ -20,6 +20,7 @@ Built for a **Virtual WAN** based landing zone.
 | Azure Firewall | Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, denied flows*, threat intel & IDPS* |
 | ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
 | VPN | Metrics, Logs* | vWAN S2S & P2S gateways, VPN sites, connections, tunnel bandwidth, BGP status, drops, tunnel events* |
+| Connectivity Tests | Resource Graph, Logs* | Network Watcher connection monitors, latest result per test*, packet loss and round-trip time by path* |
 | Shared Services | Resource Graph, Metrics | Bastion, DDoS coverage & attacks, DNS Private Resolver, Private DNS zone limits/links, Key Vault health |
 | Build Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
 | Azure VMware Solution | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
@@ -31,6 +32,7 @@ Built for a **Virtual WAN** based landing zone.
 
 \* Log panels appear once a **Log Analytics workspace** is selected, and need the matching diagnostic
 settings (`AZFW*` resource-specific firewall tables, VPN `TunnelDiagnosticLog`, AVD `WVD*` tables,
+Connection Monitor `NWConnectionMonitorTestResult`,
 Azure Monitor Agent / VM insights on build agents).
 
 ## Parameters
