@@ -1499,6 +1499,50 @@ recoveryservicesresources
     ActiveLocation = tostring(properties.activeLocation)
 | order by case(Health =~ 'Critical', 0, Health =~ 'Warning', 1, 2) asc
 """
+    alert_rule_types = "'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules'"
+    # Each platform resource is matched against rule scopes at three levels: itself, its resource group and its
+    # subscription. A rule scoped above the resource only counts when it targets the resource's type.
+    coverage_q = f"""
+resources
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| extend gatewayType = tostring(properties.gatewayType)
+{SERVICE_CASE}
+| extend rid = tolower(id), rtype = tolower(type), sub = tolower(strcat('/subscriptions/', subscriptionId))
+| extend scopeKey = pack_array(rid, strcat(sub, '/resourcegroups/', tolower(resourceGroup)), sub)
+| mv-expand scopeKey
+| extend scopeKey = tostring(scopeKey)
+| join kind=leftouter (
+    resources
+    | where type in~ ({alert_rule_types})
+    | where tobool(properties.enabled)
+    | mv-expand scope = properties.scopes
+    | project scopeKey = tolower(tostring(scope)), ruleId = tolower(id),
+        targetType = tolower(tostring(properties.targetResourceType))
+  ) on scopeKey
+| summarize DirectRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey == rid),
+    InheritedRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey != rid and targetType == rtype)
+    by id = rid, Service, ResourceGroup = resourceGroup
+| extend Coverage = case(DirectRules > 0, 'Direct', InheritedRules > 0, 'Inherited', 'None')
+| project id, Service, Coverage, DirectRules, InheritedRules, ResourceGroup
+| order by case(Coverage == 'None', 0, Coverage == 'Inherited', 1, 2) asc, Service asc
+"""
+    silent_rules_q = f"""
+resources
+| where type in~ ({alert_rule_types}, 'microsoft.insights/activitylogalerts')
+| extend Enabled = tobool(properties.enabled),
+    ActionGroups = coalesce(array_length(properties.actions.actionGroups), array_length(properties.actions),
+        array_length(properties.action.aznsAction.actionGroup), 0)
+| where not(Enabled) or ActionGroups == 0
+| project id,
+    Kind = case(type =~ 'microsoft.insights/metricalerts', 'Metric',
+        type =~ 'microsoft.insights/scheduledqueryrules', 'Log search', 'Activity log'),
+    Problem = case(not(Enabled) and ActionGroups == 0, 'Disabled, no action group', not(Enabled), 'Disabled', 'No action group'),
+    Severity = iff(isnull(properties.severity), '', strcat('Sev', tostring(properties.severity))),
+    Scopes = array_length(properties.scopes),
+    ResourceGroup = resourceGroup
+| order by Problem asc, Kind asc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -1514,6 +1558,22 @@ recoveryservicesresources
            no_data="No workspace warnings or errors.", width=50),
         la("mgmt-heartbeat", "Agent heartbeats", silent_q, width=50,
            formatters=[status_fmt("Status", good=["Reporting"], bad=["Silent"]), resource_link("ResourceId")]),
+        text("mgmt-alerting-h", "### Alerting coverage"),
+        text("mgmt-alerting-note",
+             "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. "
+             "A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by "
+             "**inheritance** from a metric rule scoped to its resource group or subscription that targets its type. "
+             "Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped "
+             "to a subscription can't be tied to one resource, so they aren't counted. A rule with no action group "
+             "may still notify through an alert processing rule.", "info"),
+        arg("mgmt-alert-coverage", "Platform resources by alert rule coverage", coverage_q, formatters=[
+            resource_link(), status_fmt("Coverage", good=["Direct", "Inherited"], warn=["None"]),
+        ], labels={"id": "Resource", "DirectRules": "Direct rules", "InheritedRules": "Inherited rules"},
+            no_data="No platform resources found in the selected subscriptions.", width=55),
+        arg("mgmt-alert-silent", "Alert rules that are disabled or have no action group", silent_rules_q,
+            formatters=[resource_link(), status_fmt("Problem", warn=["Disabled", "No action group", "Disabled, no action group"])],
+            labels={"id": "Alert rule"},
+            no_data="Every alert rule is enabled and has an action group.", width=45),
         text("mgmt-backup-h", "### Backup & Site Recovery"),
         arg("mgmt-vaults", "Recovery Services vaults", vaults_q, formatters=[
             resource_link(), PROVISIONING,

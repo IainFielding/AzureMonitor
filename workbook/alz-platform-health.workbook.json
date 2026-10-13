@@ -9014,6 +9014,171 @@
           {
             "type": 1,
             "content": {
+              "json": "### Alerting coverage"
+            },
+            "name": "mgmt-alerting-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by **inheritance** from a metric rule scoped to its resource group or subscription that targets its type. Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped to a subscription can't be tied to one resource, so they aren't counted. A rule with no action group may still notify through an alert processing rule.",
+              "style": "info"
+            },
+            "name": "mgmt-alerting-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{BuildAgentPattern}'\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| extend rid = tolower(id), rtype = tolower(type), sub = tolower(strcat('/subscriptions/', subscriptionId))\n| extend scopeKey = pack_array(rid, strcat(sub, '/resourcegroups/', tolower(resourceGroup)), sub)\n| mv-expand scopeKey\n| extend scopeKey = tostring(scopeKey)\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules')\n    | where tobool(properties.enabled)\n    | mv-expand scope = properties.scopes\n    | project scopeKey = tolower(tostring(scope)), ruleId = tolower(id),\n        targetType = tolower(tostring(properties.targetResourceType))\n  ) on scopeKey\n| summarize DirectRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey == rid),\n    InheritedRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey != rid and targetType == rtype)\n    by id = rid, Service, ResourceGroup = resourceGroup\n| extend Coverage = case(DirectRules > 0, 'Direct', InheritedRules > 0, 'Inherited', 'None')\n| project id, Service, Coverage, DirectRules, InheritedRules, ResourceGroup\n| order by case(Coverage == 'None', 0, Coverage == 'Inherited', 1, 2) asc, Service asc",
+              "size": 0,
+              "title": "Platform resources by alert rule coverage",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No platform resources found in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Coverage",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Direct",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Inherited",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "None",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "DirectRules",
+                    "label": "Direct rules"
+                  },
+                  {
+                    "columnId": "InheritedRules",
+                    "label": "Inherited rules"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-alert-coverage",
+            "customWidth": "55"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules', 'microsoft.insights/activitylogalerts')\n| extend Enabled = tobool(properties.enabled),\n    ActionGroups = coalesce(array_length(properties.actions.actionGroups), array_length(properties.actions),\n        array_length(properties.action.aznsAction.actionGroup), 0)\n| where not(Enabled) or ActionGroups == 0\n| project id,\n    Kind = case(type =~ 'microsoft.insights/metricalerts', 'Metric',\n        type =~ 'microsoft.insights/scheduledqueryrules', 'Log search', 'Activity log'),\n    Problem = case(not(Enabled) and ActionGroups == 0, 'Disabled, no action group', not(Enabled), 'Disabled', 'No action group'),\n    Severity = iff(isnull(properties.severity), '', strcat('Sev', tostring(properties.severity))),\n    Scopes = array_length(properties.scopes),\n    ResourceGroup = resourceGroup\n| order by Problem asc, Kind asc",
+              "size": 0,
+              "title": "Alert rules that are disabled or have no action group",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every alert rule is enabled and has an action group.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Problem",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No action group",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled, no action group",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Alert rule"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-alert-silent",
+            "customWidth": "45"
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "### Backup & Site Recovery"
             },
             "name": "mgmt-backup-h"

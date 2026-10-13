@@ -27,7 +27,7 @@ Built for a **Virtual WAN** based landing zone.
 | Azure Virtual Desktop | Logs* | Session host status, sessions/users, connection RTT, top errors |
 | Storage | Metrics | Availability, latency, transactions by response type (throttling), Azure Files (FSLogix) |
 | Governance & Security | Resource Graph | Policy compliance, Defender secure score/controls/alerts/recommendations, Advisor recommendations |
-| Monitoring & Backup | Resource Graph, Logs* | Workspace caps & ingestion status, ingestion by table*, workspace errors*, agent heartbeats*, backup vaults/jobs/items, Site Recovery |
+| Monitoring & Backup | Resource Graph, Logs* | Workspace caps & ingestion status, ingestion by table*, workspace errors*, agent heartbeats*, platform resources with no alert rule, disabled or silent alert rules, backup vaults/jobs/items, Site Recovery |
 | Throughput | Metrics, Logs* | Hub, firewall, ExpressRoute, VPN, P2S, storage and AVD bandwidth side by side |
 
 \* Log panels appear once a **Log Analytics workspace** is selected, and need the matching diagnostic
