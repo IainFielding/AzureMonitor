@@ -2175,6 +2175,71 @@ policyresources
     Scope = scope
 | order by case(Status == 'Expired', 0, Status == 'Expiring', 1, Status == 'No expiry', 2, 3) asc, Expires asc
 """
+    # A subscription whose only ancestor is the tenant root group was never placed in the landing zone hierarchy.
+    placement_q = """
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions'
+| extend chain = properties.managementGroupAncestorsChain
+| project Subscription = name,
+    Placement = iff(array_length(chain) <= 1, 'Under tenant root', 'In hierarchy'),
+    ManagementGroup = tostring(chain[0].displayName),
+    Depth = array_length(chain),
+    State = tostring(properties.state)
+| order by case(Placement == 'Under tenant root', 0, 1) asc, ManagementGroup asc, Subscription asc
+"""
+    # A lock on the resource, its resource group or its subscription all protect it, so each resource is
+    # matched at those three scopes, as for alert coverage.
+    locks_q = f"""
+resources
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| extend gatewayType = tostring(properties.gatewayType)
+{SERVICE_CASE}
+| extend rid = tolower(id), sub = tolower(strcat('/subscriptions/', subscriptionId))
+| extend scopeKey = pack_array(rid, strcat(sub, '/resourcegroups/', tolower(resourceGroup)), sub)
+| mv-expand scopeKey
+| extend scopeKey = tostring(scopeKey)
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.authorization/locks'
+    | project scopeKey = tostring(split(tolower(id), '/providers/microsoft.authorization/locks/')[0]), lockId = tolower(id)
+  ) on scopeKey
+| summarize Locks = dcountif(lockId, isnotempty(lockId)) by rid, Service
+| summarize Resources = count(), Locked = countif(Locks > 0) by Service
+| project Service, Resources, Locked, NotLocked = Resources - Locked, LockedPct = round(100.0 * Locked / Resources, 0)
+| order by LockedPct asc, Service asc
+"""
+    orphans_q = """
+resources
+| where type in~ ('microsoft.compute/disks', 'microsoft.network/publicipaddresses', 'microsoft.network/networkinterfaces')
+| extend Kind = case(
+    type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy), 'Unattached disk',
+    type =~ 'microsoft.network/publicipaddresses' and isempty(tostring(properties.ipConfiguration.id))
+        and isempty(tostring(properties.natGateway.id)), 'Unused public IP',
+    type =~ 'microsoft.network/networkinterfaces' and isempty(tostring(properties.virtualMachine.id))
+        and isempty(tostring(properties.privateEndpoint.id)) and isempty(tostring(properties.privateLinkService.id)),
+        'Unattached network interface',
+    '')
+| where isnotempty(Kind)
+| project id, Kind,
+    Detail = case(type =~ 'microsoft.compute/disks', strcat(tostring(properties.diskSizeGB), ' GB ', tostring(sku.name)),
+        type =~ 'microsoft.network/publicipaddresses', strcat(tostring(sku.name), ' ', tostring(properties.publicIPAllocationMethod)), ''),
+    ResourceGroup = resourceGroup, Location = location
+| order by Kind asc, ResourceGroup asc
+"""
+    empty_rgs_q = """
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions/resourcegroups'
+| project id, subscriptionId, resourceGroup, Location = location
+| join kind=leftouter (
+    resources
+    | summarize Resources = count() by subscriptionId, resourceGroup
+  ) on subscriptionId, resourceGroup
+| where isnull(Resources)
+""" + SUBSCRIPTION_NAMES + """
+| project id, Subscription = coalesce(Subscription, subscriptionId), Location
+| order by Subscription asc
+"""
     return group("tab-governance", [
         text("gov-deadlines-h", "### Expiry & retirement"),
         arg("gov-retirements", "Service retirements affecting your resources (Azure Advisor)", retirements_q, formatters=[
@@ -2204,6 +2269,22 @@ policyresources
             formatters=[high_is_good("CompliancePct", 90, 70, digits=1)], labels={"CompliancePct": "Compliant %"}, width=40),
         arg("gov-noncompliant", "Top non-compliant policies", noncompliant_q, width=60,
             no_data="No non-compliant resources."),
+        text("gov-hygiene-h", "### Landing zone hygiene"),
+        arg("gov-placement", "Subscriptions by management group", placement_q, formatters=[
+            status_fmt("Placement", good=["In hierarchy"], warn=["Under tenant root"]),
+            status_fmt("State", good=["Enabled"], warn=["Warned", "PastDue"], bad=["Disabled", "Deleted"]),
+        ], labels={"ManagementGroup": "Management group"}, width=50),
+        arg("gov-locks", "Platform resources protected by a lock, by service", locks_q,
+            formatters=[high_is_good("LockedPct", 100, 50, digits=0)],
+            labels={"NotLocked": "Not locked", "LockedPct": "Locked %"}, width=50),
+        arg("gov-orphans", "Orphaned resources", orphans_q, group_by="Kind", formatters=[resource_link()],
+            labels={"id": "Resource"}, no_data="No unattached disks, unused public IPs or unattached network interfaces.",
+            width=60),
+        arg("gov-empty-rgs", "Empty resource groups", empty_rgs_q, formatters=[resource_link()],
+            labels={"id": "Resource group"}, no_data="No empty resource groups.", width=40),
+        text("gov-hygiene-note", "A lock at the resource, its resource group or its subscription counts. A resource "
+             "group is *empty* when Resource Graph sees no resources in it; a few resource types are not indexed, "
+             "so check before deleting one.", "info"),
         text("gov-patch-h", "### Patch compliance (Azure Update Manager)"),
         text("gov-patch-note", "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD "
              "session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not "
