@@ -112,7 +112,7 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis",
     "gov-score", "mgmt-vaults",
 }
 
@@ -160,6 +160,27 @@ def arg(name, title, query, **kw):
     """Azure Resource Graph query scoped to the selected subscriptions."""
     return _query(name, title, query, query_type=1, resource_type="microsoft.resourcegraph/resources",
                   resources=["{Subscription}"], **kw)
+
+
+def arm(name, title, path, api_version, columns, *, sort_desc=None, no_data=None, width=None):
+    """GET against Azure Resource Manager. columns: list of (column, JSONPath, type-or-None) read from `$.value`."""
+    request = {
+        "version": "ARMEndpoint/1.0", "data": None, "headers": [], "method": "GET", "path": path,
+        "urlParams": [{"key": "api-version", "value": api_version}], "batchDisabled": False,
+        "transformers": [{"type": "jsonpath", "settings": {"tablePath": "$.value", "columns": [
+            {"path": jp, "columnid": col, **({"columnType": kind} if kind else {})} for col, jp, kind in columns]}}],
+    }
+    grid = {"filter": True}
+    if sort_desc:
+        grid["sortBy"] = [{"itemKey": sort_desc, "sortOrder": 2}]
+    content = {"version": "KqlItem/1.0", "query": json.dumps(request), "size": 0, "title": title, "queryType": 12,
+               "visualization": "table", "showExportToExcel": True, "gridSettings": grid}
+    if no_data:
+        content["noDataMessage"] = no_data
+    item = {"type": 3, "content": content, "name": name}
+    if width:
+        item["customWidth"] = str(width)
+    return item
 
 
 WORKSPACE_SET = {"parameterName": "Workspace", "comparison": "isNotEqualTo", "value": ""}
@@ -308,14 +329,8 @@ PLATFORM_TYPES = [
 ]
 TYPE_LIST = ", ".join(f"'{t}'" for t in PLATFORM_TYPES)
 
-# Every platform resource we care about, tagged with a Service, joined to Resource Health.
-# Resource Health in ARG only covers some types, so a config-derived status is used as fallback.
-Q_INVENTORY_HEALTH = f"""
-resources
-| where type in~ ({TYPE_LIST})
-| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
-| extend gatewayType = tostring(properties.gatewayType)
-| extend Service = case(
+# Maps a resource `type` (and `gatewayType`, for virtual network gateways) to the Service shown on the Overview.
+SERVICE_CASE = """| extend Service = case(
     type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',
     type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',
     type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',
@@ -330,7 +345,16 @@ resources
     type =~ 'microsoft.storage/storageaccounts', 'Storage',
     type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',
     type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',
-    'Build Agents')
+    'Build Agents')"""
+
+# Every platform resource we care about, tagged with a Service, joined to Resource Health.
+# Resource Health in ARG only covers some types, so a config-derived status is used as fallback.
+Q_INVENTORY_HEALTH = f"""
+resources
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| extend gatewayType = tostring(properties.gatewayType)
+{SERVICE_CASE}
 | extend provisioning = tostring(properties.provisioningState),
     routingState = tostring(properties.routingState),
     ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),
@@ -464,6 +488,7 @@ TABS = [
     ("firewall", "Azure Firewall"),
     ("expressroute", "ExpressRoute"),
     ("vpn", "VPN"),
+    ("connectivity", "Connectivity Tests"),
     ("shared", "Shared Services"),
     ("buildagents", "Build Agents"),
     ("avs", "Azure VMware Solution"),
@@ -471,6 +496,7 @@ TABS = [
     ("storage", "Storage"),
     ("governance", "Governance & Security"),
     ("management", "Monitoring & Backup"),
+    ("capacity", "Capacity"),
     ("throughput", "Throughput"),
 ]
 
@@ -552,6 +578,43 @@ servicehealthresources
 | summarize Subscriptions = dcount(SubscriptionId) by Title, EventType, Level, TrackingId, ImpactStart
 | order by ImpactStart desc
 """
+    # Change Analysis keeps 14 days, so longer time ranges show at most that.
+    changes_q = f"""
+resourcechanges
+| extend Time = todatetime(properties.changeAttributes.timestamp)
+| where Time >= todatetime('{{TimeRange:startISO}}')
+| extend id = tolower(tostring(properties.targetResourceId)),
+    type = tolower(tostring(properties.targetResourceType)), gatewayType = ''
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(split(id, '/')[8]) matches regex @'{{BuildAgentPattern}}'
+{SERVICE_CASE}
+| project Time, id, Service, ChangeType = tostring(properties.changeType),
+    Properties = strcat_array(bag_keys(properties.changes), ', '),
+    ChangedBy = tostring(properties.changeAttributes.changedBy),
+    Client = tostring(properties.changeAttributes.clientType),
+    Operation = tostring(properties.changeAttributes.operation)
+| order by Time desc
+| take 500
+"""
+    # Resource Health transitions. The change record targets <resource>/providers/Microsoft.ResourceHealth/...,
+    # so the resource type is read back out of the id.
+    health_history_q = f"""
+healthresourcechanges
+| where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'
+| extend Time = todatetime(properties.changeAttributes.timestamp)
+| where Time >= todatetime('{{TimeRange:startISO}}')
+| extend state = properties.changes['properties.availabilityState']
+| where isnotempty(tostring(state.newValue))
+| extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])
+| extend parts = split(id, '/')
+| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
+{SERVICE_CASE}
+| project Time, id, Service, Previous = tostring(state.previousValue), Health = tostring(state.newValue)
+| order by Time desc
+| take 500
+"""
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -559,7 +622,8 @@ servicehealthresources
         text("overview-intro",
              "Status comes from **Azure Resource Health** where available; otherwise from the resource's "
              "configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace "
-             "ingestion) — see the *Signal* column. Each service tab adds metric-based health.", "info"),
+             "ingestion) — see the *Signal* column. Each service tab adds metric-based health. *Health state changes* "
+             "and *Recent changes* further down show what happened earlier in the time range.", "info"),
         text("overview-glance-h", "### At a glance"),
         arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=GLANCE_WIDTH),
         *[arg(f"overview-{key}", "", q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail", unit),
@@ -578,6 +642,14 @@ servicehealthresources
         arg("overview-servicehealth", "Active Azure Service Health events", service_health_q,
             formatters=[status_fmt("EventType", warn=["PlannedMaintenance", "HealthAdvisory"], bad=["ServiceIssue"])],
             no_data="No active Service Health events."),
+        arg("overview-health-history", "Health state changes (time range, up to 14 days)", health_history_q,
+            formatters=[resource_link(), health_fmt("Previous"), health_fmt()],
+            labels={"id": "Resource", "Previous": "From", "Health": "To"},
+            no_data="No Resource Health state changes on platform resources in the time range."),
+        arg("overview-changes", "Recent changes to platform resources (time range, up to 14 days)", changes_q,
+            formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
+            labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},
+            no_data="No changes to platform resources in the time range."),
         arg("overview-all", "All platform resources", all_q, group_by="Service",
             formatters=[resource_link(), health_fmt(), hidden("Type")], labels={"id": "Resource"}),
     ], tab="overview")
@@ -687,6 +759,44 @@ union isfuzzy=true
 | summarize Hits = count(), LastSeen = max(TimeGenerated) by Source, Action, Detail, SourceIp, Destination
 | top 50 by Hits desc
 """
+    # IDPS and TLS inspection exist only on Premium policies, so other tiers show n/a rather than Off.
+    policies_q = """
+resources
+| where type =~ 'microsoft.network/firewallpolicies'
+| extend Tier = tostring(properties.sku.tier)
+| project id = tolower(id), Tier,
+    ThreatIntel = tostring(properties.threatIntelMode),
+    Idps = iff(Tier =~ 'Premium', coalesce(tostring(properties.intrusionDetection.mode), 'Off'), 'n/a'),
+    TlsInspection = case(Tier !~ 'Premium', 'n/a',
+        isnotempty(tostring(properties.transportSecurity.certificateAuthority.keyVaultSecretId)), 'Yes', 'No'),
+    DnsProxy = coalesce(tostring(properties.dnsSettings.enableProxy), 'false'),
+    Firewalls = coalesce(array_length(properties.firewalls), 0),
+    ParentPolicy = tostring(split(tostring(properties.basePolicy.id), '/')[8]),
+    RuleCollectionGroups = coalesce(array_length(properties.ruleCollectionGroups), 0),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.network/firewallpolicies/rulecollectiongroups'
+    | mv-expand rc = properties.ruleCollections limit 400
+    | summarize RuleCollections = count(), Rules = sum(array_length(rc.rules))
+        by id = tostring(split(tolower(id), '/rulecollectiongroups/')[0])
+  ) on id
+| project id, Tier, ThreatIntel, Idps, TlsInspection, DnsProxy, Firewalls, ParentPolicy, RuleCollectionGroups,
+    RuleCollections = coalesce(RuleCollections, 0), Rules = coalesce(Rules, 0), Provisioning, ResourceGroup
+"""
+    dns_codes_q = """
+AZFWDnsQuery
+| where TimeGenerated {TimeRange}
+| summarize Queries = count() by bin(TimeGenerated, {TimeRange:grain}), ResponseCode
+"""
+    dns_failed_q = """
+AZFWDnsQuery
+| where TimeGenerated {TimeRange}
+| where ResponseCode !~ 'NOERROR'
+| summarize Queries = count(), Sources = dcount(SourceIp), LastSeen = max(TimeGenerated) by QueryName, QueryType, ResponseCode
+| top 50 by Queries desc
+"""
     return group("tab-firewall", [
         params("firewall-params", [resource_param("Firewalls", "Firewalls", Q_FIREWALLS)]),
         arg("firewall-inventory", "Firewalls", inventory_q, formatters=[resource_link(), PROVISIONING],
@@ -706,12 +816,31 @@ union isfuzzy=true
         metrics("firewall-latency", "Latency probe (ms)", ns, "Firewalls", [m(ns, "FirewallLatencyPng", AVG)], width=50),
         metrics("firewall-rulehits", "Rule hits", ns, "Firewalls",
                 [m(ns, "NetworkRuleHit", SUM), m(ns, "ApplicationRuleHit", SUM)], width=50),
-        text("firewall-logs-hint", "Select a **Log Analytics workspace** at the top to see denied traffic and threat "
-             "detections (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).", "info", visible_when=WORKSPACE_UNSET),
+        text("firewall-policy-h", "### Firewall policy"),
+        arg("firewall-policies", "Firewall policies", policies_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("ThreatIntel", good=["Deny"], warn=["Alert"], bad=["Off"]),
+            status_fmt("Idps", good=["Deny"], warn=["Alert"], bad=["Off"], neutral=["n/a"]),
+            status_fmt("TlsInspection", good=["Yes"], neutral=["No", "n/a"]),
+            status_fmt("DnsProxy", good=["true"], neutral=["false"]),
+            high_is_good("Firewalls", 1, 0),
+        ], labels={"id": "Policy", "ThreatIntel": "Threat intel", "Idps": "IDPS", "TlsInspection": "TLS inspection",
+                   "DnsProxy": "DNS proxy", "ParentPolicy": "Parent policy", "RuleCollectionGroups": "Rule collection groups",
+                   "RuleCollections": "Rule collections"},
+            no_data="No firewall policies found."),
+        text("firewall-policy-note", "A policy attached to no firewall is flagged. Rule counts are totals across the "
+             "policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. "
+             "The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on "
+             "the Governance & Security tab.", "info"),
+        text("firewall-logs-hint", "Select a **Log Analytics workspace** at the top to see denied traffic, threat "
+             "detections and DNS proxy queries (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).", "info", visible_when=WORKSPACE_UNSET),
         la("firewall-denied", "Top denied flows", denied_q, width=50,
            no_data="No denied flows (or structured firewall logs are not enabled)."),
         la("firewall-threats", "Threat intel & IDPS detections", threats_q, width=50,
            no_data="No threat intel or IDPS hits."),
+        la("firewall-dns-codes", "DNS proxy queries by response code", dns_codes_q, vis="timechart", width=50),
+        la("firewall-dns-failed", "Top failing DNS proxy queries", dns_failed_q, width=50,
+           no_data="No failing DNS queries (or DNS proxy logs are not enabled)."),
     ], tab="firewall")
 
 
@@ -876,6 +1005,68 @@ AzureDiagnostics
         la("vpn-tunnel-events", "Tunnel connect/disconnect events", tunnel_q,
            no_data="No tunnel events (or gateway diagnostic logs are not sent to this workspace)."),
     ], tab="vpn")
+
+
+def connectivity_tab():
+    monitors_q = """
+resources
+| where type =~ 'microsoft.network/networkwatchers/connectionmonitors'
+| project id,
+    Endpoints = array_length(properties.endpoints),
+    TestGroups = array_length(properties.testGroups),
+    TestConfigurations = array_length(properties.testConfigurations),
+    Workspace = tostring(split(tostring(properties.outputs[0].workspaceSettings.workspaceResourceId), '/')[8]),
+    Provisioning = tostring(properties.provisioningState),
+    Location = location
+"""
+    tests = """
+NWConnectionMonitorTestResult
+| where TimeGenerated {TimeRange}
+| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])
+"""
+    # One row per test: the latest result, with loss and latency over the whole time range.
+    latest = tests + """| summarize arg_max(TimeGenerated, TestResult), Checks = sum(ChecksTotal), Failed = sum(ChecksFailed),
+    AvgRttMs = round(avg(AvgRoundTripTimeMs), 1), MaxRttMs = round(max(MaxRoundTripTimeMs), 1),
+    FailedRuns = countif(TestResult == 'Fail')
+    by Monitor, TestGroupName, SourceName, DestinationName, DestinationPort, Protocol
+"""
+    tiles_q = latest + "| summarize Tests = count() by TestResult\n| order by Tests desc"
+    results_q = latest + """| project Monitor, TestGroup = TestGroupName, Source = SourceName,
+    Destination = iff(isnotempty(DestinationPort), strcat(DestinationName, ':', DestinationPort), DestinationName),
+    Protocol, TestResult, LossPct = round(100.0 * Failed / Checks, 2), AvgRttMs, MaxRttMs, FailedRuns,
+    LastResult = TimeGenerated
+| order by case(TestResult == 'Fail', 0, TestResult == 'Warning', 1, TestResult == 'Indeterminate', 2, 3) asc, LossPct desc
+"""
+    by_path = "by bin(TimeGenerated, {TimeRange:grain}), Path = strcat(SourceName, ' → ', DestinationName)\n"
+    loss_q = tests + "| summarize LossPct = round(100.0 * sum(ChecksFailed) / sum(ChecksTotal), 2) " + by_path
+    rtt_q = tests + "| summarize AvgRttMs = avg(AvgRoundTripTimeMs) " + by_path
+    result_states = dict(good=["Pass"], warn=["Warning"], bad=["Fail"], neutral=["Indeterminate"])
+    return group("tab-connectivity", [
+        text("conn-intro",
+             "End-to-end reachability from **Network Watcher Connection Monitor** tests. The other network tabs show "
+             "each component's own metrics, which can all be healthy while a route between on-premises, the hub and "
+             "a spoke is broken. Tests have to exist first: create them in Network Watcher and send their results "
+             "to the selected workspace.", "info"),
+        arg("conn-monitors", "Connection monitors", monitors_q, formatters=[resource_link(), PROVISIONING],
+            labels={"id": "Connection monitor", "TestGroups": "Test groups", "TestConfigurations": "Test configurations"},
+            no_data="No connection monitors found in the selected subscriptions."),
+        text("conn-workspace-hint", "Select the **Log Analytics workspace** that receives Connection Monitor results "
+             "to see test status, packet loss and latency.", "info", visible_when=WORKSPACE_UNSET),
+        la("conn-result-tiles", "Tests by latest result", tiles_q, vis="tiles", tiles={
+            "titleContent": {"columnMatch": "TestResult", "formatter": 1},
+            "leftContent": status_fmt("TestResult", **result_states, text=ICON_ONLY),
+            "rightContent": {"columnMatch": "Tests", "formatter": 12, "formatOptions": {"palette": "none"}},
+            "showBorder": True,
+        }, no_data="No Connection Monitor results in the selected workspace."),
+        la("conn-results", "Tests (latest result, loss and latency over time range)", results_q, formatters=[
+            status_fmt("TestResult", **result_states), low_is_good("LossPct", 1, 5, digits=2),
+            low_is_good("FailedRuns", 1, 1),
+        ], labels={"TestGroup": "Test group", "TestResult": "Result", "LossPct": "Loss %", "AvgRttMs": "Avg RTT (ms)",
+                   "MaxRttMs": "Max RTT (ms)", "FailedRuns": "Failed runs", "LastResult": "Last result"},
+           no_data="No Connection Monitor results in the time range."),
+        la("conn-loss", "Checks failed % by path", loss_q, vis="timechart", width=50),
+        la("conn-rtt", "Average round-trip time (ms) by path", rtt_q, vis="timechart", width=50),
+    ], tab="connectivity")
 
 
 def shared_tab():
@@ -1187,6 +1378,13 @@ def storage_tab():
                 [m(ns, "Transactions", SUM, split="ResponseType")], width=50),
         metrics("storage-files-tx", "Azure Files transactions by response type (FSLogix)", ns, "StorageAccounts",
                 [m(fns, "Transactions", SUM, split="ResponseType")], width=50),
+        text("storage-files-note", "Azure Files capacity is reported hourly, so the two charts below need a time "
+             "range of at least a few hours. A share whose used capacity is close to its quota stops FSLogix "
+             "profiles from growing.", "info"),
+        metrics("storage-files-used", "Azure Files used capacity by share", ns, "StorageAccounts",
+                [m(fns, "FileCapacity", AVG, split="FileShare")], width=50),
+        metrics("storage-files-quota", "Azure Files share quota by share", ns, "StorageAccounts",
+                [m(fns, "FileShareCapacityQuota", AVG, split="FileShare")], width=50),
         arg("storage-inventory", "Storage accounts", inventory_q, formatters=[
             resource_link(),
             status_fmt("Primary", good=["available"], bad=["unavailable"]),
@@ -1194,6 +1392,92 @@ def storage_tab():
             status_fmt("PublicNetwork", good=["Disabled"], warn=["Enabled"]),
         ], labels={"id": "Storage account"}),
     ], tab="storage")
+
+
+def capacity_tab():
+    compute_quota_q = """
+quotaresources
+| where type =~ 'microsoft.compute/locations/usages'
+| mv-expand q = properties.value limit 400
+| extend Quota = tostring(q.name.localizedValue), Used = tolong(q.currentValue), Limit = tolong(q['limit'])
+| where Used > 0 and Limit > 0
+| extend UsedPct = round(100.0 * Used / Limit, 1)
+""" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), Region = location, Quota, Used, Limit, UsedPct
+| order by UsedPct desc
+"""
+    # Usable = subnet size minus the 5 addresses Azure reserves. IPv6 prefixes are left out.
+    subnets_q = """
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| mv-expand subnet = properties.subnets limit 400
+| extend Prefix = coalesce(tostring(subnet.properties.addressPrefix), tostring(subnet.properties.addressPrefixes[0]))
+| where isnotempty(Prefix) and Prefix !contains ':'
+| extend Usable = tolong(pow(2, 32 - toint(split(Prefix, '/')[1]))) - 5,
+    Used = coalesce(array_length(subnet.properties.ipConfigurations), 0)
+| where Usable > 0
+| project id, Subnet = tostring(subnet.name), Prefix, Used, Usable, UsedPct = round(100.0 * Used / Usable, 1),
+    Delegation = tostring(subnet.properties.delegations[0].properties.serviceName),
+    ResourceGroup = resourceGroup
+| order by UsedPct desc
+"""
+    quota_sub = {
+        "id": gid("param-QuotaSubscription"),
+        "version": "KqlParameterItem/1.0",
+        "name": "QuotaSubscription",
+        "label": "Subscription",
+        "type": 6,
+        "isRequired": True,
+        "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+        "crossComponentResources": ["{Subscription}"],
+        "typeSettings": {"additionalResourceOptions": ["value::1"], "showDefault": False},
+        "defaultValue": "value::1",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+    }
+    quota_region = {
+        "id": gid("param-QuotaRegion"),
+        "version": "KqlParameterItem/1.0",
+        "name": "QuotaRegion",
+        "label": "Region",
+        "type": 2,
+        "isRequired": True,
+        "query": "resources\n| where type in~ ('microsoft.network/virtualhubs', 'microsoft.network/virtualnetworks')\n"
+                 "| summarize Resources = count() by location\n| order by Resources desc\n"
+                 "| project value = location, label = location",
+        "crossComponentResources": ["{QuotaSubscription}"],
+        "typeSettings": {"additionalResourceOptions": ["value::1"], "showDefault": False},
+        "defaultValue": "value::1",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+    }
+    return group("tab-capacity", [
+        text("cap-intro",
+             "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the "
+             "services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Azure Firewall), "
+             "circuit utilisation (ExpressRoute), Private DNS zone limits (Shared Services), vSAN (Azure VMware "
+             "Solution) and Azure Files share quota (Storage).", "info"),
+        text("cap-compute-h", "### Compute quotas"),
+        arg("cap-compute-quota", "vCPU and compute quotas in use, by subscription and region", compute_quota_q,
+            formatters=[low_is_good("UsedPct", 70, 90, digits=1)], labels={"UsedPct": "Used %"},
+            no_data="No compute quota is in use in the selected subscriptions."),
+        text("cap-network-h", "### Network quotas"),
+        text("cap-network-note", "Network usage is not in Resource Graph, so this reads it from Azure Resource "
+             "Manager for one subscription and region at a time.", "info"),
+        params("cap-network-params", [quota_sub, quota_region]),
+        arm("cap-network-quota", "Network quotas (public IPs, VNets, route tables, private endpoints...)",
+            "{QuotaSubscription}/providers/Microsoft.Network/locations/{QuotaRegion}/usages", "2023-09-01",
+            [("Quota", "$.name.localizedValue", None), ("Used", "$.currentValue", "long"), ("Limit", "$.limit", "long")],
+            sort_desc="Used", no_data="No network usage returned for this subscription and region."),
+        text("cap-subnets-h", "### Subnet address space"),
+        text("cap-subnets-note", "*Used* counts the IP configurations attached to each subnet (NICs, private "
+             "endpoints, load balancer front ends). Application Gateway instances and delegated services such as "
+             "SQL Managed Instance take addresses that are not counted, and Virtual WAN hubs do not expose their "
+             "address usage at all.", "info"),
+        arg("cap-subnets", "Subnets by address utilisation", subnets_q,
+            formatters=[resource_link(), low_is_good("UsedPct", 70, 90, digits=1)],
+            labels={"id": "Virtual network", "UsedPct": "Used %"}, no_data="No virtual network subnets found."),
+    ], tab="capacity")
 
 
 def governance_tab():
@@ -1281,8 +1565,107 @@ advisorresources
     Updated = todatetime(properties.lastUpdated)
 | order by case(Impact =~ 'High', 0, 1) asc, Category asc
 """
+    retirements_q = """
+advisorresources
+| where type =~ 'microsoft.advisor/recommendations'
+| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'
+| extend RetirementDate = todatetime(properties.extendedProperties.retirementDate)
+| summarize Resources = dcount(tolower(tostring(properties.resourceMetadata.resourceId)))
+    by Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), tostring(properties.shortDescription.problem)),
+    Action = tostring(properties.shortDescription.solution), RetirementDate, Impact = tostring(properties.impact)
+| project Retiring, RetirementDate, DaysLeft = datetime_diff('day', RetirementDate, now()), Resources, Impact, Action
+| order by RetirementDate asc
+"""
+    scheduled_q = """
+servicehealthresources
+| where type =~ 'microsoft.resourcehealth/events'
+| where tostring(properties.Status) =~ 'Active'
+| extend EventType = tostring(properties.EventType), Title = tostring(properties.Title)
+| where EventType =~ 'PlannedMaintenance' or tostring(properties.EventSubType) =~ 'Retirement' or Title contains 'retir'
+| extend Kind = iff(EventType =~ 'PlannedMaintenance', 'Planned maintenance', 'Retirement'),
+    Starts = todatetime(tolong(properties.ImpactStartTime)), Ends = todatetime(tolong(properties.ImpactMitigationTime))
+| summarize Subscriptions = dcount(subscriptionId) by Kind, Title, TrackingId = tostring(properties.TrackingId), Starts, Ends
+| order by Starts asc
+"""
+    # A host pool without a valid token is normal; it only matters when session hosts are about to be added.
+    avd_tokens_q = """
+resources
+| where type =~ 'microsoft.desktopvirtualization/hostpools'
+| extend Expires = todatetime(properties.registrationInfo.expirationTime)
+| project id, Token = case(isnull(Expires), 'None', Expires < now(), 'Expired', Expires < now() + 7d, 'Expiring', 'Valid'),
+    Expires, ResourceGroup = resourceGroup, Location = location
+| order by Expires asc
+"""
+    kv_expiry_q = """
+union isfuzzy=true
+    (AzureDiagnostics | where TimeGenerated {TimeRange} | where ResourceProvider =~ 'MICROSOFT.KEYVAULT'
+        | project TimeGenerated, OperationName, Vault = tolower(Resource), Object = column_ifexists('id_s', '')),
+    (AZKVAuditLogs | where TimeGenerated {TimeRange}
+        | project TimeGenerated, OperationName, Vault = tolower(tostring(split(_ResourceId, '/')[8])), Object = column_ifexists('Id', ''))
+| where OperationName contains 'NearExpiry' or OperationName contains 'Expired'
+| extend Kind = case(OperationName startswith 'Certificate', 'Certificate', OperationName startswith 'Secret', 'Secret',
+        OperationName startswith 'Key', 'Key', 'Other'),
+    State = iff(OperationName contains 'NearExpiry', 'Near expiry', 'Expired')
+| summarize LastSeen = max(TimeGenerated) by Vault, Kind, Object, State
+| order by State asc, LastSeen desc
+"""
+    # Every VM and Arc machine, with its latest Update Manager assessment if it has one.
+    patch_base = """
+resources
+| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')
+| project id = tolower(id),
+    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),
+    PatchMode = coalesce(tostring(properties.osProfile.windowsConfiguration.patchSettings.patchMode),
+        tostring(properties.osProfile.linuxConfiguration.patchSettings.patchMode)),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (
+    patchassessmentresources
+    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
+    | extend c = properties.availablePatchCountByClassification
+    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),
+        Assessment = tostring(properties.status),
+        Assessed = todatetime(properties.lastModifiedDateTime),
+        RebootPending = tostring(properties.rebootPending),
+        Critical = coalesce(toint(c.critical), 0), Security = coalesce(toint(c.security), 0),
+        Other = coalesce(toint(c.updateRollup), 0) + coalesce(toint(c.featurePack), 0) + coalesce(toint(c.servicePack), 0)
+            + coalesce(toint(c.definition), 0) + coalesce(toint(c.tools), 0) + coalesce(toint(c.updates), 0)
+            + coalesce(toint(c.other), 0)
+  ) on id
+| project-away id1
+| extend Assessment = case(isempty(Assessment), 'Not assessed', Assessed < ago(7d), 'Stale', Assessment)
+"""
+    patch_tiles_q = patch_base + """| summarize Machines = count(), Pending = countif(Critical > 0 or Security > 0),
+    Reboot = countif(RebootPending =~ 'true'), Unknown = countif(Assessment in ('Not assessed', 'Stale'))
+| extend rows = pack_array(
+    pack('Signal', 'Critical or security patches pending', 'Value', Pending, 'State', iff(Pending > 0, 'Degraded', 'Available')),
+    pack('Signal', 'Reboot pending', 'Value', Reboot, 'State', iff(Reboot > 0, 'Degraded', 'Available')),
+    pack('Signal', 'Not assessed in the last 7 days', 'Value', Unknown, 'State', iff(Unknown > 0, 'Unknown', 'Available')))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),
+    Detail = strcat('of ', Machines, ' machines')
+"""
+    patch_q = patch_base + """| project id, OS, Assessment, Assessed, Critical, Security, Other, RebootPending, PatchMode, ResourceGroup
+| order by Critical desc, Security desc, case(Assessment == 'Succeeded', 1, 0) asc
+"""
     sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
     return group("tab-governance", [
+        text("gov-deadlines-h", "### Expiry & retirement"),
+        arg("gov-retirements", "Service retirements affecting your resources (Azure Advisor)", retirements_q, formatters=[
+            high_is_good("DaysLeft", 180, 60), status_fmt("Impact", warn=["Medium"], bad=["High"]),
+        ], labels={"RetirementDate": "Retirement date", "DaysLeft": "Days left"},
+            no_data="Advisor reports no service retirements for the selected subscriptions."),
+        arg("gov-scheduled", "Planned maintenance and retirement notices (Azure Service Health)", scheduled_q,
+            formatters=[status_fmt("Kind", warn=["Planned maintenance", "Retirement"])],
+            labels={"TrackingId": "Tracking ID"}, no_data="No active planned maintenance or retirement notices.", width=60),
+        arg("gov-avd-tokens", "AVD host pool registration tokens", avd_tokens_q, formatters=[
+            resource_link(), status_fmt("Token", good=["Valid"], warn=["Expiring"], neutral=["Expired", "None"]),
+        ], labels={"id": "Host pool"}, no_data="No AVD host pools found.", width=40),
+        text("gov-kv-expiry-hint", "Select a **Log Analytics workspace** at the top to see Key Vault certificates, "
+             "secrets and keys that are near expiry or expired.", "info", visible_when=WORKSPACE_UNSET),
+        la("gov-kv-expiry", "Key Vault certificates, secrets and keys near expiry or expired", kv_expiry_q,
+           formatters=[status_fmt("State", warn=["Near expiry"], bad=["Expired"])], labels={"LastSeen": "Reported"},
+           no_data="No expiry events in the time range. Key Vault reports near-expiry once, about 30 days ahead, "
+                   "so use a 30-day time range; vaults must send audit logs to this workspace."),
         text("gov-policy-h", "### Azure Policy"),
         arg("gov-compliance", "Compliance by subscription", compliance_q,
             formatters=[high_is_good("CompliancePct", 90, 70, digits=1)], labels={"CompliancePct": "Compliant %"}, width=40),
@@ -1294,6 +1677,19 @@ advisorresources
         arg("gov-controls", "Security controls with unhealthy resources", controls_q, width=60),
         arg("gov-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
         arg("gov-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
+        text("gov-patch-h", "### Patch compliance (Azure Update Manager)"),
+        text("gov-patch-note", "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD "
+             "session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not "
+             "assess Uniform scale set instances. Machines show as *Not assessed* until periodic assessment is "
+             "turned on.", "info"),
+        arg("gov-patch-tiles", "", patch_tiles_q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail")),
+        arg("gov-patch", "Pending patches by machine", patch_q, formatters=[
+            resource_link(), low_is_good("Critical", 1, 1), low_is_good("Security", 1, 10),
+            status_fmt("Assessment", good=["Succeeded"], warn=["Stale", "CompletedWithWarnings"], bad=["Failed"],
+                       neutral=["Not assessed", "InProgress"]),
+            status_fmt("RebootPending", warn=["true"]),
+        ], labels={"id": "Machine", "RebootPending": "Reboot pending", "PatchMode": "Patch mode"},
+            no_data="No virtual machines or Arc-enabled servers found."),
         text("gov-advisor-h", "### Azure Advisor"),
         arg("gov-advisor", "High & medium impact recommendations", advisor_q, group_by="Category",
             formatters=[resource_link("Resource"), status_fmt("Impact", warn=["Medium"], bad=["High"])]),
@@ -1387,6 +1783,50 @@ recoveryservicesresources
     ActiveLocation = tostring(properties.activeLocation)
 | order by case(Health =~ 'Critical', 0, Health =~ 'Warning', 1, 2) asc
 """
+    alert_rule_types = "'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules'"
+    # Each platform resource is matched against rule scopes at three levels: itself, its resource group and its
+    # subscription. A rule scoped above the resource only counts when it targets the resource's type.
+    coverage_q = f"""
+resources
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| extend gatewayType = tostring(properties.gatewayType)
+{SERVICE_CASE}
+| extend rid = tolower(id), rtype = tolower(type), sub = tolower(strcat('/subscriptions/', subscriptionId))
+| extend scopeKey = pack_array(rid, strcat(sub, '/resourcegroups/', tolower(resourceGroup)), sub)
+| mv-expand scopeKey
+| extend scopeKey = tostring(scopeKey)
+| join kind=leftouter (
+    resources
+    | where type in~ ({alert_rule_types})
+    | where tobool(properties.enabled)
+    | mv-expand scope = properties.scopes
+    | project scopeKey = tolower(tostring(scope)), ruleId = tolower(id),
+        targetType = tolower(tostring(properties.targetResourceType))
+  ) on scopeKey
+| summarize DirectRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey == rid),
+    InheritedRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey != rid and targetType == rtype)
+    by id = rid, Service, ResourceGroup = resourceGroup
+| extend Coverage = case(DirectRules > 0, 'Direct', InheritedRules > 0, 'Inherited', 'None')
+| project id, Service, Coverage, DirectRules, InheritedRules, ResourceGroup
+| order by case(Coverage == 'None', 0, Coverage == 'Inherited', 1, 2) asc, Service asc
+"""
+    silent_rules_q = f"""
+resources
+| where type in~ ({alert_rule_types}, 'microsoft.insights/activitylogalerts')
+| extend Enabled = tobool(properties.enabled),
+    ActionGroups = coalesce(array_length(properties.actions.actionGroups), array_length(properties.actions),
+        array_length(properties.action.aznsAction.actionGroup), 0)
+| where not(Enabled) or ActionGroups == 0
+| project id,
+    Kind = case(type =~ 'microsoft.insights/metricalerts', 'Metric',
+        type =~ 'microsoft.insights/scheduledqueryrules', 'Log search', 'Activity log'),
+    Problem = case(not(Enabled) and ActionGroups == 0, 'Disabled, no action group', not(Enabled), 'Disabled', 'No action group'),
+    Severity = iff(isnull(properties.severity), '', strcat('Sev', tostring(properties.severity))),
+    Scopes = array_length(properties.scopes),
+    ResourceGroup = resourceGroup
+| order by Problem asc, Kind asc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -1402,6 +1842,22 @@ recoveryservicesresources
            no_data="No workspace warnings or errors.", width=50),
         la("mgmt-heartbeat", "Agent heartbeats", silent_q, width=50,
            formatters=[status_fmt("Status", good=["Reporting"], bad=["Silent"]), resource_link("ResourceId")]),
+        text("mgmt-alerting-h", "### Alerting coverage"),
+        text("mgmt-alerting-note",
+             "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. "
+             "A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by "
+             "**inheritance** from a metric rule scoped to its resource group or subscription that targets its type. "
+             "Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped "
+             "to a subscription can't be tied to one resource, so they aren't counted. A rule with no action group "
+             "may still notify through an alert processing rule.", "info"),
+        arg("mgmt-alert-coverage", "Platform resources by alert rule coverage", coverage_q, formatters=[
+            resource_link(), status_fmt("Coverage", good=["Direct", "Inherited"], warn=["None"]),
+        ], labels={"id": "Resource", "DirectRules": "Direct rules", "InheritedRules": "Inherited rules"},
+            no_data="No platform resources found in the selected subscriptions.", width=55),
+        arg("mgmt-alert-silent", "Alert rules that are disabled or have no action group", silent_rules_q,
+            formatters=[resource_link(), status_fmt("Problem", warn=["Disabled", "No action group", "Disabled, no action group"])],
+            labels={"id": "Alert rule"},
+            no_data="Every alert rule is enabled and has an action group.", width=45),
         text("mgmt-backup-h", "### Backup & Site Recovery"),
         arg("mgmt-vaults", "Recovery Services vaults", vaults_q, formatters=[
             resource_link(), PROVISIONING,
@@ -1558,7 +2014,7 @@ def workbook():
         "items": [
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
-                 "ExpressRoute, VPN), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, "
+                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, "
                  "build agents, governance, monitoring and backup."),
             global_params(),
             tabs(),
@@ -1567,6 +2023,7 @@ def workbook():
             firewall_tab(),
             expressroute_tab(),
             vpn_tab(),
+            connectivity_tab(),
             shared_tab(),
             buildagents_tab(),
             avs_tab(),
@@ -1574,6 +2031,7 @@ def workbook():
             storage_tab(),
             governance_tab(),
             management_tab(),
+            capacity_tab(),
             throughput_tab(),
         ],
         "fallbackResourceIds": ["Azure Monitor"],

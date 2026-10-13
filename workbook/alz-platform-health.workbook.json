@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, monitoring and backup."
+        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, monitoring and backup."
       },
       "name": "header"
     },
@@ -184,6 +184,14 @@
             "style": "link"
           },
           {
+            "id": "7b073570-5245-5086-9669-054ecf785402",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Connectivity Tests",
+            "subTarget": "connectivity",
+            "style": "link"
+          },
+          {
             "id": "ea5651f4-a375-5c1b-8e9e-665213f5c8cd",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
@@ -240,6 +248,14 @@
             "style": "link"
           },
           {
+            "id": "480ecb97-756f-5d1a-8b22-b33ee52f98c4",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Capacity",
+            "subTarget": "capacity",
+            "style": "link"
+          },
+          {
             "id": "38b090c7-e9be-5560-82e9-a0e677c60219",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
@@ -260,7 +276,7 @@
           {
             "type": 1,
             "content": {
-              "json": "Status comes from **Azure Resource Health** where available; otherwise from the resource's configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace ingestion) — see the *Signal* column. Each service tab adds metric-based health.",
+              "json": "Status comes from **Azure Resource Health** where available; otherwise from the resource's configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace ingestion) — see the *Signal* column. Each service tab adds metric-based health. *Health state changes* and *Recent changes* further down show what happened earlier in the time range.",
               "style": "info"
             },
             "name": "overview-intro"
@@ -1055,6 +1071,199 @@
               }
             },
             "name": "overview-servicehealth"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "healthresourcechanges\n| where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend state = properties.changes['properties.availabilityState']\n| where isnotempty(tostring(state.newValue))\n| extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| project Time, id, Service, Previous = tostring(state.previousValue), Health = tostring(state.newValue)\n| order by Time desc\n| take 500",
+              "size": 0,
+              "title": "Health state changes (time range, up to 14 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Resource Health state changes on platform resources in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Previous",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "Previous",
+                    "label": "From"
+                  },
+                  {
+                    "columnId": "Health",
+                    "label": "To"
+                  }
+                ]
+              }
+            },
+            "name": "overview-health-history"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)),\n    type = tolower(tostring(properties.targetResourceType)), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(split(id, '/')[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| project Time, id, Service, ChangeType = tostring(properties.changeType),\n    Properties = strcat_array(bag_keys(properties.changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy),\n    Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| order by Time desc\n| take 500",
+              "size": 0,
+              "title": "Recent changes to platform resources (time range, up to 14 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No changes to platform resources in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "ChangeType",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Delete",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "ChangeType",
+                    "label": "Change"
+                  },
+                  {
+                    "columnId": "Properties",
+                    "label": "Properties changed"
+                  },
+                  {
+                    "columnId": "ChangedBy",
+                    "label": "Changed by"
+                  }
+                ]
+              }
+            },
+            "name": "overview-changes"
           },
           {
             "type": 3,
@@ -2498,7 +2707,297 @@
           {
             "type": 1,
             "content": {
-              "json": "Select a **Log Analytics workspace** at the top to see denied traffic and threat detections (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).",
+              "json": "### Firewall policy"
+            },
+            "name": "firewall-policy-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/firewallpolicies'\n| extend Tier = tostring(properties.sku.tier)\n| project id = tolower(id), Tier,\n    ThreatIntel = tostring(properties.threatIntelMode),\n    Idps = iff(Tier =~ 'Premium', coalesce(tostring(properties.intrusionDetection.mode), 'Off'), 'n/a'),\n    TlsInspection = case(Tier !~ 'Premium', 'n/a',\n        isnotempty(tostring(properties.transportSecurity.certificateAuthority.keyVaultSecretId)), 'Yes', 'No'),\n    DnsProxy = coalesce(tostring(properties.dnsSettings.enableProxy), 'false'),\n    Firewalls = coalesce(array_length(properties.firewalls), 0),\n    ParentPolicy = tostring(split(tostring(properties.basePolicy.id), '/')[8]),\n    RuleCollectionGroups = coalesce(array_length(properties.ruleCollectionGroups), 0),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/firewallpolicies/rulecollectiongroups'\n    | mv-expand rc = properties.ruleCollections limit 400\n    | summarize RuleCollections = count(), Rules = sum(array_length(rc.rules))\n        by id = tostring(split(tolower(id), '/rulecollectiongroups/')[0])\n  ) on id\n| project id, Tier, ThreatIntel, Idps, TlsInspection, DnsProxy, Firewalls, ParentPolicy, RuleCollectionGroups,\n    RuleCollections = coalesce(RuleCollections, 0), Rules = coalesce(Rules, 0), Provisioning, ResourceGroup",
+              "size": 0,
+              "title": "Firewall policies",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No firewall policies found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ThreatIntel",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deny",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Idps",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deny",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "n/a",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "TlsInspection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "n/a",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "DnsProxy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Firewalls",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Policy"
+                  },
+                  {
+                    "columnId": "ThreatIntel",
+                    "label": "Threat intel"
+                  },
+                  {
+                    "columnId": "Idps",
+                    "label": "IDPS"
+                  },
+                  {
+                    "columnId": "TlsInspection",
+                    "label": "TLS inspection"
+                  },
+                  {
+                    "columnId": "DnsProxy",
+                    "label": "DNS proxy"
+                  },
+                  {
+                    "columnId": "ParentPolicy",
+                    "label": "Parent policy"
+                  },
+                  {
+                    "columnId": "RuleCollectionGroups",
+                    "label": "Rule collection groups"
+                  },
+                  {
+                    "columnId": "RuleCollections",
+                    "label": "Rule collections"
+                  }
+                ]
+              }
+            },
+            "name": "firewall-policies"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A policy attached to no firewall is flagged. Rule counts are totals across the policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on the Governance & Security tab.",
+              "style": "info"
+            },
+            "name": "firewall-policy-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see denied traffic, threat detections and DNS proxy queries (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).",
               "style": "info"
             },
             "name": "firewall-logs-hint",
@@ -2565,6 +3064,64 @@
               }
             },
             "name": "firewall-threats",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AZFWDnsQuery\n| where TimeGenerated {TimeRange}\n| summarize Queries = count() by bin(TimeGenerated, {TimeRange:grain}), ResponseCode",
+              "size": 0,
+              "title": "DNS proxy queries by response code",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "firewall-dns-codes",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AZFWDnsQuery\n| where TimeGenerated {TimeRange}\n| where ResponseCode !~ 'NOERROR'\n| summarize Queries = count(), Sources = dcount(SourceIp), LastSeen = max(TimeGenerated) by QueryName, QueryType, ResponseCode\n| top 50 by Queries desc",
+              "size": 0,
+              "title": "Top failing DNS proxy queries",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failing DNS queries (or DNS proxy logs are not enabled).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "firewall-dns-failed",
             "customWidth": "50",
             "conditionalVisibility": {
               "parameterName": "Workspace",
@@ -4371,6 +4928,431 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "vpn"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "End-to-end reachability from **Network Watcher Connection Monitor** tests. The other network tabs show each component's own metrics, which can all be healthy while a route between on-premises, the hub and a spoke is broken. Tests have to exist first: create them in Network Watcher and send their results to the selected workspace.",
+              "style": "info"
+            },
+            "name": "conn-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/networkwatchers/connectionmonitors'\n| project id,\n    Endpoints = array_length(properties.endpoints),\n    TestGroups = array_length(properties.testGroups),\n    TestConfigurations = array_length(properties.testConfigurations),\n    Workspace = tostring(split(tostring(properties.outputs[0].workspaceSettings.workspaceResourceId), '/')[8]),\n    Provisioning = tostring(properties.provisioningState),\n    Location = location",
+              "size": 3,
+              "title": "Connection monitors",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No connection monitors found in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Connection monitor"
+                  },
+                  {
+                    "columnId": "TestGroups",
+                    "label": "Test groups"
+                  },
+                  {
+                    "columnId": "TestConfigurations",
+                    "label": "Test configurations"
+                  }
+                ]
+              }
+            },
+            "name": "conn-monitors"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select the **Log Analytics workspace** that receives Connection Monitor results to see test status, packet loss and latency.",
+              "style": "info"
+            },
+            "name": "conn-workspace-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize arg_max(TimeGenerated, TestResult), Checks = sum(ChecksTotal), Failed = sum(ChecksFailed),\n    AvgRttMs = round(avg(AvgRoundTripTimeMs), 1), MaxRttMs = round(max(MaxRoundTripTimeMs), 1),\n    FailedRuns = countif(TestResult == 'Fail')\n    by Monitor, TestGroupName, SourceName, DestinationName, DestinationPort, Protocol\n| summarize Tests = count() by TestResult\n| order by Tests desc",
+              "size": 3,
+              "title": "Tests by latest result",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Connection Monitor results in the selected workspace.",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "TestResult",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "TestResult",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Pass",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Warning",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Fail",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Indeterminate",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Tests",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true
+              }
+            },
+            "name": "conn-result-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize arg_max(TimeGenerated, TestResult), Checks = sum(ChecksTotal), Failed = sum(ChecksFailed),\n    AvgRttMs = round(avg(AvgRoundTripTimeMs), 1), MaxRttMs = round(max(MaxRoundTripTimeMs), 1),\n    FailedRuns = countif(TestResult == 'Fail')\n    by Monitor, TestGroupName, SourceName, DestinationName, DestinationPort, Protocol\n| project Monitor, TestGroup = TestGroupName, Source = SourceName,\n    Destination = iff(isnotempty(DestinationPort), strcat(DestinationName, ':', DestinationPort), DestinationName),\n    Protocol, TestResult, LossPct = round(100.0 * Failed / Checks, 2), AvgRttMs, MaxRttMs, FailedRuns,\n    LastResult = TimeGenerated\n| order by case(TestResult == 'Fail', 0, TestResult == 'Warning', 1, TestResult == 'Indeterminate', 2, 3) asc, LossPct desc",
+              "size": 0,
+              "title": "Tests (latest result, loss and latency over time range)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Connection Monitor results in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TestResult",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Pass",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Fail",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Indeterminate",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "LossPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "5",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 2
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "FailedRuns",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TestGroup",
+                    "label": "Test group"
+                  },
+                  {
+                    "columnId": "TestResult",
+                    "label": "Result"
+                  },
+                  {
+                    "columnId": "LossPct",
+                    "label": "Loss %"
+                  },
+                  {
+                    "columnId": "AvgRttMs",
+                    "label": "Avg RTT (ms)"
+                  },
+                  {
+                    "columnId": "MaxRttMs",
+                    "label": "Max RTT (ms)"
+                  },
+                  {
+                    "columnId": "FailedRuns",
+                    "label": "Failed runs"
+                  },
+                  {
+                    "columnId": "LastResult",
+                    "label": "Last result"
+                  }
+                ]
+              }
+            },
+            "name": "conn-results",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize LossPct = round(100.0 * sum(ChecksFailed) / sum(ChecksTotal), 2) by bin(TimeGenerated, {TimeRange:grain}), Path = strcat(SourceName, ' → ', DestinationName)",
+              "size": 0,
+              "title": "Checks failed % by path",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "conn-loss",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "NWConnectionMonitorTestResult\n| where TimeGenerated {TimeRange}\n| extend Monitor = tostring(split(ConnectionMonitorResourceId, '/')[10])\n| summarize AvgRttMs = avg(AvgRoundTripTimeMs) by bin(TimeGenerated, {TimeRange:grain}), Path = strcat(SourceName, ' → ', DestinationName)",
+              "size": 0,
+              "title": "Average round-trip time (ms) by path",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "conn-rtt",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-connectivity",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "connectivity"
       }
     },
     {
@@ -7575,6 +8557,80 @@
             "customWidth": "50"
           },
           {
+            "type": 1,
+            "content": {
+              "json": "Azure Files capacity is reported hourly, so the two charts below need a time range of at least a few hours. A share whose used capacity is close to its quota stops FSLogix profiles from growing.",
+              "style": "info"
+            },
+            "name": "storage-files-note"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbooke2f194fd-733e-5de9-bc37-fbfb7377142f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts/fileservices",
+                  "metric": "microsoft.storage/storageaccounts/fileservices--FileCapacity",
+                  "aggregation": 4,
+                  "splitBy": "FileShare",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Azure Files used capacity by share",
+              "showOpenInMe": true
+            },
+            "name": "storage-files-used",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook260aa072-5164-5430-b4b1-4f94f5d75acd",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts/fileservices",
+                  "metric": "microsoft.storage/storageaccounts/fileservices--FileShareCapacityQuota",
+                  "aggregation": 4,
+                  "splitBy": "FileShare",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Azure Files share quota by share",
+              "showOpenInMe": true
+            },
+            "name": "storage-files-quota",
+            "customWidth": "50"
+          },
+          {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
@@ -7706,6 +8762,312 @@
         "version": "NotebookGroup/1.0",
         "groupType": "editable",
         "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Expiry & retirement"
+            },
+            "name": "gov-deadlines-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend RetirementDate = todatetime(properties.extendedProperties.retirementDate)\n| summarize Resources = dcount(tolower(tostring(properties.resourceMetadata.resourceId)))\n    by Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), tostring(properties.shortDescription.problem)),\n    Action = tostring(properties.shortDescription.solution), RetirementDate, Impact = tostring(properties.impact)\n| project Retiring, RetirementDate, DaysLeft = datetime_diff('day', RetirementDate, now()), Resources, Impact, Action\n| order by RetirementDate asc",
+              "size": 0,
+              "title": "Service retirements affecting your resources (Azure Advisor)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor reports no service retirements for the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "180",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Impact",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RetirementDate",
+                    "label": "Retirement date"
+                  },
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  }
+                ]
+              }
+            },
+            "name": "gov-retirements"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| extend EventType = tostring(properties.EventType), Title = tostring(properties.Title)\n| where EventType =~ 'PlannedMaintenance' or tostring(properties.EventSubType) =~ 'Retirement' or Title contains 'retir'\n| extend Kind = iff(EventType =~ 'PlannedMaintenance', 'Planned maintenance', 'Retirement'),\n    Starts = todatetime(tolong(properties.ImpactStartTime)), Ends = todatetime(tolong(properties.ImpactMitigationTime))\n| summarize Subscriptions = dcount(subscriptionId) by Kind, Title, TrackingId = tostring(properties.TrackingId), Starts, Ends\n| order by Starts asc",
+              "size": 0,
+              "title": "Planned maintenance and retirement notices (Azure Service Health)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No active planned maintenance or retirement notices.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Kind",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Planned maintenance",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Retirement",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TrackingId",
+                    "label": "Tracking ID"
+                  }
+                ]
+              }
+            },
+            "name": "gov-scheduled",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| extend Expires = todatetime(properties.registrationInfo.expirationTime)\n| project id, Token = case(isnull(Expires), 'None', Expires < now(), 'Expired', Expires < now() + 7d, 'Expiring', 'Valid'),\n    Expires, ResourceGroup = resourceGroup, Location = location\n| order by Expires asc",
+              "size": 0,
+              "title": "AVD host pool registration tokens",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No AVD host pools found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Token",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Valid",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expiring",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "None",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Host pool"
+                  }
+                ]
+              }
+            },
+            "name": "gov-avd-tokens",
+            "customWidth": "40"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see Key Vault certificates, secrets and keys that are near expiry or expired.",
+              "style": "info"
+            },
+            "name": "gov-kv-expiry-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (AzureDiagnostics | where TimeGenerated {TimeRange} | where ResourceProvider =~ 'MICROSOFT.KEYVAULT'\n        | project TimeGenerated, OperationName, Vault = tolower(Resource), Object = column_ifexists('id_s', '')),\n    (AZKVAuditLogs | where TimeGenerated {TimeRange}\n        | project TimeGenerated, OperationName, Vault = tolower(tostring(split(_ResourceId, '/')[8])), Object = column_ifexists('Id', ''))\n| where OperationName contains 'NearExpiry' or OperationName contains 'Expired'\n| extend Kind = case(OperationName startswith 'Certificate', 'Certificate', OperationName startswith 'Secret', 'Secret',\n        OperationName startswith 'Key', 'Key', 'Other'),\n    State = iff(OperationName contains 'NearExpiry', 'Near expiry', 'Expired')\n| summarize LastSeen = max(TimeGenerated) by Vault, Kind, Object, State\n| order by State asc, LastSeen desc",
+              "size": 0,
+              "title": "Key Vault certificates, secrets and keys near expiry or expired",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No expiry events in the time range. Key Vault reports near-expiry once, about 30 days ahead, so use a 30-day time range; vaults must send audit logs to this workspace.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Near expiry",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Reported"
+                  }
+                ]
+              }
+            },
+            "name": "gov-kv-expiry",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
           {
             "type": 1,
             "content": {
@@ -8013,6 +9375,265 @@
               }
             },
             "name": "gov-recs"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Patch compliance (Azure Update Manager)"
+            },
+            "name": "gov-patch-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not assess Uniform scale set instances. Machines show as *Not assessed* until periodic assessment is turned on.",
+              "style": "info"
+            },
+            "name": "gov-patch-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n| project id = tolower(id),\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),\n    PatchMode = coalesce(tostring(properties.osProfile.windowsConfiguration.patchSettings.patchMode),\n        tostring(properties.osProfile.linuxConfiguration.patchSettings.patchMode)),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    patchassessmentresources\n    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        Assessment = tostring(properties.status),\n        Assessed = todatetime(properties.lastModifiedDateTime),\n        RebootPending = tostring(properties.rebootPending),\n        Critical = coalesce(toint(c.critical), 0), Security = coalesce(toint(c.security), 0),\n        Other = coalesce(toint(c.updateRollup), 0) + coalesce(toint(c.featurePack), 0) + coalesce(toint(c.servicePack), 0)\n            + coalesce(toint(c.definition), 0) + coalesce(toint(c.tools), 0) + coalesce(toint(c.updates), 0)\n            + coalesce(toint(c.other), 0)\n  ) on id\n| project-away id1\n| extend Assessment = case(isempty(Assessment), 'Not assessed', Assessed < ago(7d), 'Stale', Assessment)\n| summarize Machines = count(), Pending = countif(Critical > 0 or Security > 0),\n    Reboot = countif(RebootPending =~ 'true'), Unknown = countif(Assessment in ('Not assessed', 'Stale'))\n| extend rows = pack_array(\n    pack('Signal', 'Critical or security patches pending', 'Value', Pending, 'State', iff(Pending > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Reboot pending', 'Value', Reboot, 'State', iff(Reboot > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Not assessed in the last 7 days', 'Value', Unknown, 'State', iff(Unknown > 0, 'Unknown', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),\n    Detail = strcat('of ', Machines, ' machines')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "gov-patch-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n| project id = tolower(id),\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),\n    PatchMode = coalesce(tostring(properties.osProfile.windowsConfiguration.patchSettings.patchMode),\n        tostring(properties.osProfile.linuxConfiguration.patchSettings.patchMode)),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    patchassessmentresources\n    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        Assessment = tostring(properties.status),\n        Assessed = todatetime(properties.lastModifiedDateTime),\n        RebootPending = tostring(properties.rebootPending),\n        Critical = coalesce(toint(c.critical), 0), Security = coalesce(toint(c.security), 0),\n        Other = coalesce(toint(c.updateRollup), 0) + coalesce(toint(c.featurePack), 0) + coalesce(toint(c.servicePack), 0)\n            + coalesce(toint(c.definition), 0) + coalesce(toint(c.tools), 0) + coalesce(toint(c.updates), 0)\n            + coalesce(toint(c.other), 0)\n  ) on id\n| project-away id1\n| extend Assessment = case(isempty(Assessment), 'Not assessed', Assessed < ago(7d), 'Stale', Assessment)\n| project id, OS, Assessment, Assessed, Critical, Security, Other, RebootPending, PatchMode, ResourceGroup\n| order by Critical desc, Security desc, case(Assessment == 'Succeeded', 1, 0) asc",
+              "size": 0,
+              "title": "Pending patches by machine",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines or Arc-enabled servers found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Critical",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Security",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Assessment",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stale",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "CompletedWithWarnings",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not assessed",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "InProgress",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "RebootPending",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Machine"
+                  },
+                  {
+                    "columnId": "RebootPending",
+                    "label": "Reboot pending"
+                  },
+                  {
+                    "columnId": "PatchMode",
+                    "label": "Patch mode"
+                  }
+                ]
+              }
+            },
+            "name": "gov-patch"
           },
           {
             "type": 1,
@@ -8384,6 +10005,171 @@
               "comparison": "isNotEqualTo",
               "value": ""
             }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Alerting coverage"
+            },
+            "name": "mgmt-alerting-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by **inheritance** from a metric rule scoped to its resource group or subscription that targets its type. Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped to a subscription can't be tied to one resource, so they aren't counted. A rule with no action group may still notify through an alert processing rule.",
+              "style": "info"
+            },
+            "name": "mgmt-alerting-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{BuildAgentPattern}'\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| extend rid = tolower(id), rtype = tolower(type), sub = tolower(strcat('/subscriptions/', subscriptionId))\n| extend scopeKey = pack_array(rid, strcat(sub, '/resourcegroups/', tolower(resourceGroup)), sub)\n| mv-expand scopeKey\n| extend scopeKey = tostring(scopeKey)\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules')\n    | where tobool(properties.enabled)\n    | mv-expand scope = properties.scopes\n    | project scopeKey = tolower(tostring(scope)), ruleId = tolower(id),\n        targetType = tolower(tostring(properties.targetResourceType))\n  ) on scopeKey\n| summarize DirectRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey == rid),\n    InheritedRules = dcountif(ruleId, isnotempty(ruleId) and scopeKey != rid and targetType == rtype)\n    by id = rid, Service, ResourceGroup = resourceGroup\n| extend Coverage = case(DirectRules > 0, 'Direct', InheritedRules > 0, 'Inherited', 'None')\n| project id, Service, Coverage, DirectRules, InheritedRules, ResourceGroup\n| order by case(Coverage == 'None', 0, Coverage == 'Inherited', 1, 2) asc, Service asc",
+              "size": 0,
+              "title": "Platform resources by alert rule coverage",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No platform resources found in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Coverage",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Direct",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Inherited",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "None",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "DirectRules",
+                    "label": "Direct rules"
+                  },
+                  {
+                    "columnId": "InheritedRules",
+                    "label": "Inherited rules"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-alert-coverage",
+            "customWidth": "55"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules', 'microsoft.insights/activitylogalerts')\n| extend Enabled = tobool(properties.enabled),\n    ActionGroups = coalesce(array_length(properties.actions.actionGroups), array_length(properties.actions),\n        array_length(properties.action.aznsAction.actionGroup), 0)\n| where not(Enabled) or ActionGroups == 0\n| project id,\n    Kind = case(type =~ 'microsoft.insights/metricalerts', 'Metric',\n        type =~ 'microsoft.insights/scheduledqueryrules', 'Log search', 'Activity log'),\n    Problem = case(not(Enabled) and ActionGroups == 0, 'Disabled, no action group', not(Enabled), 'Disabled', 'No action group'),\n    Severity = iff(isnull(properties.severity), '', strcat('Sev', tostring(properties.severity))),\n    Scopes = array_length(properties.scopes),\n    ResourceGroup = resourceGroup\n| order by Problem asc, Kind asc",
+              "size": 0,
+              "title": "Alert rules that are disabled or have no action group",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every alert rule is enabled and has an action group.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Problem",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No action group",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled, no action group",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Alert rule"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-alert-silent",
+            "customWidth": "45"
           },
           {
             "type": 1,
@@ -8768,6 +10554,281 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "management"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Azure Firewall), circuit utilisation (ExpressRoute), Private DNS zone limits (Shared Services), vSAN (Azure VMware Solution) and Azure Files share quota (Storage).",
+              "style": "info"
+            },
+            "name": "cap-intro"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Compute quotas"
+            },
+            "name": "cap-compute-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "quotaresources\n| where type =~ 'microsoft.compute/locations/usages'\n| mv-expand q = properties.value limit 400\n| extend Quota = tostring(q.name.localizedValue), Used = tolong(q.currentValue), Limit = tolong(q['limit'])\n| where Used > 0 and Limit > 0\n| extend UsedPct = round(100.0 * Used / Limit, 1)\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Subscription = coalesce(Subscription, subscriptionId), Region = location, Quota, Used, Limit, UsedPct\n| order by UsedPct desc",
+              "size": 0,
+              "title": "vCPU and compute quotas in use, by subscription and region",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No compute quota is in use in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "UsedPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "UsedPct",
+                    "label": "Used %"
+                  }
+                ]
+              }
+            },
+            "name": "cap-compute-quota"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Network quotas"
+            },
+            "name": "cap-network-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Network usage is not in Resource Graph, so this reads it from Azure Resource Manager for one subscription and region at a time.",
+              "style": "info"
+            },
+            "name": "cap-network-note"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "7a7a16e3-57f6-56a6-b29f-da7aaee2442e",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "QuotaSubscription",
+                  "label": "Subscription",
+                  "type": 6,
+                  "isRequired": true,
+                  "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::1"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::1",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "a9de8e35-ce37-55fd-a283-3fa42c9c482b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "QuotaRegion",
+                  "label": "Region",
+                  "type": 2,
+                  "isRequired": true,
+                  "query": "resources\n| where type in~ ('microsoft.network/virtualhubs', 'microsoft.network/virtualnetworks')\n| summarize Resources = count() by location\n| order by Resources desc\n| project value = location, label = location",
+                  "crossComponentResources": [
+                    "{QuotaSubscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::1"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::1",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "cap-network-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{QuotaSubscription}/providers/Microsoft.Network/locations/{QuotaRegion}/usages\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-09-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name.localizedValue\", \"columnid\": \"Quota\"}, {\"path\": \"$.currentValue\", \"columnid\": \"Used\", \"columnType\": \"long\"}, {\"path\": \"$.limit\", \"columnid\": \"Limit\", \"columnType\": \"long\"}]}}]}",
+              "size": 0,
+              "title": "Network quotas (public IPs, VNets, route tables, private endpoints...)",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "Used",
+                    "sortOrder": 2
+                  }
+                ]
+              },
+              "noDataMessage": "No network usage returned for this subscription and region."
+            },
+            "name": "cap-network-quota"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Subnet address space"
+            },
+            "name": "cap-subnets-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Used* counts the IP configurations attached to each subnet (NICs, private endpoints, load balancer front ends). Application Gateway instances and delegated services such as SQL Managed Instance take addresses that are not counted, and Virtual WAN hubs do not expose their address usage at all.",
+              "style": "info"
+            },
+            "name": "cap-subnets-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand subnet = properties.subnets limit 400\n| extend Prefix = coalesce(tostring(subnet.properties.addressPrefix), tostring(subnet.properties.addressPrefixes[0]))\n| where isnotempty(Prefix) and Prefix !contains ':'\n| extend Usable = tolong(pow(2, 32 - toint(split(Prefix, '/')[1]))) - 5,\n    Used = coalesce(array_length(subnet.properties.ipConfigurations), 0)\n| where Usable > 0\n| project id, Subnet = tostring(subnet.name), Prefix, Used, Usable, UsedPct = round(100.0 * Used / Usable, 1),\n    Delegation = tostring(subnet.properties.delegations[0].properties.serviceName),\n    ResourceGroup = resourceGroup\n| order by UsedPct desc",
+              "size": 0,
+              "title": "Subnets by address utilisation",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual network subnets found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "UsedPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Virtual network"
+                  },
+                  {
+                    "columnId": "UsedPct",
+                    "label": "Used %"
+                  }
+                ]
+              }
+            },
+            "name": "cap-subnets"
+          }
+        ]
+      },
+      "name": "tab-capacity",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "capacity"
       }
     },
     {
