@@ -7506,6 +7506,433 @@
           {
             "type": 1,
             "content": {
+              "json": "### Microsoft Entra ID"
+            },
+            "name": "identity-entra-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select the **Log Analytics workspace** that receives the Entra ID diagnostic logs to see sign-ins, Conditional Access results, risky users and directory changes.",
+              "style": "info"
+            },
+            "name": "identity-entra-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\n| where TimeGenerated {TimeRange}\n| summarize SignIns = count(), Users = dcount(UserPrincipalName),\n    Failed = countif(ResultType != '0'), FailedUsers = dcountif(UserPrincipalName, ResultType != '0'),\n    Blocked = countif(ConditionalAccessStatus =~ 'failure'),\n    Risky = countif(RiskLevelDuringSignIn in~ ('medium', 'high')),\n    Mfa = countif(AuthenticationRequirement =~ 'multiFactorAuthentication')\n| extend rows = pack_array(\n    pack('Signal', 'Interactive sign-ins', 'Value', SignIns, 'Detail', strcat(Users, ' users')),\n    pack('Signal', 'Not successful', 'Value', Failed,\n        'Detail', strcat(round(100.0 * Failed / SignIns, 1), '% of sign-ins · ', FailedUsers, ' users')),\n    pack('Signal', 'Blocked by Conditional Access', 'Value', Blocked, 'Detail', 'policy result: failure'),\n    pack('Signal', 'Risky sign-ins', 'Value', Risky, 'Detail', 'medium or high risk'),\n    pack('Signal', 'Multifactor sign-ins', 'Value', Mfa, 'Detail', strcat(round(100.0 * Mfa / SignIns, 0), '% of sign-ins')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = tolong(r.Value), Detail = tostring(r.Detail)",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No interactive sign-ins in the time range (or Entra ID sign-in logs are not sent to this workspace).",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                },
+                "showBorder": true
+              }
+            },
+            "name": "identity-entra-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\n| where TimeGenerated {TimeRange}\n| summarize SignIns = count()\n    by bin(TimeGenerated, {TimeRange:grain}), Result = iff(ResultType == '0', 'Success', 'Not successful')",
+              "size": 0,
+              "title": "Interactive sign-ins by result",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "identity-signins",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\n| where TimeGenerated {TimeRange}\n| where ResultType != '0'\n| summarize SignIns = count(), Users = dcount(UserPrincipalName), LastSeen = max(TimeGenerated)\n    by ResultType, Reason = ResultDescription\n| top 25 by SignIns desc",
+              "size": 0,
+              "title": "Top reasons a sign-in did not succeed",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "Every sign-in in the time range succeeded.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ResultType",
+                    "label": "Code"
+                  },
+                  {
+                    "columnId": "SignIns",
+                    "label": "Sign-ins"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "identity-signin-failures",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SigninLogs\n| where TimeGenerated {TimeRange}\n| mv-expand policy = todynamic(tostring(ConditionalAccessPolicies))\n| where tostring(policy.result) =~ 'failure'\n| summarize Blocked = count(), Users = dcount(UserPrincipalName), LastSeen = max(TimeGenerated)\n    by Policy = tostring(policy.displayName)\n| top 25 by Blocked desc",
+              "size": 0,
+              "title": "Conditional Access policies blocking sign-ins",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No sign-ins were blocked by Conditional Access.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "identity-ca-policies",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, ResultType:string, ResultDescription:string, ServicePrincipalName:string, AppId:string)[]),\n    (AADServicePrincipalSignInLogs)\n| where TimeGenerated {TimeRange}\n| where ResultType != '0'\n| summarize Failures = count(), LastSeen = max(TimeGenerated), Error = take_any(substring(ResultDescription, 0, 200))\n    by ServicePrincipal = ServicePrincipalName, AppId, ResultType\n| extend Cause = case(ResultType == '7000222', 'Client secret expired', ResultType == '7000215', 'Invalid client secret', '')\n| project ServicePrincipal, Failures, Cause, ResultType, Error, LastSeen, AppId\n| top 25 by Failures desc",
+              "size": 0,
+              "title": "Service principals failing to sign in",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed service principal sign-ins (or those logs are not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Cause",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Client secret expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Invalid client secret",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ServicePrincipal",
+                    "label": "Service principal"
+                  },
+                  {
+                    "columnId": "ResultType",
+                    "label": "Code"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  },
+                  {
+                    "columnId": "AppId",
+                    "label": "App ID"
+                  }
+                ]
+              }
+            },
+            "name": "identity-sp-failures",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, UserPrincipalName:string, RiskLevel:string, RiskState:string, RiskDetail:string)[]),\n    (AADRiskyUsers)\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, RiskLevel, RiskState, RiskDetail) by UserPrincipalName\n| where RiskState in~ ('atRisk', 'confirmedCompromised')\n| project User = UserPrincipalName, RiskLevel, RiskState, RiskDetail, Updated = TimeGenerated\n| order by case(RiskLevel =~ 'high', 0, RiskLevel =~ 'medium', 1, 2) asc, Updated desc",
+              "size": 0,
+              "title": "Users at risk (risk changed in time range)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No users at risk (or risky user logs are not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "RiskLevel",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "high",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "none",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "hidden",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RiskLevel",
+                    "label": "Risk level"
+                  },
+                  {
+                    "columnId": "RiskState",
+                    "label": "Risk state"
+                  },
+                  {
+                    "columnId": "RiskDetail",
+                    "label": "Risk detail"
+                  }
+                ]
+              }
+            },
+            "name": "identity-risky-users",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AuditLogs\n| where TimeGenerated {TimeRange}\n| where Category in ('RoleManagement', 'Policy')\n    or OperationName has_any ('certificates and secrets', 'consent', 'owner')\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| summarize Changes = count(), Actors = dcount(Actor), (LastSeen, LastActor) = arg_max(TimeGenerated, Actor)\n    by Category, Operation = OperationName, Result\n| project Category, Operation, Result, Changes, Actors, LastActor, LastSeen\n| top 40 by Changes desc",
+              "size": 0,
+              "title": "Role, policy, credential and consent changes",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No role, policy, credential or consent changes in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Result",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "failure",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastActor",
+                    "label": "Last changed by"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "identity-directory-changes",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "These panels read the Entra ID diagnostic logs: `SigninLogs`, `AuditLogs`, `AADServicePrincipalSignInLogs` and `AADRiskyUsers`. A sign-in that is *not successful* includes interrupted ones, such as a prompt for multifactor authentication, as well as real failures; the reasons table tells them apart. Non-interactive sign-ins are not counted.",
+              "style": "info"
+            },
+            "name": "identity-entra-note",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "Domain controller virtual machines are found by **name** using the *Domain controller name pattern* parameter at the top. A managed domain in Microsoft Entra Domain Services is listed without it.",
               "style": "info"
             },

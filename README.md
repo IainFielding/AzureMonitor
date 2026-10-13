@@ -22,7 +22,7 @@ Built for a **Virtual WAN** based landing zone.
 | VPN | Metrics, Logs* | vWAN S2S & P2S gateways, VPN sites, connections, tunnel bandwidth, BGP status, drops, tunnel events* |
 | Connectivity | Resource Graph, Logs* | Network Watcher connection monitors, latest result per test*, packet loss and round-trip time by path* |
 | Shared Services | Resource Graph, Metrics | Bastion, DDoS coverage & attacks, DNS Private Resolver, Private DNS zone limits/links, private endpoint connection and DNS state, duplicate Private Link zones, Key Vault health |
-| Identity | Resource Graph, Metrics, Logs* | Entra Domain Services replica sets and health alerts, domain controller VMs (health, power, pending patches), CPU and memory, heartbeats*, directory/replication/DNS errors*, failed logons and lockouts* |
+| Identity | Resource Graph, Metrics, Logs* | Entra ID sign-ins, failure reasons, Conditional Access blocks, failing service principals, users at risk and directory changes*, Entra Domain Services replica sets and health alerts, domain controller VMs (health, power, pending patches), CPU and memory, heartbeats*, directory/replication/DNS errors*, failed logons and lockouts* |
 | Build Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
 | AVS (Azure VMware Solution) | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
 | AVD (Azure Virtual Desktop) | Resource Graph, Logs* | Host pools, session host status, sessions/users, connection RTT, connection success rate, time to sign in, logon time by stage, sessions by host pool, top errors |
@@ -35,6 +35,7 @@ Built for a **Virtual WAN** based landing zone.
 \* Log panels appear once a **Log Analytics workspace** is selected, and need the matching diagnostic
 settings (`AZFW*` resource-specific firewall tables, VPN `TunnelDiagnosticLog`, AVD `WVD*` tables,
 Connection Monitor `NWConnectionMonitorTestResult`, Key Vault audit logs, the subscription activity log (`AzureActivity`),
+Entra ID sign-in, audit, service principal sign-in and risky user logs,
 Windows event logs and security events from domain controllers,
 Azure Monitor Agent / VM insights on build agents).
 

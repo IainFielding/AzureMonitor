@@ -1407,7 +1407,105 @@ SecurityEvent
 | extend Event = case(EventID == 4740, 'Account locked out', EventID == 4771, 'Kerberos pre-authentication failed', 'Logon failed')
 | summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), Event
 """
+    signins = "SigninLogs\n| where TimeGenerated {TimeRange}\n"
+    entra_tiles_q = signins + """| summarize SignIns = count(), Users = dcount(UserPrincipalName),
+    Failed = countif(ResultType != '0'), FailedUsers = dcountif(UserPrincipalName, ResultType != '0'),
+    Blocked = countif(ConditionalAccessStatus =~ 'failure'),
+    Risky = countif(RiskLevelDuringSignIn in~ ('medium', 'high')),
+    Mfa = countif(AuthenticationRequirement =~ 'multiFactorAuthentication')
+| extend rows = pack_array(
+    pack('Signal', 'Interactive sign-ins', 'Value', SignIns, 'Detail', strcat(Users, ' users')),
+    pack('Signal', 'Not successful', 'Value', Failed,
+        'Detail', strcat(round(100.0 * Failed / SignIns, 1), '% of sign-ins · ', FailedUsers, ' users')),
+    pack('Signal', 'Blocked by Conditional Access', 'Value', Blocked, 'Detail', 'policy result: failure'),
+    pack('Signal', 'Risky sign-ins', 'Value', Risky, 'Detail', 'medium or high risk'),
+    pack('Signal', 'Multifactor sign-ins', 'Value', Mfa, 'Detail', strcat(round(100.0 * Mfa / SignIns, 0), '% of sign-ins')))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = tolong(r.Value), Detail = tostring(r.Detail)
+"""
+    signin_results_q = signins + """| summarize SignIns = count()
+    by bin(TimeGenerated, {TimeRange:grain}), Result = iff(ResultType == '0', 'Success', 'Not successful')
+"""
+    signin_failures_q = signins + """| where ResultType != '0'
+| summarize SignIns = count(), Users = dcount(UserPrincipalName), LastSeen = max(TimeGenerated)
+    by ResultType, Reason = ResultDescription
+| top 25 by SignIns desc
+"""
+    ca_policies_q = signins + """| mv-expand policy = todynamic(tostring(ConditionalAccessPolicies))
+| where tostring(policy.result) =~ 'failure'
+| summarize Blocked = count(), Users = dcount(UserPrincipalName), LastSeen = max(TimeGenerated)
+    by Policy = tostring(policy.displayName)
+| top 25 by Blocked desc
+"""
+    # The empty datatable keeps these two queries valid in a workspace that does not receive the table.
+    sp_failures_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, ResultType:string, ResultDescription:string, ServicePrincipalName:string, AppId:string)[]),
+    (AADServicePrincipalSignInLogs)
+| where TimeGenerated {TimeRange}
+| where ResultType != '0'
+| summarize Failures = count(), LastSeen = max(TimeGenerated), Error = take_any(substring(ResultDescription, 0, 200))
+    by ServicePrincipal = ServicePrincipalName, AppId, ResultType
+| extend Cause = case(ResultType == '7000222', 'Client secret expired', ResultType == '7000215', 'Invalid client secret', '')
+| project ServicePrincipal, Failures, Cause, ResultType, Error, LastSeen, AppId
+| top 25 by Failures desc
+"""
+    risky_users_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, UserPrincipalName:string, RiskLevel:string, RiskState:string, RiskDetail:string)[]),
+    (AADRiskyUsers)
+| where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, RiskLevel, RiskState, RiskDetail) by UserPrincipalName
+| where RiskState in~ ('atRisk', 'confirmedCompromised')
+| project User = UserPrincipalName, RiskLevel, RiskState, RiskDetail, Updated = TimeGenerated
+| order by case(RiskLevel =~ 'high', 0, RiskLevel =~ 'medium', 1, 2) asc, Updated desc
+"""
+    directory_changes_q = """
+AuditLogs
+| where TimeGenerated {TimeRange}
+| where Category in ('RoleManagement', 'Policy')
+    or OperationName has_any ('certificates and secrets', 'consent', 'owner')
+| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))
+| summarize Changes = count(), Actors = dcount(Actor), (LastSeen, LastActor) = arg_max(TimeGenerated, Actor)
+    by Category, Operation = OperationName, Result
+| project Category, Operation, Result, Changes, Actors, LastActor, LastSeen
+| top 40 by Changes desc
+"""
+    entra_tiles = {
+        "titleContent": {"columnMatch": "Signal", "formatter": 1},
+        "rightContent": {"columnMatch": "Value", "formatter": 12, "formatOptions": {"palette": "none"}},
+        "secondaryContent": {"columnMatch": "Detail", "formatter": 1},
+        "showBorder": True,
+    }
     return group("tab-identity", [
+        text("identity-entra-h", "### Microsoft Entra ID"),
+        text("identity-entra-hint", "Select the **Log Analytics workspace** that receives the Entra ID diagnostic "
+             "logs to see sign-ins, Conditional Access results, risky users and directory changes.", "info",
+             visible_when=WORKSPACE_UNSET),
+        la("identity-entra-tiles", "", entra_tiles_q, vis="tiles", tiles=entra_tiles,
+           no_data="No interactive sign-ins in the time range (or Entra ID sign-in logs are not sent to this workspace)."),
+        la("identity-signins", "Interactive sign-ins by result", signin_results_q, vis="timechart", width=50),
+        la("identity-signin-failures", "Top reasons a sign-in did not succeed", signin_failures_q, width=50,
+           labels={"ResultType": "Code", "SignIns": "Sign-ins", "LastSeen": "Last seen"},
+           no_data="Every sign-in in the time range succeeded."),
+        la("identity-ca-policies", "Conditional Access policies blocking sign-ins", ca_policies_q, width=50,
+           labels={"LastSeen": "Last seen"}, no_data="No sign-ins were blocked by Conditional Access."),
+        la("identity-sp-failures", "Service principals failing to sign in", sp_failures_q, width=50,
+           formatters=[status_fmt("Cause", bad=["Client secret expired", "Invalid client secret"])],
+           labels={"ServicePrincipal": "Service principal", "ResultType": "Code", "LastSeen": "Last seen", "AppId": "App ID"},
+           no_data="No failed service principal sign-ins (or those logs are not sent to this workspace)."),
+        la("identity-risky-users", "Users at risk (risk changed in time range)", risky_users_q, width=50,
+           formatters=[status_fmt("RiskLevel", warn=["medium"], bad=["high"], neutral=["low", "none", "hidden"])],
+           labels={"RiskLevel": "Risk level", "RiskState": "Risk state", "RiskDetail": "Risk detail"},
+           no_data="No users at risk (or risky user logs are not sent to this workspace)."),
+        la("identity-directory-changes", "Role, policy, credential and consent changes", directory_changes_q, width=50,
+           formatters=[status_fmt("Result", good=["success"], bad=["failure"])],
+           labels={"LastActor": "Last changed by", "LastSeen": "Last seen"},
+           no_data="No role, policy, credential or consent changes in the time range."),
+        text("identity-entra-note", "These panels read the Entra ID diagnostic logs: `SigninLogs`, `AuditLogs`, "
+             "`AADServicePrincipalSignInLogs` and `AADRiskyUsers`. A sign-in that is *not successful* includes "
+             "interrupted ones, such as a prompt for multifactor authentication, as well as real failures; the "
+             "reasons table tells them apart. Non-interactive sign-ins are not counted.", "info", visible_when=WORKSPACE_SET),
         text("identity-intro",
              "Domain controller virtual machines are found by **name** using the *Domain controller name pattern* "
              "parameter at the top. A managed domain in Microsoft Entra Domain Services is listed without it.", "info"),
