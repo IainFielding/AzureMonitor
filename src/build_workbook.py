@@ -202,7 +202,7 @@ def m(namespace, metric, agg, split=None, limit=10):
 
 
 def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=None, labels=None,
-            width=None, size=0):
+            width=None, size=0, tiles=None, visible_when=None):
     content = {
         "chartId": "workbook" + gid(name),
         "version": "MetricsItem/2.0",
@@ -229,9 +229,14 @@ def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=
                               for k, v in {**(labels or {}), **timeline_labels, "Name": "Resource"}.items()],
             "filter": True,
         }
+    if tiles:
+        # One tile per resource and metric; the rows carry Metric, Value, Timeline and Name (the resource).
+        content.update({"chartType": -1, "gridFormatType": 1, "tileSettings": tiles, "size": 4})
     item = {"type": 10, "content": content, "name": name}
     if width:
         item["customWidth"] = str(width)
+    if visible_when:
+        item["conditionalVisibility"] = visible_when
     return item
 
 
@@ -525,6 +530,22 @@ def state_tiles(title_col, state_col, value_col, detail_col=None):
     return t
 
 
+def metric_tiles(warn, crit):
+    """Tile layout for a percentage metric where higher is worse: status icon, value, resource and trend."""
+    return {
+        "titleContent": {"columnMatch": "Metric", "formatter": 1},
+        "subtitleContent": {"columnMatch": "Name", "formatter": 13,
+                            "formatOptions": {"linkTarget": "Resource", "showIcon": False}},
+        "leftContent": {"columnMatch": "Value", "formatter": 18, "formatOptions": _icons([
+            _t(">=", str(crit), "4", ICON_ONLY), _t(">=", str(warn), "2", ICON_ONLY),
+            _t("Default", None, "success", ICON_ONLY)])},
+        "rightContent": {"columnMatch": "Value", "formatter": 12, "formatOptions": {"palette": "none"},
+                         "numberFormat": {"unit": 1, "options": {"style": "decimal", "maximumFractionDigits": 0}}},
+        "secondaryContent": {"columnMatch": "Timeline", "formatter": 21, "formatOptions": {"palette": "blue"}},
+        "showBorder": True,
+    }
+
+
 def overview_tab():
     summary_q = Q_INVENTORY_HEALTH + """
 | summarize Total = count(),
@@ -615,6 +636,15 @@ healthresourcechanges
 | order by Time desc
 | take 500
 """
+    avs = "microsoft.avs/privateclouds"
+    avs_found = {"parameterName": "OvPrivateClouds", "comparison": "isNotEqualTo", "value": ""}
+    avs_clouds_q = Q_AVS + """
+| extend provisioning = tostring(properties.provisioningState)
+| summarize Clouds = count(), Hosts = sum(toint(properties.managementCluster.clusterSize)),
+    Failed = countif(provisioning =~ 'Failed'), Busy = countif(provisioning !in~ ('Succeeded', 'Failed'))
+| project Signal = 'Private clouds', Value = Clouds, Detail = strcat(Hosts, ' management cluster hosts'),
+    State = case(Failed > 0, 'Unavailable', Busy > 0, 'Degraded', 'Available')
+"""
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -630,6 +660,17 @@ healthresourcechanges
               width=GLANCE_WIDTH) for key, unit, q in GOVERNANCE_TILES],
         arg("overview-tiles", "Platform services", summary_q, vis="tiles", tiles=service_tiles,
             no_data="No platform resources found in the selected subscriptions."),
+        # The AVS tab's own picker is not evaluated while that tab is hidden, so the Overview has its own.
+        params("overview-avs-params", [resource_param("OvPrivateClouds", "AVS private clouds", Q_AVS, hidden_when_locked=True)]),
+        text("overview-avs-h", "### Azure VMware Solution at a glance", visible_when=avs_found),
+        arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
+            tiles=big_number_tiles("Signal", "State", "Value", "Detail"), width=GLANCE_WIDTH, visible_when=avs_found),
+        metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
+                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+        metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
+                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+        metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
+                tiles=metric_tiles(70, 75), width=GLANCE_WIDTH, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
