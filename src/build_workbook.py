@@ -1990,6 +1990,21 @@ authorizationresources
     Role, Users, Groups, ServicePrincipals
 | order by case(ScopeLevel == 'Tenant root', 0, ScopeLevel == 'Management group', 1, 2) asc, Scope asc, Role asc
 """
+    defender_plans = """
+securityresources
+| where type =~ 'microsoft.security/pricings'
+| where not(tobool(properties.deprecated))
+| extend isOn = tostring(properties.pricingTier) =~ 'Standard'
+"""
+    plan_coverage_q = defender_plans + "| summarize PlansOn = countif(isOn), PlansOff = countif(not(isOn)) by subscriptionId" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), PlansOn, PlansOff,
+    CoveragePct = round(100.0 * PlansOn / (PlansOn + PlansOff), 0)
+| order by CoveragePct asc
+"""
+    plans_off_q = defender_plans + "| where not(isOn)" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), Plan = name
+| order by Subscription asc, Plan asc
+"""
     return group("tab-security", [
         text("sec-defender-h", "### Microsoft Defender for Cloud"),
         arg("sec-score", "Secure score by subscription", score_q,
@@ -1997,6 +2012,11 @@ authorizationresources
         arg("sec-controls", "Security controls with unhealthy resources", controls_q, width=60),
         arg("sec-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
         arg("sec-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
+        arg("sec-plan-coverage", "Defender plans by subscription", plan_coverage_q,
+            formatters=[high_is_good("CoveragePct", 100, 50, digits=0)],
+            labels={"PlansOn": "Plans on", "PlansOff": "Plans off", "CoveragePct": "Plans on %"}, width=40),
+        arg("sec-plans-off", "Defender plans switched off", plans_off_q, group_by="Subscription",
+            no_data="Every Defender plan is on in every selected subscription.", width=60),
         text("sec-privileged-h", "### Privileged access"),
         arg("sec-privileged-tiles", "", privileged_tiles_q, vis="tiles",
             tiles=big_number_tiles("Signal", "State", "Value", "Detail")),

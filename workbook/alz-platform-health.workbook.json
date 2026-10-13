@@ -12126,6 +12126,107 @@
             "name": "sec-recs"
           },
           {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/pricings'\n| where not(tobool(properties.deprecated))\n| extend isOn = tostring(properties.pricingTier) =~ 'Standard'\n| summarize PlansOn = countif(isOn), PlansOff = countif(not(isOn)) by subscriptionId\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Subscription = coalesce(Subscription, subscriptionId), PlansOn, PlansOff,\n    CoveragePct = round(100.0 * PlansOn / (PlansOn + PlansOff), 0)\n| order by CoveragePct asc",
+              "size": 0,
+              "title": "Defender plans by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CoveragePct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "50",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "100",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "PlansOn",
+                    "label": "Plans on"
+                  },
+                  {
+                    "columnId": "PlansOff",
+                    "label": "Plans off"
+                  },
+                  {
+                    "columnId": "CoveragePct",
+                    "label": "Plans on %"
+                  }
+                ]
+              }
+            },
+            "name": "sec-plan-coverage",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/pricings'\n| where not(tobool(properties.deprecated))\n| extend isOn = tostring(properties.pricingTier) =~ 'Standard'\n| where not(isOn)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Subscription = coalesce(Subscription, subscriptionId), Plan = name\n| order by Subscription asc, Plan asc",
+              "size": 0,
+              "title": "Defender plans switched off",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every Defender plan is on in every selected subscription.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Subscription"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "sec-plans-off",
+            "customWidth": "60"
+          },
+          {
             "type": 1,
             "content": {
               "json": "### Privileged access"
