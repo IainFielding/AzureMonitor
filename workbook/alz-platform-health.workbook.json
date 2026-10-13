@@ -2707,7 +2707,297 @@
           {
             "type": 1,
             "content": {
-              "json": "Select a **Log Analytics workspace** at the top to see denied traffic and threat detections (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).",
+              "json": "### Firewall policy"
+            },
+            "name": "firewall-policy-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/firewallpolicies'\n| extend Tier = tostring(properties.sku.tier)\n| project id = tolower(id), Tier,\n    ThreatIntel = tostring(properties.threatIntelMode),\n    Idps = iff(Tier =~ 'Premium', coalesce(tostring(properties.intrusionDetection.mode), 'Off'), 'n/a'),\n    TlsInspection = case(Tier !~ 'Premium', 'n/a',\n        isnotempty(tostring(properties.transportSecurity.certificateAuthority.keyVaultSecretId)), 'Yes', 'No'),\n    DnsProxy = coalesce(tostring(properties.dnsSettings.enableProxy), 'false'),\n    Firewalls = coalesce(array_length(properties.firewalls), 0),\n    ParentPolicy = tostring(split(tostring(properties.basePolicy.id), '/')[8]),\n    RuleCollectionGroups = coalesce(array_length(properties.ruleCollectionGroups), 0),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/firewallpolicies/rulecollectiongroups'\n    | mv-expand rc = properties.ruleCollections limit 400\n    | summarize RuleCollections = count(), Rules = sum(array_length(rc.rules))\n        by id = tostring(split(tolower(id), '/rulecollectiongroups/')[0])\n  ) on id\n| project id, Tier, ThreatIntel, Idps, TlsInspection, DnsProxy, Firewalls, ParentPolicy, RuleCollectionGroups,\n    RuleCollections = coalesce(RuleCollections, 0), Rules = coalesce(Rules, 0), Provisioning, ResourceGroup",
+              "size": 0,
+              "title": "Firewall policies",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No firewall policies found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ThreatIntel",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deny",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Idps",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deny",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "n/a",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "TlsInspection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "n/a",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "DnsProxy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Firewalls",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Policy"
+                  },
+                  {
+                    "columnId": "ThreatIntel",
+                    "label": "Threat intel"
+                  },
+                  {
+                    "columnId": "Idps",
+                    "label": "IDPS"
+                  },
+                  {
+                    "columnId": "TlsInspection",
+                    "label": "TLS inspection"
+                  },
+                  {
+                    "columnId": "DnsProxy",
+                    "label": "DNS proxy"
+                  },
+                  {
+                    "columnId": "ParentPolicy",
+                    "label": "Parent policy"
+                  },
+                  {
+                    "columnId": "RuleCollectionGroups",
+                    "label": "Rule collection groups"
+                  },
+                  {
+                    "columnId": "RuleCollections",
+                    "label": "Rule collections"
+                  }
+                ]
+              }
+            },
+            "name": "firewall-policies"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A policy attached to no firewall is flagged. Rule counts are totals across the policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on the Governance & Security tab.",
+              "style": "info"
+            },
+            "name": "firewall-policy-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see denied traffic, threat detections and DNS proxy queries (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).",
               "style": "info"
             },
             "name": "firewall-logs-hint",
@@ -2774,6 +3064,64 @@
               }
             },
             "name": "firewall-threats",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AZFWDnsQuery\n| where TimeGenerated {TimeRange}\n| summarize Queries = count() by bin(TimeGenerated, {TimeRange:grain}), ResponseCode",
+              "size": 0,
+              "title": "DNS proxy queries by response code",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "firewall-dns-codes",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AZFWDnsQuery\n| where TimeGenerated {TimeRange}\n| where ResponseCode !~ 'NOERROR'\n| summarize Queries = count(), Sources = dcount(SourceIp), LastSeen = max(TimeGenerated) by QueryName, QueryType, ResponseCode\n| top 50 by Queries desc",
+              "size": 0,
+              "title": "Top failing DNS proxy queries",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failing DNS queries (or DNS proxy logs are not enabled).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "firewall-dns-failed",
             "customWidth": "50",
             "conditionalVisibility": {
               "parameterName": "Workspace",

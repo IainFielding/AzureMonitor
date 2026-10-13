@@ -759,6 +759,44 @@ union isfuzzy=true
 | summarize Hits = count(), LastSeen = max(TimeGenerated) by Source, Action, Detail, SourceIp, Destination
 | top 50 by Hits desc
 """
+    # IDPS and TLS inspection exist only on Premium policies, so other tiers show n/a rather than Off.
+    policies_q = """
+resources
+| where type =~ 'microsoft.network/firewallpolicies'
+| extend Tier = tostring(properties.sku.tier)
+| project id = tolower(id), Tier,
+    ThreatIntel = tostring(properties.threatIntelMode),
+    Idps = iff(Tier =~ 'Premium', coalesce(tostring(properties.intrusionDetection.mode), 'Off'), 'n/a'),
+    TlsInspection = case(Tier !~ 'Premium', 'n/a',
+        isnotempty(tostring(properties.transportSecurity.certificateAuthority.keyVaultSecretId)), 'Yes', 'No'),
+    DnsProxy = coalesce(tostring(properties.dnsSettings.enableProxy), 'false'),
+    Firewalls = coalesce(array_length(properties.firewalls), 0),
+    ParentPolicy = tostring(split(tostring(properties.basePolicy.id), '/')[8]),
+    RuleCollectionGroups = coalesce(array_length(properties.ruleCollectionGroups), 0),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.network/firewallpolicies/rulecollectiongroups'
+    | mv-expand rc = properties.ruleCollections limit 400
+    | summarize RuleCollections = count(), Rules = sum(array_length(rc.rules))
+        by id = tostring(split(tolower(id), '/rulecollectiongroups/')[0])
+  ) on id
+| project id, Tier, ThreatIntel, Idps, TlsInspection, DnsProxy, Firewalls, ParentPolicy, RuleCollectionGroups,
+    RuleCollections = coalesce(RuleCollections, 0), Rules = coalesce(Rules, 0), Provisioning, ResourceGroup
+"""
+    dns_codes_q = """
+AZFWDnsQuery
+| where TimeGenerated {TimeRange}
+| summarize Queries = count() by bin(TimeGenerated, {TimeRange:grain}), ResponseCode
+"""
+    dns_failed_q = """
+AZFWDnsQuery
+| where TimeGenerated {TimeRange}
+| where ResponseCode !~ 'NOERROR'
+| summarize Queries = count(), Sources = dcount(SourceIp), LastSeen = max(TimeGenerated) by QueryName, QueryType, ResponseCode
+| top 50 by Queries desc
+"""
     return group("tab-firewall", [
         params("firewall-params", [resource_param("Firewalls", "Firewalls", Q_FIREWALLS)]),
         arg("firewall-inventory", "Firewalls", inventory_q, formatters=[resource_link(), PROVISIONING],
@@ -778,12 +816,31 @@ union isfuzzy=true
         metrics("firewall-latency", "Latency probe (ms)", ns, "Firewalls", [m(ns, "FirewallLatencyPng", AVG)], width=50),
         metrics("firewall-rulehits", "Rule hits", ns, "Firewalls",
                 [m(ns, "NetworkRuleHit", SUM), m(ns, "ApplicationRuleHit", SUM)], width=50),
-        text("firewall-logs-hint", "Select a **Log Analytics workspace** at the top to see denied traffic and threat "
-             "detections (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).", "info", visible_when=WORKSPACE_UNSET),
+        text("firewall-policy-h", "### Firewall policy"),
+        arg("firewall-policies", "Firewall policies", policies_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("ThreatIntel", good=["Deny"], warn=["Alert"], bad=["Off"]),
+            status_fmt("Idps", good=["Deny"], warn=["Alert"], bad=["Off"], neutral=["n/a"]),
+            status_fmt("TlsInspection", good=["Yes"], neutral=["No", "n/a"]),
+            status_fmt("DnsProxy", good=["true"], neutral=["false"]),
+            high_is_good("Firewalls", 1, 0),
+        ], labels={"id": "Policy", "ThreatIntel": "Threat intel", "Idps": "IDPS", "TlsInspection": "TLS inspection",
+                   "DnsProxy": "DNS proxy", "ParentPolicy": "Parent policy", "RuleCollectionGroups": "Rule collection groups",
+                   "RuleCollections": "Rule collections"},
+            no_data="No firewall policies found."),
+        text("firewall-policy-note", "A policy attached to no firewall is flagged. Rule counts are totals across the "
+             "policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. "
+             "The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on "
+             "the Governance & Security tab.", "info"),
+        text("firewall-logs-hint", "Select a **Log Analytics workspace** at the top to see denied traffic, threat "
+             "detections and DNS proxy queries (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).", "info", visible_when=WORKSPACE_UNSET),
         la("firewall-denied", "Top denied flows", denied_q, width=50,
            no_data="No denied flows (or structured firewall logs are not enabled)."),
         la("firewall-threats", "Threat intel & IDPS detections", threats_q, width=50,
            no_data="No threat intel or IDPS hits."),
+        la("firewall-dns-codes", "DNS proxy queries by response code", dns_codes_q, vis="timechart", width=50),
+        la("firewall-dns-failed", "Top failing DNS proxy queries", dns_failed_q, width=50,
+           no_data="No failing DNS queries (or DNS proxy logs are not enabled)."),
     ], tab="firewall")
 
 

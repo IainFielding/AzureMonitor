@@ -17,7 +17,7 @@ Built for a **Virtual WAN** based landing zone.
 |---|---|---|
 | Overview | Resource Graph | Service Health event summary, per-service health tiles, Policy / Defender / Advisor / Backup tiles, unhealthy resources, fired alerts, active Service Health events, health state changes over the time range, recent changes (who changed what), full inventory |
 | Virtual WAN | Resource Graph, Metrics | WANs and hubs (routing state, routing units), hub BGP peers, spoke VM utilisation, routes, spoke peering state |
-| Azure Firewall | Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, denied flows*, threat intel & IDPS* |
+| Azure Firewall | Resource Graph, Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, firewall policy posture (threat intel, IDPS, TLS inspection, DNS proxy, rule counts), denied flows*, threat intel & IDPS*, DNS proxy queries* |
 | ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
 | VPN | Metrics, Logs* | vWAN S2S & P2S gateways, VPN sites, connections, tunnel bandwidth, BGP status, drops, tunnel events* |
 | Connectivity Tests | Resource Graph, Logs* | Network Watcher connection monitors, latest result per test*, packet loss and round-trip time by path* |
