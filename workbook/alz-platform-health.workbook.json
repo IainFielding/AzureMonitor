@@ -10832,7 +10832,7 @@
           {
             "type": 1,
             "content": {
-              "json": "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by **inheritance** from a metric rule scoped to its resource group or subscription that targets its type. Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped to a subscription can't be tied to one resource, so they aren't counted. A rule with no action group may still notify through an alert processing rule.",
+              "json": "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by **inheritance** from a metric rule scoped to its resource group or subscription that targets its type. Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped to a subscription can't be tied to one resource, so they aren't counted; *Notification path* below shows which subscriptions have them. A rule with no action group may still notify through an alert processing rule.",
               "style": "info"
             },
             "name": "mgmt-alerting-note"
@@ -11069,6 +11069,172 @@
             },
             "name": "mgmt-alert-noise",
             "customWidth": "60"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Notification path"
+            },
+            "name": "mgmt-notify-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.insights/actiongroups'\n| extend p = properties\n| extend Email = coalesce(array_length(p.emailReceivers), 0),\n    SmsVoicePush = coalesce(array_length(p.smsReceivers), 0) + coalesce(array_length(p.voiceReceivers), 0)\n        + coalesce(array_length(p.azureAppPushReceivers), 0),\n    ArmRole = coalesce(array_length(p.armRoleReceivers), 0),\n    Webhook = coalesce(array_length(p.webhookReceivers), 0),\n    Automation = coalesce(array_length(p.logicAppReceivers), 0) + coalesce(array_length(p.azureFunctionReceivers), 0)\n        + coalesce(array_length(p.automationRunbookReceivers), 0) + coalesce(array_length(p.eventHubReceivers), 0)\n        + coalesce(array_length(p.itsmReceivers), 0)\n| extend Receivers = Email + SmsVoicePush + ArmRole + Webhook + Automation\n| project id = tolower(id),\n    Status = case(not(tobool(p.enabled)), 'Disabled', Receivers == 0, 'No receivers', 'OK'),\n    Email, SmsVoicePush, ArmRole, Webhook, Automation, ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules', 'microsoft.insights/activitylogalerts')\n    | extend ruleId = tolower(id),\n        groups = iff(type =~ 'microsoft.insights/metricalerts', properties.actions, properties.actions.actionGroups)\n    | mv-expand g = groups\n    | extend id = tolower(coalesce(tostring(g.actionGroupId), tostring(g)))\n    | summarize AlertRules = dcount(ruleId) by id\n  ) on id\n| project id, Status, AlertRules = coalesce(AlertRules, 0), Email, SmsVoicePush, ArmRole, Webhook, Automation, ResourceGroup\n| order by case(Status == 'OK', 1, 0) asc, AlertRules desc",
+              "size": 0,
+              "title": "Action groups",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No action groups found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "OK",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No receivers",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Action group"
+                  },
+                  {
+                    "columnId": "AlertRules",
+                    "label": "Alert rules using it"
+                  },
+                  {
+                    "columnId": "SmsVoicePush",
+                    "label": "SMS / voice / push"
+                  },
+                  {
+                    "columnId": "ArmRole",
+                    "label": "ARM role"
+                  },
+                  {
+                    "columnId": "Automation",
+                    "label": "Automation (Logic App, Function, runbook, Event Hub, ITSM)"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-action-groups",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| project subscriptionId, Subscription = name\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.insights/activitylogalerts'\n    | where tobool(properties.enabled)\n    | extend condition = tolower(tostring(properties.condition))\n    | mv-expand scope = properties.scopes\n    | extend subscriptionId = tostring(split(tolower(tostring(scope)), '/')[2])\n    | summarize ServiceHealth = countif(condition contains 'servicehealth'),\n        ResourceHealth = countif(condition contains 'resourcehealth') by subscriptionId\n  ) on subscriptionId\n| extend ServiceHealth = coalesce(ServiceHealth, 0), ResourceHealth = coalesce(ResourceHealth, 0)\n| project Subscription,\n    Status = case(ServiceHealth > 0 and ResourceHealth > 0, 'Both', ServiceHealth > 0, 'No Resource Health alert',\n        ResourceHealth > 0, 'No Service Health alert', 'Neither'),\n    ServiceHealth, ResourceHealth\n| order by case(Status == 'Both', 1, 0) asc, Subscription asc",
+              "size": 0,
+              "title": "Service Health and Resource Health alerts by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Both",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No Resource Health alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No Service Health alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Neither",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ServiceHealth",
+                    "label": "Service Health alerts"
+                  },
+                  {
+                    "columnId": "ResourceHealth",
+                    "label": "Resource Health alerts"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-health-alerts",
+            "customWidth": "40"
           },
           {
             "type": 1,

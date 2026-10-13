@@ -1968,6 +1968,57 @@ alertsmanagementresources
     by Rule = name, Severity = tostring(e.severity)
 | top 50 by Alerts desc
 """
+    # Action groups hang off rules in a different shape per rule type: metric alerts hold objects in
+    # properties.actions, the other two hold ids or objects in properties.actions.actionGroups.
+    action_groups_q = f"""
+resources
+| where type =~ 'microsoft.insights/actiongroups'
+| extend p = properties
+| extend Email = coalesce(array_length(p.emailReceivers), 0),
+    SmsVoicePush = coalesce(array_length(p.smsReceivers), 0) + coalesce(array_length(p.voiceReceivers), 0)
+        + coalesce(array_length(p.azureAppPushReceivers), 0),
+    ArmRole = coalesce(array_length(p.armRoleReceivers), 0),
+    Webhook = coalesce(array_length(p.webhookReceivers), 0),
+    Automation = coalesce(array_length(p.logicAppReceivers), 0) + coalesce(array_length(p.azureFunctionReceivers), 0)
+        + coalesce(array_length(p.automationRunbookReceivers), 0) + coalesce(array_length(p.eventHubReceivers), 0)
+        + coalesce(array_length(p.itsmReceivers), 0)
+| extend Receivers = Email + SmsVoicePush + ArmRole + Webhook + Automation
+| project id = tolower(id),
+    Status = case(not(tobool(p.enabled)), 'Disabled', Receivers == 0, 'No receivers', 'OK'),
+    Email, SmsVoicePush, ArmRole, Webhook, Automation, ResourceGroup = resourceGroup
+| join kind=leftouter (
+    resources
+    | where type in~ ({alert_rule_types}, 'microsoft.insights/activitylogalerts')
+    | extend ruleId = tolower(id),
+        groups = iff(type =~ 'microsoft.insights/metricalerts', properties.actions, properties.actions.actionGroups)
+    | mv-expand g = groups
+    | extend id = tolower(coalesce(tostring(g.actionGroupId), tostring(g)))
+    | summarize AlertRules = dcount(ruleId) by id
+  ) on id
+| project id, Status, AlertRules = coalesce(AlertRules, 0), Email, SmsVoicePush, ArmRole, Webhook, Automation, ResourceGroup
+| order by case(Status == 'OK', 1, 0) asc, AlertRules desc
+"""
+    health_alerts_q = """
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions'
+| project subscriptionId, Subscription = name
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.insights/activitylogalerts'
+    | where tobool(properties.enabled)
+    | extend condition = tolower(tostring(properties.condition))
+    | mv-expand scope = properties.scopes
+    | extend subscriptionId = tostring(split(tolower(tostring(scope)), '/')[2])
+    | summarize ServiceHealth = countif(condition contains 'servicehealth'),
+        ResourceHealth = countif(condition contains 'resourcehealth') by subscriptionId
+  ) on subscriptionId
+| extend ServiceHealth = coalesce(ServiceHealth, 0), ResourceHealth = coalesce(ResourceHealth, 0)
+| project Subscription,
+    Status = case(ServiceHealth > 0 and ResourceHealth > 0, 'Both', ServiceHealth > 0, 'No Resource Health alert',
+        ResourceHealth > 0, 'No Service Health alert', 'Neither'),
+    ServiceHealth, ResourceHealth
+| order by case(Status == 'Both', 1, 0) asc, Subscription asc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -2016,8 +2067,9 @@ alertsmanagementresources
              "A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by "
              "**inheritance** from a metric rule scoped to its resource group or subscription that targets its type. "
              "Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped "
-             "to a subscription can't be tied to one resource, so they aren't counted. A rule with no action group "
-             "may still notify through an alert processing rule.", "info"),
+             "to a subscription can't be tied to one resource, so they aren't counted; *Notification path* below shows "
+             "which subscriptions have them. A rule with no action group may still notify through an alert "
+             "processing rule.", "info"),
         arg("mgmt-alert-coverage", "Platform resources by alert rule coverage", coverage_q, formatters=[
             resource_link(), status_fmt("Coverage", good=["Direct", "Inherited"], warn=["None"]),
         ], labels={"id": "Resource", "DirectRules": "Direct rules", "InheritedRules": "Inherited rules"},
@@ -2032,6 +2084,16 @@ alertsmanagementresources
             low_is_good("OpenNow", 1, 1),
         ], labels={"OpenNow": "Open now", "AvgMinutesOpen": "Avg minutes open", "LastFired": "Last fired"},
             no_data="No alerts fired on platform resources in the time range.", width=60),
+        text("mgmt-notify-h", "### Notification path"),
+        arg("mgmt-action-groups", "Action groups", action_groups_q, formatters=[
+            resource_link(), status_fmt("Status", good=["OK"], warn=["No receivers"], bad=["Disabled"]),
+        ], labels={"id": "Action group", "AlertRules": "Alert rules using it", "SmsVoicePush": "SMS / voice / push",
+                   "ArmRole": "ARM role", "Automation": "Automation (Logic App, Function, runbook, Event Hub, ITSM)"},
+            no_data="No action groups found.", width=60),
+        arg("mgmt-health-alerts", "Service Health and Resource Health alerts by subscription", health_alerts_q,
+            formatters=[status_fmt("Status", good=["Both"], warn=["No Resource Health alert", "No Service Health alert"],
+                                   bad=["Neither"])],
+            labels={"ServiceHealth": "Service Health alerts", "ResourceHealth": "Resource Health alerts"}, width=40),
         text("mgmt-backup-h", "### Backup & Site Recovery"),
         arg("mgmt-vaults", "Recovery Services vaults", vaults_q, formatters=[
             resource_link(), PROVISIONING,
