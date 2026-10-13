@@ -10437,6 +10437,193 @@
           {
             "type": 1,
             "content": {
+              "json": "### Log sources"
+            },
+            "name": "mgmt-sources-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Shows whether each platform resource is actually writing to the selected workspace. *No logs* means nothing arrived in the time range: the diagnostic setting is missing, points at another workspace, or the resource stopped sending. *Stale* means nothing in the last day. The inventory covers every subscription you can read (up to 1,000 resources), not only the ones selected at the top, and both queries scan every table, so they are slow on long time ranges.",
+              "style": "info"
+            },
+            "name": "mgmt-sources-note",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "arg(\"\").Resources\n| where type in~ ('microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.storage/storageaccounts' or name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'\n| project ResourceId = tolower(id), Type = type, ResourceGroup = resourceGroup\n| join kind=leftouter (\n    union withsource=SourceTable *\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId has_any ('microsoft.network', 'microsoft.keyvault', 'microsoft.avs', 'microsoft.desktopvirtualization', 'microsoft.storage', 'microsoft.recoveryservices')\n    | extend ResourceId = strcat_array(array_slice(split(tolower(_ResourceId), '/'), 0, 8), '/')\n    | summarize LastRecord = max(TimeGenerated), Tables = strcat_array(make_set(SourceTable, 8), ', ') by ResourceId\n  ) on ResourceId\n| extend Status = case(isnull(LastRecord), 'No logs', LastRecord < ago(1d), 'Stale', 'Logging')\n| project ResourceId, Status, LastRecord, Tables, Type, ResourceGroup\n| order by case(Status == 'No logs', 0, Status == 'Stale', 1, 2) asc, Type asc",
+              "size": 0,
+              "title": "Platform resources by last record in the workspace",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "ResourceId",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Logging",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stale",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No logs",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ResourceId",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "LastRecord",
+                    "label": "Last record"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-log-sources",
+            "customWidth": "60",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union withsource=SourceTable *\n| where TimeGenerated {TimeRange} and TimeGenerated > ago(1d)\n| extend DelayMin = (ingestion_time() - TimeGenerated) / 1m\n| summarize Records = count(), MedianDelayMin = round(percentile(DelayMin, 50), 1),\n    P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by SourceTable\n| top 30 by P95DelayMin desc",
+              "size": 0,
+              "title": "Ingestion delay by table (last 24 hours at most)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "P95DelayMin",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "60",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "15",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SourceTable",
+                    "label": "Table"
+                  },
+                  {
+                    "columnId": "MedianDelayMin",
+                    "label": "Median delay (min)"
+                  },
+                  {
+                    "columnId": "P95DelayMin",
+                    "label": "P95 delay (min)"
+                  },
+                  {
+                    "columnId": "LastRecord",
+                    "label": "Last record"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-ingestion-delay",
+            "customWidth": "40",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "### Alerting coverage"
             },
             "name": "mgmt-alerting-h"

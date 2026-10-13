@@ -1868,6 +1868,39 @@ resources
     ResourceGroup = resourceGroup
 | order by Problem asc, Kind asc
 """
+    # Platform types that have diagnostic logs or metrics to send. Diagnostic settings are not in Resource Graph,
+    # so coverage is judged from what actually arrived: the inventory comes from Resource Graph through arg(""),
+    # joined to the last record each resource wrote to any table.
+    logging_types = ", ".join(f"'{t}'" for t in [
+        "microsoft.network/azurefirewalls", "microsoft.network/expressroutecircuits", "microsoft.network/vpngateways",
+        "microsoft.network/p2svpngateways", "microsoft.network/virtualnetworkgateways", "microsoft.network/bastionhosts",
+        "microsoft.keyvault/vaults", "microsoft.avs/privateclouds", "microsoft.desktopvirtualization/hostpools",
+        "microsoft.storage/storageaccounts", "microsoft.recoveryservices/vaults",
+    ])
+    log_sources_q = f"""
+arg("").Resources
+| where type in~ ({logging_types})
+| where type !~ 'microsoft.storage/storageaccounts' or name matches regex @'{{StoragePattern}}' or resourceGroup matches regex @'{{StoragePattern}}'
+| project ResourceId = tolower(id), Type = type, ResourceGroup = resourceGroup
+| join kind=leftouter (
+    union withsource=SourceTable *
+    | where TimeGenerated {{TimeRange}}
+    | where _ResourceId has_any ('microsoft.network', 'microsoft.keyvault', 'microsoft.avs', 'microsoft.desktopvirtualization', 'microsoft.storage', 'microsoft.recoveryservices')
+    | extend ResourceId = strcat_array(array_slice(split(tolower(_ResourceId), '/'), 0, 8), '/')
+    | summarize LastRecord = max(TimeGenerated), Tables = strcat_array(make_set(SourceTable, 8), ', ') by ResourceId
+  ) on ResourceId
+| extend Status = case(isnull(LastRecord), 'No logs', LastRecord < ago(1d), 'Stale', 'Logging')
+| project ResourceId, Status, LastRecord, Tables, Type, ResourceGroup
+| order by case(Status == 'No logs', 0, Status == 'Stale', 1, 2) asc, Type asc
+"""
+    ingestion_delay_q = """
+union withsource=SourceTable *
+| where TimeGenerated {TimeRange} and TimeGenerated > ago(1d)
+| extend DelayMin = (ingestion_time() - TimeGenerated) / 1m
+| summarize Records = count(), MedianDelayMin = round(percentile(DelayMin, 50), 1),
+    P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by SourceTable
+| top 30 by P95DelayMin desc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -1883,6 +1916,20 @@ resources
            no_data="No workspace warnings or errors.", width=50),
         la("mgmt-heartbeat", "Agent heartbeats", silent_q, width=50,
            formatters=[status_fmt("Status", good=["Reporting"], bad=["Silent"]), resource_link("ResourceId")]),
+        text("mgmt-sources-h", "### Log sources"),
+        text("mgmt-sources-note",
+             "Shows whether each platform resource is actually writing to the selected workspace. *No logs* means "
+             "nothing arrived in the time range: the diagnostic setting is missing, points at another workspace, or "
+             "the resource stopped sending. *Stale* means nothing in the last day. The inventory covers every "
+             "subscription you can read (up to 1,000 resources), not only the ones selected at the top, and both "
+             "queries scan every table, so they are slow on long time ranges.", "info", visible_when=WORKSPACE_SET),
+        la("mgmt-log-sources", "Platform resources by last record in the workspace", log_sources_q, formatters=[
+            resource_link("ResourceId"), status_fmt("Status", good=["Logging"], warn=["Stale"], bad=["No logs"]),
+        ], labels={"ResourceId": "Resource", "LastRecord": "Last record"}, width=60),
+        la("mgmt-ingestion-delay", "Ingestion delay by table (last 24 hours at most)", ingestion_delay_q, formatters=[
+            low_is_good("P95DelayMin", 15, 60, digits=1),
+        ], labels={"SourceTable": "Table", "MedianDelayMin": "Median delay (min)", "P95DelayMin": "P95 delay (min)",
+                   "LastRecord": "Last record"}, width=40),
         text("mgmt-alerting-h", "### Alerting coverage"),
         text("mgmt-alerting-note",
              "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. "
