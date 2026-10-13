@@ -21,7 +21,7 @@ Built for a **Virtual WAN** based landing zone.
 | ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
 | VPN | Metrics, Logs* | vWAN S2S & P2S gateways, VPN sites, connections, tunnel bandwidth, BGP status, drops, tunnel events* |
 | Connectivity | Resource Graph, Logs* | Network Watcher connection monitors, latest result per test*, packet loss and round-trip time by path*, VNet flow log coverage, traffic by flow type*, top talkers* and top denied flows* |
-| App Delivery | Resource Graph, Metrics, Logs* | Application Gateway backend health, responses, latency and capacity; Front Door origin health, error rates, latency and WAF actions; WAF policies and their mode; top WAF rule matches* |
+| App Delivery | Resource Graph, Metrics, Logs* | Application Gateway backend health, responses, latency and capacity; Front Door origin health, error rates, latency and WAF actions; API Management capacity, requests by response, duration and failing operations*; WAF policies and their mode; top WAF rule matches* |
 | Shared | Resource Graph, Metrics | Bastion, DDoS coverage & attacks, DNS Private Resolver, Private DNS zone limits/links, private endpoint connection and DNS state, duplicate Private Link zones, Key Vault health |
 | Identity | Resource Graph, Metrics, Logs* | Entra ID sign-ins, failure reasons, Conditional Access blocks, failing service principals, users at risk and directory changes*, Entra Domain Services replica sets and health alerts, domain controller VMs (health, power, pending patches), CPU and memory, heartbeats*, directory/replication/DNS errors*, failed logons and lockouts* |
 | Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
@@ -36,7 +36,7 @@ Built for a **Virtual WAN** based landing zone.
 
 \* Log panels appear once a **Log Analytics workspace** is selected, and need the matching diagnostic
 settings (`AZFW*` resource-specific firewall tables, VPN `TunnelDiagnosticLog`, AVD `WVD*` tables,
-Connection Monitor `NWConnectionMonitorTestResult`, Traffic Analytics `NTANetAnalytics`, Application Gateway and Front Door WAF logs, Key Vault audit logs, the subscription activity log (`AzureActivity`),
+Connection Monitor `NWConnectionMonitorTestResult`, Traffic Analytics `NTANetAnalytics`, Application Gateway and Front Door WAF logs, API Management gateway logs, Key Vault audit logs, the subscription activity log (`AzureActivity`),
 Entra ID sign-in, audit, service principal sign-in and risky user logs,
 Sentinel incidents and health (`SecurityIncident`, `SentinelHealth`),
 Windows event logs and security events from domain controllers,

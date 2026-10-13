@@ -112,7 +112,7 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "agw-inventory", "agw-kpis", "afd-inventory", "afd-kpis", "identity-kpis",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "agw-inventory", "agw-kpis", "apim-inventory", "apim-kpis", "afd-inventory", "afd-kpis", "identity-kpis",
     "sec-score", "mgmt-vaults",
 }
 
@@ -325,6 +325,7 @@ Q_DC_VMS = ("resources\n| where type =~ 'microsoft.compute/virtualmachines'"
 Q_APP_GATEWAYS = "resources\n| where type =~ 'microsoft.network/applicationgateways'"
 Q_FRONT_DOORS = ("resources\n| where type =~ 'microsoft.cdn/profiles'"
                  "\n| where tostring(sku.name) contains 'AzureFrontDoor'")
+Q_APIM = "resources\n| where type =~ 'microsoft.apimanagement/service'"
 Q_BASTIONS = "resources\n| where type =~ 'microsoft.network/bastionhosts'"
 Q_PUBLIC_IPS = "resources\n| where type =~ 'microsoft.network/publicipaddresses'"
 Q_KEYVAULTS = "resources\n| where type =~ 'microsoft.keyvault/vaults'"
@@ -1650,10 +1651,39 @@ union isfuzzy=true
 | summarize Hits = count(), Clients = dcount(ClientIp), LastSeen = max(TimeGenerated) by Product, Action, Rule = substring(Rule, 0, 160), Host
 | top 50 by Hits desc
 """
+    apim = "microsoft.apimanagement/service"
+    # stv1 is the retired compute platform; an instance still on it has to be migrated.
+    apim_q = Q_APIM + """
+| project id,
+    Tier = tostring(sku.name),
+    Units = toint(sku.capacity),
+    Network = tostring(properties.virtualNetworkType),
+    PublicAccess = tostring(properties.publicNetworkAccess),
+    Platform = tostring(properties.platformVersion),
+    Regions = 1 + coalesce(array_length(properties.additionalLocations), 0),
+    Zones = strcat_array(zones, ','),
+    Gateway = tostring(properties.gatewayUrl),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup, Location = location
+"""
+    apim_failures_q = """
+union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (ApiManagementGatewayLogs)
+| where TimeGenerated {TimeRange}
+| extend Code = toint(column_ifexists('ResponseCode', 0))
+| where Code >= 400
+| extend Api = tostring(column_ifexists('ApiId', '')), Operation = tostring(column_ifexists('OperationId', '')),
+    BackendCode = toint(column_ifexists('BackendResponseCode', 0)),
+    Reason = tostring(column_ifexists('LastErrorReason', '')),
+    Ms = todouble(column_ifexists('TotalTime', 0))
+| summarize Failures = count(), P95Ms = round(percentile(Ms, 95), 0), LastSeen = max(TimeGenerated)
+    by Api, Operation, Code, BackendCode, Reason
+| top 50 by Failures desc
+"""
     return group("tab-appdelivery", [
         params("appdelivery-params", [
             resource_param("AppGateways", "Application gateways", Q_APP_GATEWAYS),
             resource_param("FrontDoors", "Front Door profiles", Q_FRONT_DOORS),
+            resource_param("ApiManagement", "API Management", Q_APIM),
         ]),
         text("agw-h", "### Application Gateway"),
         arg("agw-inventory", "Application gateways", gateways_q, formatters=[
@@ -1698,6 +1728,34 @@ union isfuzzy=true
                 [m(afd, "TotalLatency", AVG), m(afd, "OriginLatency", AVG)], width=50),
         metrics("afd-waf", "WAF requests by action", afd, "FrontDoors",
                 [m(afd, "WebApplicationFirewallRequestCount", SUM, split="Action")], width=50),
+        text("apim-h", "### API Management"),
+        arg("apim-inventory", "API Management services", apim_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("Platform", good=["stv2", "stv2.1", "mtv1"], bad=["stv1"], neutral=["undetermined"]),
+            status_fmt("PublicAccess", good=["Disabled"], neutral=["Enabled"]),
+        ], labels={"id": "Service", "PublicAccess": "Public access", "Gateway": "Gateway URL"},
+            no_data="No API Management services found."),
+        metric_grid("apim-kpis", "Key metrics (over time range)", apim, "ApiManagement", [
+            ("Capacity", AVG, "Capacity %", ("low", 70, 90)),
+            ("Requests", SUM, "Requests", None),
+            ("Duration", AVG, "Overall duration (ms)", ("low", 1000, 3000)),
+            ("BackendDuration", AVG, "Backend duration (ms)", None),
+        ]),
+        metrics("apim-requests", "Requests by gateway response", apim, "ApiManagement",
+                [m(apim, "Requests", SUM, split="GatewayResponseCodeCategory")], width=50),
+        metrics("apim-backend", "Requests by backend response", apim, "ApiManagement",
+                [m(apim, "Requests", SUM, split="BackendResponseCodeCategory")], width=50),
+        metrics("apim-duration", "Overall and backend duration (ms)", apim, "ApiManagement",
+                [m(apim, "Duration", AVG), m(apim, "BackendDuration", AVG)], width=50),
+        metrics("apim-capacity", "Capacity %", apim, "ApiManagement", [m(apim, "Capacity", AVG)], width=50),
+        la("apim-failures", "API operations returning errors", apim_failures_q,
+           formatters=[low_is_good("Code", 400, 500)],
+           labels={"Api": "API", "Code": "Response code", "BackendCode": "Backend code", "P95Ms": "P95 time (ms)",
+                   "LastSeen": "Last seen"},
+           no_data="No failed requests in the time range (or gateway logs are not sent to this workspace)."),
+        text("apim-note", "*Capacity* is the gateway's own load figure; Microsoft's guidance is to add units or scale "
+             "up when it stays above about 70%. A 4xx from the gateway with a backend code of 0 was rejected by the "
+             "gateway itself (authentication, rate limit or policy) and never reached the backend.", "info"),
         text("waf-h", "### Web Application Firewall"),
         arg("waf-policies", "WAF policies", waf_policies_q, formatters=[
             resource_link(),

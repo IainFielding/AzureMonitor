@@ -6935,6 +6935,33 @@
                   ],
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "b1626d82-d304-5d90-98e0-11034e6714b8",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ApiManagement",
+                  "label": "API Management",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.apimanagement/service'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
                 }
               ],
               "style": "pills",
@@ -7998,6 +8025,582 @@
             },
             "name": "afd-waf",
             "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### API Management"
+            },
+            "name": "apim-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.apimanagement/service'\n| project id,\n    Tier = tostring(sku.name),\n    Units = toint(sku.capacity),\n    Network = tostring(properties.virtualNetworkType),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    Platform = tostring(properties.platformVersion),\n    Regions = 1 + coalesce(array_length(properties.additionalLocations), 0),\n    Zones = strcat_array(zones, ','),\n    Gateway = tostring(properties.gatewayUrl),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 3,
+              "title": "API Management services",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No API Management services found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Platform",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stv2",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stv2.1",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "mtv1",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stv1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "undetermined",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PublicAccess",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Service"
+                  },
+                  {
+                    "columnId": "PublicAccess",
+                    "label": "Public access"
+                  },
+                  {
+                    "columnId": "Gateway",
+                    "label": "Gateway URL"
+                  }
+                ]
+              }
+            },
+            "name": "apim-inventory"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook49aadc55-cd04-5a38-bbb9-bf826a5d057a",
+              "version": "MetricsItem/2.0",
+              "size": 3,
+              "chartType": 0,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Capacity",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Requests",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Duration",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--BackendDuration",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Capacity Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Requests Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Duration Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--BackendDuration Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Capacity$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Duration$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "3000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1000",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.apimanagement/service--Capacity",
+                    "label": "Capacity %"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Requests",
+                    "label": "Requests"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Duration",
+                    "label": "Overall duration (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--BackendDuration",
+                    "label": "Backend duration (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Capacity Timeline",
+                    "label": "Capacity % trend"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Requests Timeline",
+                    "label": "Requests trend"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Duration Timeline",
+                    "label": "Overall duration (ms) trend"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--BackendDuration Timeline",
+                    "label": "Backend duration (ms) trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "apim-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookad21f634-c2ec-5438-97b3-4cc13a38042f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Requests",
+                  "aggregation": 1,
+                  "splitBy": "GatewayResponseCodeCategory",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Requests by gateway response",
+              "showOpenInMe": true
+            },
+            "name": "apim-requests",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook29c0a8b1-f9a9-5070-a5d2-63c4c15b665f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Requests",
+                  "aggregation": 1,
+                  "splitBy": "BackendResponseCodeCategory",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Requests by backend response",
+              "showOpenInMe": true
+            },
+            "name": "apim-backend",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook5b2ae5a5-efb4-5b04-8fd2-c4e0baf8a0db",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Duration",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--BackendDuration",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Overall and backend duration (ms)",
+              "showOpenInMe": true
+            },
+            "name": "apim-duration",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookf70f7dee-11e3-5204-9921-4fb70c4a85b8",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Capacity",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Capacity %",
+              "showOpenInMe": true
+            },
+            "name": "apim-capacity",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (ApiManagementGatewayLogs)\n| where TimeGenerated {TimeRange}\n| extend Code = toint(column_ifexists('ResponseCode', 0))\n| where Code >= 400\n| extend Api = tostring(column_ifexists('ApiId', '')), Operation = tostring(column_ifexists('OperationId', '')),\n    BackendCode = toint(column_ifexists('BackendResponseCode', 0)),\n    Reason = tostring(column_ifexists('LastErrorReason', '')),\n    Ms = todouble(column_ifexists('TotalTime', 0))\n| summarize Failures = count(), P95Ms = round(percentile(Ms, 95), 0), LastSeen = max(TimeGenerated)\n    by Api, Operation, Code, BackendCode, Reason\n| top 50 by Failures desc",
+              "size": 0,
+              "title": "API operations returning errors",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed requests in the time range (or gateway logs are not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Code",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "500",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "400",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Api",
+                    "label": "API"
+                  },
+                  {
+                    "columnId": "Code",
+                    "label": "Response code"
+                  },
+                  {
+                    "columnId": "BackendCode",
+                    "label": "Backend code"
+                  },
+                  {
+                    "columnId": "P95Ms",
+                    "label": "P95 time (ms)"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "apim-failures",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Capacity* is the gateway's own load figure; Microsoft's guidance is to add units or scale up when it stays above about 70%. A 4xx from the gateway with a backend code of 0 was rejected by the gateway itself (authentication, rate limit or policy) and never reached the backend.",
+              "style": "info"
+            },
+            "name": "apim-note"
           },
           {
             "type": 1,
