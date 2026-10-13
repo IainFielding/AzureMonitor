@@ -1449,6 +1449,59 @@ WVDConnectionNetworkData
 | summarize P50_RTT_ms = percentile(EstRoundTripTimeInMs, 50), P95_RTT_ms = percentile(EstRoundTripTimeInMs, 95)
     by bin(TimeGenerated, {TimeRange:grain})
 """
+    # A connection attempt is one CorrelationId: it logs Started, then Connected if the user reached a host.
+    success_q = """
+WVDConnections
+| where TimeGenerated {TimeRange}
+| summarize Started = minif(TimeGenerated, State == 'Started'), Connected = countif(State == 'Connected') > 0 by CorrelationId
+| where isnotnull(Started)
+| summarize Attempts = count(), Succeeded = countif(Connected) by bin(Started, {TimeRange:grain})
+| project Started, SuccessPct = round(100.0 * Succeeded / Attempts, 1)
+"""
+    # Sign-in time for new sessions: from the connection starting to the shell being ready, less the time the
+    # user spent at a credential prompt. Reconnects to an existing session never reach ShellReady.
+    signin_q = """
+WVDConnections
+| where TimeGenerated {TimeRange}
+| where State == 'Started'
+| project Started = TimeGenerated, CorrelationId
+| join kind=inner (
+    WVDCheckpoints
+    | where TimeGenerated {TimeRange}
+    | where Name =~ 'ShellReady' or Name =~ 'RdpShellAppExecuted'
+        or (Name =~ 'LaunchExecutable' and tostring(Parameters.connectionStage) == 'RdpShellAppExecuted')
+    | summarize Ready = min(TimeGenerated) by CorrelationId
+  ) on CorrelationId
+| join kind=leftouter (
+    WVDCheckpoints
+    | where TimeGenerated {TimeRange}
+    | where Name in~ ('OnCredentialsAcquisitionCompleted', 'SSOTokenRetrieval')
+    | summarize PromptMs = sum(tolong(Parameters.DurationMS)) by CorrelationId
+  ) on CorrelationId
+| extend Seconds = (Ready - Started) / 1s - coalesce(PromptMs, 0) / 1000.0
+| where Seconds > 0
+| summarize MedianSec = percentile(Seconds, 50), P95Sec = percentile(Seconds, 95) by bin(Started, {TimeRange:grain})
+"""
+    logon_stages_q = """
+WVDCheckpoints
+| where TimeGenerated {TimeRange}
+| where Name == 'LogonDelay'
+| extend stages = bag_remove_keys(Parameters, dynamic(['LogonType', 'WinLogonPid']))
+| mv-expand bagexpansion=array stages
+| extend Stage = tostring(stages[0]), Seconds = toreal(stages[1]) / 1000
+| where Stage startswith 'WinLogon_Logon_'
+| summarize Seconds = sum(Seconds) by Stage = substring(Stage, strlen('WinLogon_Logon_')), CorrelationId
+| summarize MedianSec = round(percentile(Seconds, 50), 1), P95Sec = round(percentile(Seconds, 95), 1), Logons = count() by Stage
+| order by P95Sec desc
+"""
+    pool_load_q = AVD_LATEST_HOSTS + """| where Status != 'Offline'
+| extend hostSessions = toint(column_ifexists('ActiveSessions', 0)) + toint(column_ifexists('InactiveSessions', 0)),
+    AllowsNew = tobool(column_ifexists('AllowNewSessions', true))
+| summarize Hosts = count(), Available = countif(Status == 'Available'), InDrainMode = countif(not(AllowsNew)),
+    Sessions = sum(hostSessions), BusiestHost = max(hostSessions) by HostPool
+| extend SessionsPerHost = round(1.0 * Sessions / Hosts, 1)
+| order by BusiestHost desc
+"""
     return group("tab-avd", [
         arg("avd-pools", "Host pools", pools_q, formatters=[resource_link()], labels={"id": "Host pool"},
             no_data="No AVD host pools found."),
@@ -1459,6 +1512,19 @@ WVDConnectionNetworkData
            no_data="No AVD agent health data in this workspace."),
         la("avd-sessions", "Connected sessions and users", sessions_q, vis="timechart", width=50),
         la("avd-rtt", "Connection round-trip time (ms)", rtt_q, vis="timechart", width=50),
+        la("avd-success", "Connection success rate %", success_q, vis="timechart", width=50),
+        la("avd-signin", "Time to sign in, new sessions (seconds)", signin_q, vis="timechart", width=50),
+        la("avd-logon-stages", "Logon time by stage (seconds)", logon_stages_q, formatters=[
+            low_is_good("P95Sec", 15, 30, digits=1),
+        ], labels={"MedianSec": "Median", "P95Sec": "P95"}, width=50,
+           no_data="No logon stage data in the time range."),
+        la("avd-pool-load", "Sessions by host pool (hosts reporting now)", pool_load_q,
+           labels={"HostPool": "Host pool", "InDrainMode": "In drain mode", "BusiestHost": "Sessions on busiest host",
+                   "SessionsPerHost": "Sessions per host"}, width=50,
+           no_data="No session hosts are reporting."),
+        text("avd-load-note", "Compare *Sessions on busiest host* with the pool's *MaxSessions* in the host pools "
+             "table at the top: a host at its limit takes no more users. The slowest logon stages are usually "
+             "profile load (FSLogix), group policy and logon scripts.", "info", visible_when=WORKSPACE_SET),
         la("avd-errors", "Top connection errors", errors_q, no_data="No AVD errors in the time range."),
     ], tab="avd")
 

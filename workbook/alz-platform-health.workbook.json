@@ -8887,6 +8887,198 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
+              "query": "WVDConnections\n| where TimeGenerated {TimeRange}\n| summarize Started = minif(TimeGenerated, State == 'Started'), Connected = countif(State == 'Connected') > 0 by CorrelationId\n| where isnotnull(Started)\n| summarize Attempts = count(), Succeeded = countif(Connected) by bin(Started, {TimeRange:grain})\n| project Started, SuccessPct = round(100.0 * Succeeded / Attempts, 1)",
+              "size": 0,
+              "title": "Connection success rate %",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "avd-success",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDConnections\n| where TimeGenerated {TimeRange}\n| where State == 'Started'\n| project Started = TimeGenerated, CorrelationId\n| join kind=inner (\n    WVDCheckpoints\n    | where TimeGenerated {TimeRange}\n    | where Name =~ 'ShellReady' or Name =~ 'RdpShellAppExecuted'\n        or (Name =~ 'LaunchExecutable' and tostring(Parameters.connectionStage) == 'RdpShellAppExecuted')\n    | summarize Ready = min(TimeGenerated) by CorrelationId\n  ) on CorrelationId\n| join kind=leftouter (\n    WVDCheckpoints\n    | where TimeGenerated {TimeRange}\n    | where Name in~ ('OnCredentialsAcquisitionCompleted', 'SSOTokenRetrieval')\n    | summarize PromptMs = sum(tolong(Parameters.DurationMS)) by CorrelationId\n  ) on CorrelationId\n| extend Seconds = (Ready - Started) / 1s - coalesce(PromptMs, 0) / 1000.0\n| where Seconds > 0\n| summarize MedianSec = percentile(Seconds, 50), P95Sec = percentile(Seconds, 95) by bin(Started, {TimeRange:grain})",
+              "size": 0,
+              "title": "Time to sign in, new sessions (seconds)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "avd-signin",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDCheckpoints\n| where TimeGenerated {TimeRange}\n| where Name == 'LogonDelay'\n| extend stages = bag_remove_keys(Parameters, dynamic(['LogonType', 'WinLogonPid']))\n| mv-expand bagexpansion=array stages\n| extend Stage = tostring(stages[0]), Seconds = toreal(stages[1]) / 1000\n| where Stage startswith 'WinLogon_Logon_'\n| summarize Seconds = sum(Seconds) by Stage = substring(Stage, strlen('WinLogon_Logon_')), CorrelationId\n| summarize MedianSec = round(percentile(Seconds, 50), 1), P95Sec = round(percentile(Seconds, 95), 1), Logons = count() by Stage\n| order by P95Sec desc",
+              "size": 0,
+              "title": "Logon time by stage (seconds)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No logon stage data in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "P95Sec",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "15",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "MedianSec",
+                    "label": "Median"
+                  },
+                  {
+                    "columnId": "P95Sec",
+                    "label": "P95"
+                  }
+                ]
+              }
+            },
+            "name": "avd-logon-stages",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend HostPool = tostring(split(_ResourceId, '/')[8])\n| extend Status = iff(TimeGenerated < ago(30m), 'Offline', Status)\n| where Status != 'Offline'\n| extend hostSessions = toint(column_ifexists('ActiveSessions', 0)) + toint(column_ifexists('InactiveSessions', 0)),\n    AllowsNew = tobool(column_ifexists('AllowNewSessions', true))\n| summarize Hosts = count(), Available = countif(Status == 'Available'), InDrainMode = countif(not(AllowsNew)),\n    Sessions = sum(hostSessions), BusiestHost = max(hostSessions) by HostPool\n| extend SessionsPerHost = round(1.0 * Sessions / Hosts, 1)\n| order by BusiestHost desc",
+              "size": 0,
+              "title": "Sessions by host pool (hosts reporting now)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No session hosts are reporting.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "HostPool",
+                    "label": "Host pool"
+                  },
+                  {
+                    "columnId": "InDrainMode",
+                    "label": "In drain mode"
+                  },
+                  {
+                    "columnId": "BusiestHost",
+                    "label": "Sessions on busiest host"
+                  },
+                  {
+                    "columnId": "SessionsPerHost",
+                    "label": "Sessions per host"
+                  }
+                ]
+              }
+            },
+            "name": "avd-pool-load",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Compare *Sessions on busiest host* with the pool's *MaxSessions* in the host pools table at the top: a host at its limit takes no more users. The slowest logon stages are usually profile load (FSLogix), group policy and logon scripts.",
+              "style": "info"
+            },
+            "name": "avd-load-note",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
               "query": "WVDErrors\n| where TimeGenerated {TimeRange}\n| summarize Errors = count(), Users = dcount(UserName), LastSeen = max(TimeGenerated), Message = take_any(Message)\n    by Source, CodeSymbolic, ServiceError\n| top 25 by Errors desc",
               "size": 0,
               "title": "Top connection errors",
