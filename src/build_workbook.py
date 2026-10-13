@@ -112,7 +112,7 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "identity-kpis",
     "gov-score", "mgmt-vaults",
 }
 
@@ -202,7 +202,7 @@ def m(namespace, metric, agg, split=None, limit=10):
 
 
 def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=None, labels=None,
-            width=None, size=0):
+            width=None, size=0, tiles=None, visible_when=None):
     content = {
         "chartId": "workbook" + gid(name),
         "version": "MetricsItem/2.0",
@@ -229,9 +229,14 @@ def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=
                               for k, v in {**(labels or {}), **timeline_labels, "Name": "Resource"}.items()],
             "filter": True,
         }
+    if tiles:
+        # One tile per resource and metric; the rows carry Metric, Value, Timeline and Name (the resource).
+        content.update({"chartType": -1, "gridFormatType": 1, "tileSettings": tiles, "size": 4})
     item = {"type": 10, "content": content, "name": name}
     if width:
         item["customWidth"] = str(width)
+    if visible_when:
+        item["conditionalVisibility"] = visible_when
     return item
 
 
@@ -301,6 +306,8 @@ Q_STORAGE = ("resources\n| where type =~ 'microsoft.storage/storageaccounts'"
              "\n| where name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'")
 Q_AGENT_VMSS = ("resources\n| where type =~ 'microsoft.compute/virtualmachinescalesets'"
                 "\n| where name matches regex @'{BuildAgentPattern}'")
+Q_DC_VMS = ("resources\n| where type =~ 'microsoft.compute/virtualmachines'"
+            "\n| where name matches regex @'{DcPattern}'")
 Q_BASTIONS = "resources\n| where type =~ 'microsoft.network/bastionhosts'"
 Q_PUBLIC_IPS = "resources\n| where type =~ 'microsoft.network/publicipaddresses'"
 Q_KEYVAULTS = "resources\n| where type =~ 'microsoft.keyvault/vaults'"
@@ -485,16 +492,17 @@ SUBSCRIPTION_NAMES = """
 TABS = [
     ("overview", "Overview"),
     ("vwan", "Virtual WAN"),
-    ("firewall", "Azure Firewall"),
+    ("firewall", "Firewall"),
     ("expressroute", "ExpressRoute"),
     ("vpn", "VPN"),
-    ("connectivity", "Connectivity Tests"),
+    ("connectivity", "Connectivity"),
     ("shared", "Shared Services"),
+    ("identity", "Identity"),
     ("buildagents", "Build Agents"),
-    ("avs", "Azure VMware Solution"),
-    ("avd", "Azure Virtual Desktop"),
+    ("avs", "AVS"),
+    ("avd", "AVD"),
     ("storage", "Storage"),
-    ("governance", "Governance & Security"),
+    ("governance", "Governance"),
     ("management", "Monitoring & Backup"),
     ("capacity", "Capacity"),
     ("throughput", "Throughput"),
@@ -523,6 +531,22 @@ def state_tiles(title_col, state_col, value_col, detail_col=None):
     if detail_col:
         t["secondaryContent"] = {"columnMatch": detail_col, "formatter": 1}
     return t
+
+
+def metric_tiles(warn, crit):
+    """Tile layout for a percentage metric where higher is worse: status icon, value, resource and trend."""
+    return {
+        "titleContent": {"columnMatch": "Metric", "formatter": 1},
+        "subtitleContent": {"columnMatch": "Name", "formatter": 13,
+                            "formatOptions": {"linkTarget": "Resource", "showIcon": False}},
+        "leftContent": {"columnMatch": "Value", "formatter": 18, "formatOptions": _icons([
+            _t(">=", str(crit), "4", ICON_ONLY), _t(">=", str(warn), "2", ICON_ONLY),
+            _t("Default", None, "success", ICON_ONLY)])},
+        "rightContent": {"columnMatch": "Value", "formatter": 12, "formatOptions": {"palette": "none"},
+                         "numberFormat": {"unit": 1, "options": {"style": "decimal", "maximumFractionDigits": 0}}},
+        "secondaryContent": {"columnMatch": "Timeline", "formatter": 21, "formatOptions": {"palette": "blue"}},
+        "showBorder": True,
+    }
 
 
 def overview_tab():
@@ -615,6 +639,65 @@ healthresourcechanges
 | order by Time desc
 | take 500
 """
+    avs = "microsoft.avs/privateclouds"
+    avs_found = {"parameterName": "OvPrivateClouds", "comparison": "isNotEqualTo", "value": ""}
+    avs_clouds_q = Q_AVS + """
+| extend provisioning = tostring(properties.provisioningState)
+| summarize Clouds = count(), Hosts = sum(toint(properties.managementCluster.clusterSize)),
+    Failed = countif(provisioning =~ 'Failed'), Busy = countif(provisioning !in~ ('Succeeded', 'Failed'))
+| project Signal = 'Private clouds', Value = Clouds, Detail = strcat(Hosts, ' management cluster hosts'),
+    State = case(Failed > 0, 'Unavailable', Busy > 0, 'Degraded', 'Available')
+"""
+    # Failed writes, deletes and actions on platform resources, plus failed deployments at any scope
+    # (a subscription-level deployment has its provider at a different position in the id).
+    failed_ops_q = f"""
+AzureActivity
+| where TimeGenerated {{TimeRange}}
+| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')
+| extend parts = split(tolower(_ResourceId), '/')
+| extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),
+    strcat(tostring(parts[6]), '/', tostring(parts[7])))
+| where type in~ ({TYPE_LIST}, 'microsoft.resources/deployments')
+| extend props = column_ifexists('Properties_d', dynamic(null))
+| summarize Failures = count(), LastSeen = max(TimeGenerated),
+    Error = take_any(substring(tostring(props.statusMessage), 0, 300))
+    by Operation = OperationNameValue, ResourceId = _ResourceId, Caller
+| top 100 by LastSeen desc
+"""
+    # Availability from the same transitions. Resource Graph has no window functions, so each start of an
+    # impaired period (Unavailable or Degraded) is joined to every recovery of that resource and the earliest
+    # later one is kept; a period with no later recovery is still open and runs to now.
+    health_transitions = """
+    healthresourcechanges
+    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'
+    | extend Time = todatetime(properties.changeAttributes.timestamp)
+    | where Time >= todatetime('{TimeRange:startISO}')
+    | extend state = properties.changes['properties.availabilityState']
+    | extend To = tostring(state.newValue), From = tostring(state.previousValue)
+    | where isnotempty(To)
+    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])"""
+    availability_q = health_transitions.strip() + f"""
+| where To in ('Unavailable', 'Degraded') and From !in ('Unavailable', 'Degraded')
+| project id, Start = Time
+| join kind=leftouter ({health_transitions}
+    | where To !in ('Unavailable', 'Degraded') and From in ('Unavailable', 'Degraded')
+    | project id, End = Time
+  ) on id
+| extend End = iff(isnull(End) or End <= Start, now(), End)
+| summarize Recovered = min(End) by id, Start
+| extend Minutes = datetime_diff('minute', Recovered, Start)
+| summarize Incidents = count(), ImpairedMinutes = sum(Minutes), LongestMinutes = max(Minutes), LastIncident = max(Start) by id
+| extend parts = split(id, '/')
+| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
+{SERVICE_CASE}
+| extend windowMin = datetime_diff('minute', now(), todatetime('{{TimeRange:startISO}}'))
+| extend windowMin = iff(windowMin > 20160, 20160, windowMin)
+| project id, Service, AvailabilityPct = round(100.0 - 100.0 * ImpairedMinutes / windowMin, 3), Incidents,
+    ImpairedMinutes, LongestMinutes, LastIncident
+| order by AvailabilityPct asc
+"""
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -630,6 +713,17 @@ healthresourcechanges
               width=GLANCE_WIDTH) for key, unit, q in GOVERNANCE_TILES],
         arg("overview-tiles", "Platform services", summary_q, vis="tiles", tiles=service_tiles,
             no_data="No platform resources found in the selected subscriptions."),
+        # The AVS tab's own picker is not evaluated while that tab is hidden, so the Overview has its own.
+        params("overview-avs-params", [resource_param("OvPrivateClouds", "AVS private clouds", Q_AVS, hidden_when_locked=True)]),
+        text("overview-avs-h", "### Azure VMware Solution at a glance", visible_when=avs_found),
+        arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
+            tiles=big_number_tiles("Signal", "State", "Value", "Detail"), width=GLANCE_WIDTH, visible_when=avs_found),
+        metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
+                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+        metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
+                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+        metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
+                tiles=metric_tiles(70, 75), width=GLANCE_WIDTH, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
@@ -646,10 +740,19 @@ healthresourcechanges
             formatters=[resource_link(), health_fmt("Previous"), health_fmt()],
             labels={"id": "Resource", "Previous": "From", "Health": "To"},
             no_data="No Resource Health state changes on platform resources in the time range."),
+        arg("overview-availability", "Availability over the time range (resources with health incidents, up to 14 days)",
+            availability_q, formatters=[resource_link(), high_is_good("AvailabilityPct", 99.9, 99, digits=3)],
+            labels={"id": "Resource", "AvailabilityPct": "Available %", "ImpairedMinutes": "Minutes impaired",
+                    "LongestMinutes": "Longest incident (min)", "LastIncident": "Last incident"},
+            no_data="No platform resource left the Available state in the time range."),
         arg("overview-changes", "Recent changes to platform resources (time range, up to 14 days)", changes_q,
             formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
             labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},
             no_data="No changes to platform resources in the time range."),
+        la("overview-failed-ops", "Failed operations and deployments on platform resources", failed_ops_q,
+           formatters=[resource_link("ResourceId")],
+           labels={"ResourceId": "Resource", "LastSeen": "Last seen"},
+           no_data="No failed operations in the time range (or the activity log is not sent to this workspace)."),
         arg("overview-all", "All platform resources", all_q, group_by="Service",
             formatters=[resource_link(), health_fmt(), hidden("Type")], labels={"id": "Resource"}),
     ], tab="overview")
@@ -831,7 +934,7 @@ AZFWDnsQuery
         text("firewall-policy-note", "A policy attached to no firewall is flagged. Rule counts are totals across the "
              "policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. "
              "The TLS inspection certificate lives in Key Vault, so its expiry shows under *Expiry & retirement* on "
-             "the Governance & Security tab.", "info"),
+             "the Governance tab.", "info"),
         text("firewall-logs-hint", "Select a **Log Analytics workspace** at the top to see denied traffic, threat "
              "detections and DNS proxy queries (requires resource-specific firewall logs, e.g. `AZFWNetworkRule`).", "info", visible_when=WORKSPACE_UNSET),
         la("firewall-denied", "Top denied flows", denied_q, width=50,
@@ -1134,6 +1237,43 @@ resources
     PrivateEndpoints = array_length(properties.privateEndpointConnections),
     ResourceGroup = resourceGroup, Location = location
 """
+    # An endpoint holds its connection under one of two properties depending on whether it was auto-approved.
+    # customDnsConfigs is filled in only when the endpoint has no private DNS zone group, so it stands in for that.
+    private_endpoints = """
+resources
+| where type =~ 'microsoft.network/privateendpoints'
+| extend conns = iff(array_length(properties.privateLinkServiceConnections) > 0,
+    properties.privateLinkServiceConnections, properties.manualPrivateLinkServiceConnections)
+| mv-expand c = conns
+| extend Connection = tostring(c.properties.privateLinkServiceConnectionState.status),
+    Target = tostring(c.properties.privateLinkServiceId),
+    SubResource = tostring(c.properties.groupIds[0]),
+    Provisioning = tostring(properties.provisioningState),
+    Dns = iff(array_length(properties.customDnsConfigs) > 0, 'No zone group', 'Zone group')
+"""
+    pe_tiles_q = private_endpoints + """| summarize Total = count(), NotApproved = countif(Connection !~ 'Approved'),
+    Failed = countif(Provisioning =~ 'Failed'), NoZoneGroup = countif(Dns == 'No zone group')
+| extend rows = pack_array(
+    pack('Signal', 'Connection not approved', 'Value', NotApproved, 'State', iff(NotApproved > 0, 'Unavailable', 'Available')),
+    pack('Signal', 'Provisioning failed', 'Value', Failed, 'State', iff(Failed > 0, 'Unavailable', 'Available')),
+    pack('Signal', 'No private DNS zone group', 'Value', NoZoneGroup, 'State', iff(NoZoneGroup > 0, 'Degraded', 'Available')))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),
+    Detail = strcat('of ', Total, ' private endpoints')
+"""
+    pe_issues_q = private_endpoints + """| where Connection !~ 'Approved' or Provisioning !~ 'Succeeded' or Dns == 'No zone group'
+| project id, Connection, Dns, Provisioning, Target, SubResource, ResourceGroup = resourceGroup
+| order by case(Connection =~ 'Approved', 1, 0) asc, case(Provisioning =~ 'Succeeded', 1, 0) asc
+"""
+    duplicate_zones_q = """
+resources
+| where type =~ 'microsoft.network/privatednszones'
+| where name startswith 'privatelink.'
+| summarize Copies = count(), Subscriptions = dcount(subscriptionId),
+    ResourceGroups = strcat_array(make_set(resourceGroup), ', ') by Zone = name
+| where Copies > 1
+| order by Copies desc
+"""
     yes_good = lambda col: status_fmt(col, good=["true"], warn=["false", ""])
     return group("tab-shared", [
         params("shared-params", [
@@ -1168,6 +1308,21 @@ resources
             high_is_good("Links", 1, 1),
         ], labels={"id": "Zone", "RecordSetPct": "Record sets % of limit", "LinkPct": "VNet links % of limit"},
             no_data="No Private DNS zones found."),
+        text("shared-pe-h", "### Private endpoints"),
+        arg("shared-pe-tiles", "", pe_tiles_q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail")),
+        arg("shared-pe-issues", "Private endpoints needing attention", pe_issues_q, formatters=[
+            resource_link(), resource_link("Target"), PROVISIONING,
+            status_fmt("Connection", good=["Approved"], warn=["Pending"], bad=["Rejected", "Disconnected"]),
+            status_fmt("Dns", good=["Zone group"], warn=["No zone group"]),
+        ], labels={"id": "Private endpoint", "Dns": "DNS", "SubResource": "Sub-resource"},
+            no_data="Every private endpoint is approved, provisioned and has a private DNS zone group.", width=65),
+        arg("shared-pe-duplicate-zones", "Private Link DNS zones that exist more than once", duplicate_zones_q,
+            labels={"ResourceGroups": "Resource groups"},
+            no_data="Each privatelink zone exists once.", width=35),
+        text("shared-pe-note", "An endpoint with no private DNS zone group has no record registered for it in the "
+             "central zones, so its name resolves to the public address unless a record is kept by hand. A "
+             "privatelink zone that exists twice splits resolution: a VNet linked to the extra copy cannot see "
+             "the records in the central one.", "info"),
         text("shared-kv-h", "### Key Vault"),
         metric_grid("shared-kv-kpis", "Key Vault metrics (over time range)", kns, "KeyVaults", [
             ("Availability", AVG, "Availability %", ("high", 99.9, 99)),
@@ -1183,6 +1338,115 @@ resources
             status_fmt("PublicNetwork", good=["Disabled"], warn=["Enabled"]),
         ], labels={"id": "Key vault"}, no_data="No key vaults found."),
     ], tab="shared")
+
+
+def identity_tab():
+    vm = "microsoft.compute/virtualmachines"
+    domain_services_q = """
+resources
+| where type =~ 'microsoft.aad/domainservices'
+| mv-expand replica = properties.replicaSets
+| project id,
+    Domain = tostring(properties.domainName),
+    Sku = tostring(properties.sku),
+    ReplicaLocation = tostring(replica.location),
+    ServiceStatus = tostring(replica.serviceStatus),
+    HealthAlerts = coalesce(array_length(replica.healthAlerts), 0),
+    HealthEvaluated = todatetime(replica.healthLastEvaluated),
+    Ldaps = tostring(properties.ldapsSettings.ldaps),
+    LdapsCertExpires = todatetime(properties.ldapsSettings.certificateNotAfter),
+    Provisioning = tostring(properties.provisioningState)
+"""
+    dcs_q = Q_DC_VMS + """
+| project id = tolower(id),
+    Power = tostring(properties.extended.instanceView.powerState.displayStatus),
+    Size = tostring(properties.hardwareProfile.vmSize),
+    Zone = strcat_array(zones, ','),
+    ResourceGroup = resourceGroup, Location = location
+| join kind=leftouter (
+    healthresources
+    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'
+    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),
+        Health = tostring(properties.availabilityState)
+  ) on id
+| join kind=leftouter (
+    patchassessmentresources
+    | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'
+    | extend c = properties.availablePatchCountByClassification
+    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),
+        CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),
+        RebootPending = tostring(properties.rebootPending)
+  ) on id
+| project id, Health, Power, CriticalPatches, SecurityPatches, RebootPending, Size, Zone, ResourceGroup, Location
+| order by id asc
+"""
+    heartbeat_q = """
+Heartbeat
+| where TimeGenerated {TimeRange}
+| where Computer matches regex @'{DcPattern}'
+| summarize LastHeartbeat = max(TimeGenerated) by Computer
+| extend Status = iff(LastHeartbeat < ago(15m), 'Silent', 'Reporting')
+| order by Status desc, Computer asc
+"""
+    ad_events_q = """
+Event
+| where TimeGenerated {TimeRange}
+| where Computer matches regex @'{DcPattern}'
+| where EventLog in ('Directory Service', 'DFS Replication', 'DNS Server', 'Active Directory Web Services')
+| where EventLevelName in ('Error', 'Warning')
+| summarize Events = count(), LastSeen = max(TimeGenerated), Message = take_any(substring(RenderedDescription, 0, 250))
+    by Computer, EventLog, Level = EventLevelName, Source, EventID
+| top 50 by Events desc
+"""
+    logon_q = """
+SecurityEvent
+| where TimeGenerated {TimeRange}
+| where EventID in (4625, 4740, 4771)
+| extend Event = case(EventID == 4740, 'Account locked out', EventID == 4771, 'Kerberos pre-authentication failed', 'Logon failed')
+| summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), Event
+"""
+    return group("tab-identity", [
+        text("identity-intro",
+             "Domain controller virtual machines are found by **name** using the *Domain controller name pattern* "
+             "parameter at the top. A managed domain in Microsoft Entra Domain Services is listed without it.", "info"),
+        text("identity-ds-h", "### Microsoft Entra Domain Services"),
+        arg("identity-domain-services", "Managed domains by replica set", domain_services_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("ServiceStatus", good=["Running"], warn=["Starting", "Stopping", "Deploying"], bad=["Stopped", "Failed"]),
+            low_is_good("HealthAlerts", 1, 1),
+        ], labels={"id": "Managed domain", "ReplicaLocation": "Replica set", "ServiceStatus": "Service status",
+                   "HealthAlerts": "Health alerts", "HealthEvaluated": "Health evaluated", "Ldaps": "Secure LDAP",
+                   "LdapsCertExpires": "Secure LDAP certificate expires"},
+            no_data="No Microsoft Entra Domain Services managed domains found."),
+        text("identity-dc-h", "### Domain controllers"),
+        params("identity-params", [resource_param("DomainControllers", "Domain controllers", Q_DC_VMS)]),
+        arg("identity-dcs", "Domain controller virtual machines", dcs_q, formatters=[
+            resource_link(), health_fmt(),
+            status_fmt("Power", good=["VM running"], bad=["VM deallocated", "VM stopped"], warn=["VM starting", "VM stopping", "VM deallocating"]),
+            low_is_good("CriticalPatches", 1, 1), low_is_good("SecurityPatches", 1, 10),
+            status_fmt("RebootPending", warn=["true"]),
+        ], labels={"id": "Domain controller", "CriticalPatches": "Critical patches", "SecurityPatches": "Security patches",
+                   "RebootPending": "Reboot pending"},
+            no_data="No virtual machines matched the domain controller name pattern."),
+        metric_grid("identity-kpis", "Domain controller metrics (over time range)", vm, "DomainControllers", [
+            ("VmAvailabilityMetric", AVG, "VM availability", None),
+            ("Percentage CPU", AVG, "Avg CPU %", ("low", 80, 95)),
+            ("Available Memory Percentage", AVG, "Avg free memory %", ("high", 20, 10)),
+            ("OS Disk IOPS Consumed Percentage", AVG, "OS disk IOPS used %", ("low", 80, 95)),
+        ]),
+        metrics("identity-cpu", "CPU %", vm, "DomainControllers", [m(vm, "Percentage CPU", AVG)], width=50),
+        metrics("identity-mem", "Available memory %", vm, "DomainControllers",
+                [m(vm, "Available Memory Percentage", AVG)], width=50),
+        text("identity-logs-hint", "Select a **Log Analytics workspace** at the top to see domain controller "
+             "heartbeats, directory service errors and failed logons.", "info", visible_when=WORKSPACE_UNSET),
+        la("identity-heartbeat", "Domain controller heartbeats", heartbeat_q, width=30,
+           formatters=[status_fmt("Status", good=["Reporting"], bad=["Silent"])],
+           no_data="No heartbeats from machines matching the domain controller name pattern."),
+        la("identity-ad-events", "Directory, replication and DNS errors and warnings", ad_events_q, width=70,
+           formatters=[status_fmt("Level", warn=["Warning"], bad=["Error"])],
+           no_data="No errors or warnings (or these event logs are not collected from the domain controllers)."),
+        la("identity-logons", "Failed logons and account lockouts", logon_q, vis="timechart"),
+    ], tab="identity")
 
 
 def buildagents_tab():
@@ -1336,6 +1600,59 @@ WVDConnectionNetworkData
 | summarize P50_RTT_ms = percentile(EstRoundTripTimeInMs, 50), P95_RTT_ms = percentile(EstRoundTripTimeInMs, 95)
     by bin(TimeGenerated, {TimeRange:grain})
 """
+    # A connection attempt is one CorrelationId: it logs Started, then Connected if the user reached a host.
+    success_q = """
+WVDConnections
+| where TimeGenerated {TimeRange}
+| summarize Started = minif(TimeGenerated, State == 'Started'), Connected = countif(State == 'Connected') > 0 by CorrelationId
+| where isnotnull(Started)
+| summarize Attempts = count(), Succeeded = countif(Connected) by bin(Started, {TimeRange:grain})
+| project Started, SuccessPct = round(100.0 * Succeeded / Attempts, 1)
+"""
+    # Sign-in time for new sessions: from the connection starting to the shell being ready, less the time the
+    # user spent at a credential prompt. Reconnects to an existing session never reach ShellReady.
+    signin_q = """
+WVDConnections
+| where TimeGenerated {TimeRange}
+| where State == 'Started'
+| project Started = TimeGenerated, CorrelationId
+| join kind=inner (
+    WVDCheckpoints
+    | where TimeGenerated {TimeRange}
+    | where Name =~ 'ShellReady' or Name =~ 'RdpShellAppExecuted'
+        or (Name =~ 'LaunchExecutable' and tostring(Parameters.connectionStage) == 'RdpShellAppExecuted')
+    | summarize Ready = min(TimeGenerated) by CorrelationId
+  ) on CorrelationId
+| join kind=leftouter (
+    WVDCheckpoints
+    | where TimeGenerated {TimeRange}
+    | where Name in~ ('OnCredentialsAcquisitionCompleted', 'SSOTokenRetrieval')
+    | summarize PromptMs = sum(tolong(Parameters.DurationMS)) by CorrelationId
+  ) on CorrelationId
+| extend Seconds = (Ready - Started) / 1s - coalesce(PromptMs, 0) / 1000.0
+| where Seconds > 0
+| summarize MedianSec = percentile(Seconds, 50), P95Sec = percentile(Seconds, 95) by bin(Started, {TimeRange:grain})
+"""
+    logon_stages_q = """
+WVDCheckpoints
+| where TimeGenerated {TimeRange}
+| where Name == 'LogonDelay'
+| extend stages = bag_remove_keys(Parameters, dynamic(['LogonType', 'WinLogonPid']))
+| mv-expand bagexpansion=array stages
+| extend Stage = tostring(stages[0]), Seconds = toreal(stages[1]) / 1000
+| where Stage startswith 'WinLogon_Logon_'
+| summarize Seconds = sum(Seconds) by Stage = substring(Stage, strlen('WinLogon_Logon_')), CorrelationId
+| summarize MedianSec = round(percentile(Seconds, 50), 1), P95Sec = round(percentile(Seconds, 95), 1), Logons = count() by Stage
+| order by P95Sec desc
+"""
+    pool_load_q = AVD_LATEST_HOSTS + """| where Status != 'Offline'
+| extend hostSessions = toint(column_ifexists('ActiveSessions', 0)) + toint(column_ifexists('InactiveSessions', 0)),
+    AllowsNew = tobool(column_ifexists('AllowNewSessions', true))
+| summarize Hosts = count(), Available = countif(Status == 'Available'), InDrainMode = countif(not(AllowsNew)),
+    Sessions = sum(hostSessions), BusiestHost = max(hostSessions) by HostPool
+| extend SessionsPerHost = round(1.0 * Sessions / Hosts, 1)
+| order by BusiestHost desc
+"""
     return group("tab-avd", [
         arg("avd-pools", "Host pools", pools_q, formatters=[resource_link()], labels={"id": "Host pool"},
             no_data="No AVD host pools found."),
@@ -1346,6 +1663,19 @@ WVDConnectionNetworkData
            no_data="No AVD agent health data in this workspace."),
         la("avd-sessions", "Connected sessions and users", sessions_q, vis="timechart", width=50),
         la("avd-rtt", "Connection round-trip time (ms)", rtt_q, vis="timechart", width=50),
+        la("avd-success", "Connection success rate %", success_q, vis="timechart", width=50),
+        la("avd-signin", "Time to sign in, new sessions (seconds)", signin_q, vis="timechart", width=50),
+        la("avd-logon-stages", "Logon time by stage (seconds)", logon_stages_q, formatters=[
+            low_is_good("P95Sec", 15, 30, digits=1),
+        ], labels={"MedianSec": "Median", "P95Sec": "P95"}, width=50,
+           no_data="No logon stage data in the time range."),
+        la("avd-pool-load", "Sessions by host pool (hosts reporting now)", pool_load_q,
+           labels={"HostPool": "Host pool", "InDrainMode": "In drain mode", "BusiestHost": "Sessions on busiest host",
+                   "SessionsPerHost": "Sessions per host"}, width=50,
+           no_data="No session hosts are reporting."),
+        text("avd-load-note", "Compare *Sessions on busiest host* with the pool's *MaxSessions* in the host pools "
+             "table at the top: a host at its limit takes no more users. The slowest logon stages are usually "
+             "profile load (FSLogix), group policy and logon scripts.", "info", visible_when=WORKSPACE_SET),
         la("avd-errors", "Top connection errors", errors_q, no_data="No AVD errors in the time range."),
     ], tab="avd")
 
@@ -1827,6 +2157,157 @@ resources
     ResourceGroup = resourceGroup
 | order by Problem asc, Kind asc
 """
+    # Platform types that have diagnostic logs or metrics to send. Diagnostic settings are not in Resource Graph,
+    # so coverage is judged from what actually arrived: the inventory comes from Resource Graph through arg(""),
+    # joined to the last record each resource wrote to any table.
+    logging_types = ", ".join(f"'{t}'" for t in [
+        "microsoft.network/azurefirewalls", "microsoft.network/expressroutecircuits", "microsoft.network/vpngateways",
+        "microsoft.network/p2svpngateways", "microsoft.network/virtualnetworkgateways", "microsoft.network/bastionhosts",
+        "microsoft.keyvault/vaults", "microsoft.avs/privateclouds", "microsoft.desktopvirtualization/hostpools",
+        "microsoft.storage/storageaccounts", "microsoft.recoveryservices/vaults",
+    ])
+    log_sources_q = f"""
+arg("").Resources
+| where type in~ ({logging_types})
+| where type !~ 'microsoft.storage/storageaccounts' or name matches regex @'{{StoragePattern}}' or resourceGroup matches regex @'{{StoragePattern}}'
+| project ResourceId = tolower(id), Type = type, ResourceGroup = resourceGroup
+| join kind=leftouter (
+    union withsource=SourceTable *
+    | where TimeGenerated {{TimeRange}}
+    | where _ResourceId has_any ('microsoft.network', 'microsoft.keyvault', 'microsoft.avs', 'microsoft.desktopvirtualization', 'microsoft.storage', 'microsoft.recoveryservices')
+    | extend ResourceId = strcat_array(array_slice(split(tolower(_ResourceId), '/'), 0, 8), '/')
+    | summarize LastRecord = max(TimeGenerated), Tables = strcat_array(make_set(SourceTable, 8), ', ') by ResourceId
+  ) on ResourceId
+| extend Status = case(isnull(LastRecord), 'No logs', LastRecord < ago(1d), 'Stale', 'Logging')
+| project ResourceId, Status, LastRecord, Tables, Type, ResourceGroup
+| order by case(Status == 'No logs', 0, Status == 'Stale', 1, 2) asc, Type asc
+"""
+    ingestion_delay_q = """
+union withsource=SourceTable *
+| where TimeGenerated {TimeRange} and TimeGenerated > ago(1d)
+| extend DelayMin = (ingestion_time() - TimeGenerated) / 1m
+| summarize Records = count(), MedianDelayMin = round(percentile(DelayMin, 50), 1),
+    P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by SourceTable
+| top 30 by P95DelayMin desc
+"""
+    dcr_associations = """
+    insightsresources
+    | where type =~ 'microsoft.insights/datacollectionruleassociations'
+    | extend ruleId = tolower(tostring(properties.dataCollectionRuleId))
+    | where isnotempty(ruleId)"""
+    # A machine needs both the agent and at least one data collection rule before it sends anything; the
+    # heartbeat table above can only list machines that already do.
+    agents_q = """
+resources
+| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines', 'microsoft.compute/virtualmachinescalesets')
+| extend Kind = case(type =~ 'microsoft.compute/virtualmachines', 'VM', type =~ 'microsoft.hybridcompute/machines', 'Arc server', 'Scale set'),
+    modelAgent = tostring(properties.virtualMachineProfile.extensionProfile.extensions) contains 'AzureMonitor'
+| project id = tolower(id), Kind, modelAgent,
+    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType),
+        tostring(properties.virtualMachineProfile.storageProfile.osDisk.osType)),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (
+    resources
+    | where type in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions')
+    | where tostring(properties.type) in~ ('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent')
+    | project id = tostring(split(tolower(id), '/extensions/')[0]),
+        agentState = tostring(properties.provisioningState), AgentVersion = tostring(properties.typeHandlerVersion)
+  ) on id
+| join kind=leftouter (""" + dcr_associations + """
+    | extend id = tostring(split(tolower(id), '/providers/microsoft.insights/')[0])
+    | summarize Rules = dcount(ruleId), RuleNames = strcat_array(make_set(tostring(split(ruleId, '/')[8])), ', ') by id
+  ) on id
+| extend Rules = coalesce(Rules, 0),
+    Agent = case(Kind == 'Scale set', iff(modelAgent, 'In scale set model', 'Not installed'),
+        isempty(agentState), 'Not installed', agentState)
+| extend Status = case(Agent == 'Not installed', 'No agent', Agent =~ 'Failed', 'Agent failed',
+    Rules == 0, 'No data collection rule', 'OK')
+| project id, Status, Kind, OS, Agent, AgentVersion, Rules, RuleNames, ResourceGroup
+| order by case(Status == 'OK', 1, 0) asc, Status asc, Kind asc
+"""
+    dcrs_q = """
+resources
+| where type =~ 'microsoft.insights/datacollectionrules'
+| project id = tolower(id), Kind = kind,
+    DataFlows = array_length(properties.dataFlows),
+    Workspace = tostring(split(tostring(properties.destinations.logAnalytics[0].workspaceResourceId), '/')[8]),
+    Workspaces = array_length(properties.destinations.logAnalytics),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (""" + dcr_associations + """
+    | summarize Associations = count() by id = ruleId
+  ) on id
+| project id, Kind, Associations = coalesce(Associations, 0), DataFlows, Workspace, Workspaces, Provisioning, ResourceGroup
+| order by Associations asc
+"""
+    # Alerts on platform resources fired in the time range. The alerts table keeps 30 days.
+    alert_history = f"""
+alertsmanagementresources
+| where type =~ 'microsoft.alertsmanagement/alerts'
+| extend e = properties.essentials
+| extend Fired = todatetime(e.startDateTime)
+| where Fired >= todatetime('{{TimeRange:startISO}}')
+| where tolower(tostring(e.targetResourceType)) in~ ({TYPE_LIST})
+"""
+    alerts_per_day_q = alert_history + "| summarize Alerts = count() by bin(Fired, 1d), Severity = tostring(e.severity)\n| order by Fired asc"
+    noisy_rules_q = alert_history + """| extend Resolved = todatetime(e.monitorConditionResolvedDateTime), isOpen = tostring(e.monitorCondition) =~ 'Fired'
+| summarize Alerts = count(), OpenNow = countif(isOpen), Resources = dcount(tolower(tostring(e.targetResource))),
+    AvgMinutesOpen = round(avgif(datetime_diff('minute', Resolved, Fired), isnotnull(Resolved)), 0),
+    LastFired = max(Fired)
+    by Rule = name, Severity = tostring(e.severity)
+| top 50 by Alerts desc
+"""
+    # Action groups hang off rules in a different shape per rule type: metric alerts hold objects in
+    # properties.actions, the other two hold ids or objects in properties.actions.actionGroups.
+    action_groups_q = f"""
+resources
+| where type =~ 'microsoft.insights/actiongroups'
+| extend p = properties
+| extend Email = coalesce(array_length(p.emailReceivers), 0),
+    SmsVoicePush = coalesce(array_length(p.smsReceivers), 0) + coalesce(array_length(p.voiceReceivers), 0)
+        + coalesce(array_length(p.azureAppPushReceivers), 0),
+    ArmRole = coalesce(array_length(p.armRoleReceivers), 0),
+    Webhook = coalesce(array_length(p.webhookReceivers), 0),
+    Automation = coalesce(array_length(p.logicAppReceivers), 0) + coalesce(array_length(p.azureFunctionReceivers), 0)
+        + coalesce(array_length(p.automationRunbookReceivers), 0) + coalesce(array_length(p.eventHubReceivers), 0)
+        + coalesce(array_length(p.itsmReceivers), 0)
+| extend Receivers = Email + SmsVoicePush + ArmRole + Webhook + Automation
+| project id = tolower(id),
+    Status = case(not(tobool(p.enabled)), 'Disabled', Receivers == 0, 'No receivers', 'OK'),
+    Email, SmsVoicePush, ArmRole, Webhook, Automation, ResourceGroup = resourceGroup
+| join kind=leftouter (
+    resources
+    | where type in~ ({alert_rule_types}, 'microsoft.insights/activitylogalerts')
+    | extend ruleId = tolower(id),
+        groups = iff(type =~ 'microsoft.insights/metricalerts', properties.actions, properties.actions.actionGroups)
+    | mv-expand g = groups
+    | extend id = tolower(coalesce(tostring(g.actionGroupId), tostring(g)))
+    | summarize AlertRules = dcount(ruleId) by id
+  ) on id
+| project id, Status, AlertRules = coalesce(AlertRules, 0), Email, SmsVoicePush, ArmRole, Webhook, Automation, ResourceGroup
+| order by case(Status == 'OK', 1, 0) asc, AlertRules desc
+"""
+    health_alerts_q = """
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions'
+| project subscriptionId, Subscription = name
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.insights/activitylogalerts'
+    | where tobool(properties.enabled)
+    | extend condition = tolower(tostring(properties.condition))
+    | mv-expand scope = properties.scopes
+    | extend subscriptionId = tostring(split(tolower(tostring(scope)), '/')[2])
+    | summarize ServiceHealth = countif(condition contains 'servicehealth'),
+        ResourceHealth = countif(condition contains 'resourcehealth') by subscriptionId
+  ) on subscriptionId
+| extend ServiceHealth = coalesce(ServiceHealth, 0), ResourceHealth = coalesce(ResourceHealth, 0)
+| project Subscription,
+    Status = case(ServiceHealth > 0 and ResourceHealth > 0, 'Both', ServiceHealth > 0, 'No Resource Health alert',
+        ResourceHealth > 0, 'No Service Health alert', 'Neither'),
+    ServiceHealth, ResourceHealth
+| order by case(Status == 'Both', 1, 0) asc, Subscription asc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -1842,14 +2323,42 @@ resources
            no_data="No workspace warnings or errors.", width=50),
         la("mgmt-heartbeat", "Agent heartbeats", silent_q, width=50,
            formatters=[status_fmt("Status", good=["Reporting"], bad=["Silent"]), resource_link("ResourceId")]),
+        text("mgmt-agents-h", "### Agents and data collection"),
+        arg("mgmt-agents", "Azure Monitor Agent and data collection rules by machine", agents_q, formatters=[
+            resource_link(),
+            status_fmt("Status", good=["OK"], warn=["No data collection rule"], bad=["No agent", "Agent failed"]),
+        ], labels={"id": "Machine", "AgentVersion": "Agent version", "Rules": "Data collection rules",
+                   "RuleNames": "Rule names"},
+            no_data="No virtual machines, scale sets or Arc-enabled servers found.", width=60),
+        arg("mgmt-dcrs", "Data collection rules", dcrs_q, formatters=[resource_link(), PROVISIONING],
+            labels={"id": "Rule", "DataFlows": "Data flows", "Workspace": "First workspace"},
+            no_data="No data collection rules found.", width=40),
+        text("mgmt-agents-note", "Scale sets show whether the agent is in the scale set model; their instances are "
+             "not listed individually. A rule with no associations collects nothing, which is expected only for "
+             "workspace transformation and direct-ingestion rules.", "info"),
+        text("mgmt-sources-h", "### Log sources"),
+        text("mgmt-sources-note",
+             "Shows whether each platform resource is actually writing to the selected workspace. *No logs* means "
+             "nothing arrived in the time range: the diagnostic setting is missing, points at another workspace, or "
+             "the resource stopped sending. *Stale* means nothing in the last day. The inventory covers every "
+             "subscription you can read (up to 1,000 resources), not only the ones selected at the top, and both "
+             "queries scan every table, so they are slow on long time ranges.", "info", visible_when=WORKSPACE_SET),
+        la("mgmt-log-sources", "Platform resources by last record in the workspace", log_sources_q, formatters=[
+            resource_link("ResourceId"), status_fmt("Status", good=["Logging"], warn=["Stale"], bad=["No logs"]),
+        ], labels={"ResourceId": "Resource", "LastRecord": "Last record"}, width=60),
+        la("mgmt-ingestion-delay", "Ingestion delay by table (last 24 hours at most)", ingestion_delay_q, formatters=[
+            low_is_good("P95DelayMin", 15, 60, digits=1),
+        ], labels={"SourceTable": "Table", "MedianDelayMin": "Median delay (min)", "P95DelayMin": "P95 delay (min)",
+                   "LastRecord": "Last record"}, width=40),
         text("mgmt-alerting-h", "### Alerting coverage"),
         text("mgmt-alerting-note",
              "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. "
              "A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by "
              "**inheritance** from a metric rule scoped to its resource group or subscription that targets its type. "
              "Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped "
-             "to a subscription can't be tied to one resource, so they aren't counted. A rule with no action group "
-             "may still notify through an alert processing rule.", "info"),
+             "to a subscription can't be tied to one resource, so they aren't counted; *Notification path* below shows "
+             "which subscriptions have them. A rule with no action group may still notify through an alert "
+             "processing rule.", "info"),
         arg("mgmt-alert-coverage", "Platform resources by alert rule coverage", coverage_q, formatters=[
             resource_link(), status_fmt("Coverage", good=["Direct", "Inherited"], warn=["None"]),
         ], labels={"id": "Resource", "DirectRules": "Direct rules", "InheritedRules": "Inherited rules"},
@@ -1858,6 +2367,22 @@ resources
             formatters=[resource_link(), status_fmt("Problem", warn=["Disabled", "No action group", "Disabled, no action group"])],
             labels={"id": "Alert rule"},
             no_data="Every alert rule is enabled and has an action group.", width=45),
+        arg("mgmt-alerts-per-day", "Alerts fired per day by severity (time range, up to 30 days)", alerts_per_day_q,
+            vis="barchart", no_data="No alerts fired on platform resources in the time range.", width=40),
+        arg("mgmt-alert-noise", "Alert rules that fire most", noisy_rules_q, formatters=[
+            low_is_good("OpenNow", 1, 1),
+        ], labels={"OpenNow": "Open now", "AvgMinutesOpen": "Avg minutes open", "LastFired": "Last fired"},
+            no_data="No alerts fired on platform resources in the time range.", width=60),
+        text("mgmt-notify-h", "### Notification path"),
+        arg("mgmt-action-groups", "Action groups", action_groups_q, formatters=[
+            resource_link(), status_fmt("Status", good=["OK"], warn=["No receivers"], bad=["Disabled"]),
+        ], labels={"id": "Action group", "AlertRules": "Alert rules using it", "SmsVoicePush": "SMS / voice / push",
+                   "ArmRole": "ARM role", "Automation": "Automation (Logic App, Function, runbook, Event Hub, ITSM)"},
+            no_data="No action groups found.", width=60),
+        arg("mgmt-health-alerts", "Service Health and Resource Health alerts by subscription", health_alerts_q,
+            formatters=[status_fmt("Status", good=["Both"], warn=["No Resource Health alert", "No Service Health alert"],
+                                   bad=["Neither"])],
+            labels={"ServiceHealth": "Service Health alerts", "ResourceHealth": "Resource Health alerts"}, width=40),
         text("mgmt-backup-h", "### Backup & Site Recovery"),
         arg("mgmt-vaults", "Recovery Services vaults", vaults_q, formatters=[
             resource_link(), PROVISIONING,
@@ -1980,6 +2505,16 @@ def global_params():
             "description": "Regex matched against scale set names to identify build agent pools.",
         },
         {
+            "id": gid("param-DcPattern"),
+            "version": "KqlParameterItem/1.0",
+            "name": "DcPattern",
+            "label": "Domain controller name pattern",
+            "type": 1,
+            "isRequired": True,
+            "value": "(?i)(dc|adds)",
+            "description": "Regex matched against virtual machine and computer names on the Identity tab.",
+        },
+        {
             "id": gid("param-StoragePattern"),
             "version": "KqlParameterItem/1.0",
             "name": "StoragePattern",
@@ -2014,7 +2549,7 @@ def workbook():
         "items": [
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
-                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, "
+                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
                  "build agents, governance, monitoring and backup."),
             global_params(),
             tabs(),
@@ -2025,6 +2560,7 @@ def workbook():
             vpn_tab(),
             connectivity_tab(),
             shared_tab(),
+            identity_tab(),
             buildagents_tab(),
             avs_tab(),
             avd_tab(),
