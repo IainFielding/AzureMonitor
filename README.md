@@ -29,7 +29,7 @@ Built for a **Virtual WAN** based landing zone.
 | AVD (Azure Virtual Desktop) | Resource Graph, Logs* | Host pools, session host status, sessions/users, connection RTT, connection success rate, time to sign in, logon time by stage, sessions by host pool, top errors |
 | Storage | Metrics | Availability, latency, transactions by response type (throttling), Azure Files (FSLogix) transactions, used capacity and quota by share |
 | Governance | Resource Graph, Logs* | Service retirements, planned maintenance, AVD registration tokens, Key Vault expiry events*, policy exemptions and their expiry, Policy compliance, subscriptions outside the management group hierarchy, resource locks by service, orphaned resources, empty resource groups, pending patches by machine (Azure Update Manager), Advisor recommendations |
-| Security | Resource Graph | Defender for Cloud secure score, controls, active alerts and unhealthy recommendations, Defender plans on and off per subscription, Owner and access administrator assignments by scope |
+| Security | Resource Graph, Logs* | Defender for Cloud secure score, controls, active alerts and unhealthy recommendations, Defender plans on and off per subscription, Owner and access administrator assignments by scope, Sentinel open incidents, time to close and failing connectors or rules* |
 | Monitoring & Backup | Resource Graph, Logs* | Workspace caps & ingestion status, ingestion by table*, workspace errors*, agent heartbeats*, machines with no Azure Monitor Agent or data collection rule, data collection rules, platform resources that are not logging*, ingestion delay by table*, platform resources with no alert rule, disabled or silent alert rules, alerts fired per day and the rules that fire most, action groups and their receivers, Service Health / Resource Health alerts per subscription, backup vaults/jobs/items, virtual machines with no backup, Site Recovery |
 | Capacity | Resource Graph, Resource Manager | vCPU and compute quotas by subscription and region, network quotas for one subscription and region, month-to-date cost by service and budgets for one subscription, subnet address utilisation |
 | Throughput | Metrics, Logs* | Hub, firewall, ExpressRoute, VPN, P2S, storage and AVD bandwidth side by side |
@@ -38,6 +38,7 @@ Built for a **Virtual WAN** based landing zone.
 settings (`AZFW*` resource-specific firewall tables, VPN `TunnelDiagnosticLog`, AVD `WVD*` tables,
 Connection Monitor `NWConnectionMonitorTestResult`, Traffic Analytics `NTANetAnalytics`, Application Gateway and Front Door WAF logs, Key Vault audit logs, the subscription activity log (`AzureActivity`),
 Entra ID sign-in, audit, service principal sign-in and risky user logs,
+Sentinel incidents and health (`SecurityIncident`, `SentinelHealth`),
 Windows event logs and security events from domain controllers,
 Azure Monitor Agent / VM insights on build agents).
 

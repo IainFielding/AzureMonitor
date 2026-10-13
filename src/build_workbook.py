@@ -2223,6 +2223,60 @@ securityresources
 | project Subscription = coalesce(Subscription, subscriptionId), Plan = name
 | order by Subscription asc, Plan asc
 """
+    sentinel_workspaces_q = """
+resources
+| where type =~ 'microsoft.operationsmanagement/solutions'
+| where name startswith 'SecurityInsights('
+| project id = tolower(tostring(properties.workspaceResourceId)),
+    Provisioning = tostring(properties.provisioningState), ResourceGroup = resourceGroup, Location = location
+"""
+    # SecurityIncident gets a new row on every change, so the latest row per incident is its current state.
+    # The empty datatable keeps the queries valid in a workspace that is not a Sentinel workspace.
+    incidents = """
+let incidents = union isfuzzy=true
+    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,
+        CreatedTime:datetime, ClosedTime:datetime, Classification:string, ProviderName:string, IncidentUrl:string)[]),
+    (SecurityIncident)
+| where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, *) by IncidentNumber;
+"""
+    open_by_severity_q = incidents + """incidents
+| where Status != 'Closed'
+| summarize Incidents = count() by Severity
+| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc
+"""
+    open_incidents_q = incidents + """incidents
+| where Status != 'Closed'
+| extend Owner = tostring(Owner.assignedTo)
+| project Incident = IncidentNumber, Title, Severity, Status,
+    Owner = iff(isempty(Owner), 'Unassigned', Owner), Created = CreatedTime,
+    AgeHours = datetime_diff('hour', now(), CreatedTime), Provider = ProviderName, IncidentUrl
+| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc, Created asc
+"""
+    incident_flow_q = incidents + """union
+    (incidents | summarize Incidents = count() by Day = bin(CreatedTime, 1d), Series = 'Created'),
+    (incidents | where Status == 'Closed' | summarize Incidents = count() by Day = bin(ClosedTime, 1d), Series = 'Closed')
+| where Day >= todatetime('{TimeRange:startISO}')
+"""
+    incident_closure_q = incidents + """incidents
+| where Status == 'Closed'
+| extend Hours = datetime_diff('minute', ClosedTime, CreatedTime) / 60.0
+| summarize Closed = count(), MedianHoursToClose = round(percentile(Hours, 50), 1), P95HoursToClose = round(percentile(Hours, 95), 1),
+    TruePositive = countif(Classification == 'TruePositive'), BenignPositive = countif(Classification == 'BenignPositive'),
+    FalsePositive = countif(Classification == 'FalsePositive') by Severity
+| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc
+"""
+    sentinel_health_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, SentinelResourceName:string, SentinelResourceType:string, Status:string, Description:string)[]),
+    (SentinelHealth)
+| where TimeGenerated {TimeRange}
+| where Status !~ 'Success'
+| summarize Failures = count(), LastSeen = max(TimeGenerated), Detail = take_any(substring(Description, 0, 250))
+    by Type = SentinelResourceType, Resource = SentinelResourceName, Status
+| top 50 by Failures desc
+"""
+    severity_states = dict(bad=["High"], warn=["Medium"], neutral=["Low", "Informational"])
     return group("tab-security", [
         text("sec-defender-h", "### Microsoft Defender for Cloud"),
         arg("sec-score", "Secure score by subscription", score_q,
@@ -2246,6 +2300,35 @@ securityresources
              "and Role Based Access Control Administrator. Eligible assignments in Privileged Identity Management "
              "are not role assignments until activated, so they are not counted. Resource Graph holds principal "
              "IDs only: it cannot name the principals or tell whether one has been deleted.", "info"),
+        text("sec-sentinel-h", "### Microsoft Sentinel"),
+        arg("sec-sentinel-workspaces", "Workspaces with Sentinel enabled", sentinel_workspaces_q,
+            formatters=[resource_link(), PROVISIONING], labels={"id": "Workspace"},
+            no_data="No workspace with the Sentinel solution found in the selected subscriptions."),
+        text("sec-sentinel-hint", "Select the **Sentinel workspace** as the Log Analytics workspace at the top to see "
+             "incidents and Sentinel health.", "info", visible_when=WORKSPACE_UNSET),
+        la("sec-sentinel-open-tiles", "Open incidents by severity", open_by_severity_q, vis="tiles", tiles={
+            "titleContent": {"columnMatch": "Severity", "formatter": 1},
+            "leftContent": status_fmt("Severity", **severity_states, text=ICON_ONLY),
+            "rightContent": {"columnMatch": "Incidents", "formatter": 12, "formatOptions": {"palette": "none"}},
+            "showBorder": True,
+        }, no_data="No open incidents that changed in the time range."),
+        la("sec-sentinel-open", "Open incidents", open_incidents_q, formatters=[
+            status_fmt("Severity", **severity_states), status_fmt("Owner", warn=["Unassigned"]),
+            {"columnMatch": "IncidentUrl", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Open"}},
+        ], labels={"AgeHours": "Age (hours)", "IncidentUrl": "Link"},
+           no_data="No open incidents that changed in the time range."),
+        la("sec-sentinel-flow", "Incidents created and closed per day", incident_flow_q, vis="barchart", width=50),
+        la("sec-sentinel-closure", "Closed incidents: time to close and classification", incident_closure_q, width=50,
+           labels={"MedianHoursToClose": "Median hours to close", "P95HoursToClose": "P95 hours to close",
+                   "TruePositive": "True positive", "BenignPositive": "Benign positive", "FalsePositive": "False positive"},
+           no_data="No incidents were closed in the time range."),
+        la("sec-sentinel-health", "Data connectors, analytics rules and automation that are failing", sentinel_health_q,
+           formatters=[status_fmt("Status", warn=["Partial success", "Warning"], bad=["Failure"])],
+           labels={"LastSeen": "Last seen"},
+           no_data="No failures recorded (or Sentinel health monitoring is not turned on for this workspace)."),
+        text("sec-sentinel-note", "Incidents are read from the selected workspace for the time range, so an incident "
+             "that has not changed within it is not listed: use a longer range to see old open incidents.", "info",
+             visible_when=WORKSPACE_SET),
     ], tab="security")
 
 

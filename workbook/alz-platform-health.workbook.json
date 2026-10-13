@@ -14301,6 +14301,467 @@
               "style": "info"
             },
             "name": "sec-privileged-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Microsoft Sentinel"
+            },
+            "name": "sec-sentinel-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.operationsmanagement/solutions'\n| where name startswith 'SecurityInsights('\n| project id = tolower(tostring(properties.workspaceResourceId)),\n    Provisioning = tostring(properties.provisioningState), ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Workspaces with Sentinel enabled",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No workspace with the Sentinel solution found in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Workspace"
+                  }
+                ]
+              }
+            },
+            "name": "sec-sentinel-workspaces"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select the **Sentinel workspace** as the Log Analytics workspace at the top to see incidents and Sentinel health.",
+              "style": "info"
+            },
+            "name": "sec-sentinel-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, ClosedTime:datetime, Classification:string, ProviderName:string, IncidentUrl:string)[]),\n    (SecurityIncident)\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by IncidentNumber;\nincidents\n| where Status != 'Closed'\n| summarize Incidents = count() by Severity\n| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc",
+              "size": 3,
+              "title": "Open incidents by severity",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No open incidents that changed in the time range.",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Severity",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "Severity",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Medium",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "High",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Low",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Informational",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Incidents",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true
+              }
+            },
+            "name": "sec-sentinel-open-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, ClosedTime:datetime, Classification:string, ProviderName:string, IncidentUrl:string)[]),\n    (SecurityIncident)\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by IncidentNumber;\nincidents\n| where Status != 'Closed'\n| extend Owner = tostring(Owner.assignedTo)\n| project Incident = IncidentNumber, Title, Severity, Status,\n    Owner = iff(isempty(Owner), 'Unassigned', Owner), Created = CreatedTime,\n    AgeHours = datetime_diff('hour', now(), CreatedTime), Provider = ProviderName, IncidentUrl\n| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc, Created asc",
+              "size": 0,
+              "title": "Open incidents",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No open incidents that changed in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Owner",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unassigned",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "IncidentUrl",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "Url",
+                      "linkLabel": "Open"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "AgeHours",
+                    "label": "Age (hours)"
+                  },
+                  {
+                    "columnId": "IncidentUrl",
+                    "label": "Link"
+                  }
+                ]
+              }
+            },
+            "name": "sec-sentinel-open",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, ClosedTime:datetime, Classification:string, ProviderName:string, IncidentUrl:string)[]),\n    (SecurityIncident)\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by IncidentNumber;\nunion\n    (incidents | summarize Incidents = count() by Day = bin(CreatedTime, 1d), Series = 'Created'),\n    (incidents | where Status == 'Closed' | summarize Incidents = count() by Day = bin(ClosedTime, 1d), Series = 'Closed')\n| where Day >= todatetime('{TimeRange:startISO}')",
+              "size": 0,
+              "title": "Incidents created and closed per day",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "barchart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "sec-sentinel-flow",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, ClosedTime:datetime, Classification:string, ProviderName:string, IncidentUrl:string)[]),\n    (SecurityIncident)\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, *) by IncidentNumber;\nincidents\n| where Status == 'Closed'\n| extend Hours = datetime_diff('minute', ClosedTime, CreatedTime) / 60.0\n| summarize Closed = count(), MedianHoursToClose = round(percentile(Hours, 50), 1), P95HoursToClose = round(percentile(Hours, 95), 1),\n    TruePositive = countif(Classification == 'TruePositive'), BenignPositive = countif(Classification == 'BenignPositive'),\n    FalsePositive = countif(Classification == 'FalsePositive') by Severity\n| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc",
+              "size": 0,
+              "title": "Closed incidents: time to close and classification",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No incidents were closed in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "MedianHoursToClose",
+                    "label": "Median hours to close"
+                  },
+                  {
+                    "columnId": "P95HoursToClose",
+                    "label": "P95 hours to close"
+                  },
+                  {
+                    "columnId": "TruePositive",
+                    "label": "True positive"
+                  },
+                  {
+                    "columnId": "BenignPositive",
+                    "label": "Benign positive"
+                  },
+                  {
+                    "columnId": "FalsePositive",
+                    "label": "False positive"
+                  }
+                ]
+              }
+            },
+            "name": "sec-sentinel-closure",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, SentinelResourceName:string, SentinelResourceType:string, Status:string, Description:string)[]),\n    (SentinelHealth)\n| where TimeGenerated {TimeRange}\n| where Status !~ 'Success'\n| summarize Failures = count(), LastSeen = max(TimeGenerated), Detail = take_any(substring(Description, 0, 250))\n    by Type = SentinelResourceType, Resource = SentinelResourceName, Status\n| top 50 by Failures desc",
+              "size": 0,
+              "title": "Data connectors, analytics rules and automation that are failing",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failures recorded (or Sentinel health monitoring is not turned on for this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Partial success",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failure",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "sec-sentinel-health",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Incidents are read from the selected workspace for the time range, so an incident that has not changed within it is not listed: use a longer range to see old open incidents.",
+              "style": "info"
+            },
+            "name": "sec-sentinel-note",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
           }
         ]
       },
