@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, monitoring and backup."
+        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, monitoring and backup."
       },
       "name": "header"
     },
@@ -113,6 +113,16 @@
             "description": "Regex matched against scale set names to identify build agent pools."
           },
           {
+            "id": "09af223b-71ab-53c7-90b0-f2953c452067",
+            "version": "KqlParameterItem/1.0",
+            "name": "DcPattern",
+            "label": "Domain controller name pattern",
+            "type": 1,
+            "isRequired": true,
+            "value": "(?i)(dc|adds)",
+            "description": "Regex matched against virtual machine and computer names on the Identity tab."
+          },
+          {
             "id": "c741300e-f3ce-565a-9071-5aa8a7794bf9",
             "version": "KqlParameterItem/1.0",
             "name": "StoragePattern",
@@ -197,6 +207,14 @@
             "linkTarget": "parameter",
             "linkLabel": "Shared Services",
             "subTarget": "shared",
+            "style": "link"
+          },
+          {
+            "id": "45139f24-6b9d-5c36-aeb8-ce062b965739",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Identity",
+            "subTarget": "identity",
             "style": "link"
           },
           {
@@ -7477,6 +7495,912 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "shared"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Domain controller virtual machines are found by **name** using the *Domain controller name pattern* parameter at the top. A managed domain in Microsoft Entra Domain Services is listed without it.",
+              "style": "info"
+            },
+            "name": "identity-intro"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Microsoft Entra Domain Services"
+            },
+            "name": "identity-ds-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.aad/domainservices'\n| mv-expand replica = properties.replicaSets\n| project id,\n    Domain = tostring(properties.domainName),\n    Sku = tostring(properties.sku),\n    ReplicaLocation = tostring(replica.location),\n    ServiceStatus = tostring(replica.serviceStatus),\n    HealthAlerts = coalesce(array_length(replica.healthAlerts), 0),\n    HealthEvaluated = todatetime(replica.healthLastEvaluated),\n    Ldaps = tostring(properties.ldapsSettings.ldaps),\n    LdapsCertExpires = todatetime(properties.ldapsSettings.certificateNotAfter),\n    Provisioning = tostring(properties.provisioningState)",
+              "size": 0,
+              "title": "Managed domains by replica set",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Microsoft Entra Domain Services managed domains found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ServiceStatus",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Running",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Starting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stopping",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deploying",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stopped",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "HealthAlerts",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Managed domain"
+                  },
+                  {
+                    "columnId": "ReplicaLocation",
+                    "label": "Replica set"
+                  },
+                  {
+                    "columnId": "ServiceStatus",
+                    "label": "Service status"
+                  },
+                  {
+                    "columnId": "HealthAlerts",
+                    "label": "Health alerts"
+                  },
+                  {
+                    "columnId": "HealthEvaluated",
+                    "label": "Health evaluated"
+                  },
+                  {
+                    "columnId": "Ldaps",
+                    "label": "Secure LDAP"
+                  },
+                  {
+                    "columnId": "LdapsCertExpires",
+                    "label": "Secure LDAP certificate expires"
+                  }
+                ]
+              }
+            },
+            "name": "identity-domain-services"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Domain controllers"
+            },
+            "name": "identity-dc-h"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "ef186ef2-8067-5a5b-870f-3f164932059c",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "DomainControllers",
+                  "label": "Domain controllers",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "identity-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id = tolower(id),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    Size = tostring(properties.hardwareProfile.vmSize),\n    Zone = strcat_array(zones, ','),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState)\n  ) on id\n| join kind=leftouter (\n    patchassessmentresources\n    | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),\n        RebootPending = tostring(properties.rebootPending)\n  ) on id\n| project id, Health, Power, CriticalPatches, SecurityPatches, RebootPending, Size, Zone, ResourceGroup, Location\n| order by id asc",
+              "size": 0,
+              "title": "Domain controller virtual machines",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines matched the domain controller name pattern.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Power",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "VM running",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "VM starting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "VM stopping",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "VM deallocating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "VM deallocated",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "VM stopped",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "CriticalPatches",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "SecurityPatches",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "RebootPending",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Domain controller"
+                  },
+                  {
+                    "columnId": "CriticalPatches",
+                    "label": "Critical patches"
+                  },
+                  {
+                    "columnId": "SecurityPatches",
+                    "label": "Security patches"
+                  },
+                  {
+                    "columnId": "RebootPending",
+                    "label": "Reboot pending"
+                  }
+                ]
+              }
+            },
+            "name": "identity-dcs"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookb66c326c-80bf-5fe7-9c69-4d385665cf5b",
+              "version": "MetricsItem/2.0",
+              "size": 3,
+              "chartType": 0,
+              "resourceType": "microsoft.compute/virtualmachines",
+              "metricScope": 0,
+              "resourceParameter": "DomainControllers",
+              "resourceIds": [
+                "{DomainControllers}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--VmAvailabilityMetric",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--Percentage CPU",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--Available Memory Percentage",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--OS Disk IOPS Consumed Percentage",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Domain controller metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachines--VmAvailabilityMetric Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachines--Percentage CPU Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachines--Available Memory Percentage Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachines--OS Disk IOPS Consumed Percentage Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachines--Percentage CPU$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "95",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "80",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachines--Available Memory Percentage$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "20",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.compute/virtualmachines--OS Disk IOPS Consumed Percentage$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "95",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "80",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--VmAvailabilityMetric",
+                    "label": "VM availability"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--Percentage CPU",
+                    "label": "Avg CPU %"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--Available Memory Percentage",
+                    "label": "Avg free memory %"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--OS Disk IOPS Consumed Percentage",
+                    "label": "OS disk IOPS used %"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--VmAvailabilityMetric Timeline",
+                    "label": "VM availability trend"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--Percentage CPU Timeline",
+                    "label": "Avg CPU % trend"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--Available Memory Percentage Timeline",
+                    "label": "Avg free memory % trend"
+                  },
+                  {
+                    "columnId": "microsoft.compute/virtualmachines--OS Disk IOPS Consumed Percentage Timeline",
+                    "label": "OS disk IOPS used % trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "identity-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook3f8cd7bf-09d8-5248-a00c-43ca55723745",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.compute/virtualmachines",
+              "metricScope": 0,
+              "resourceParameter": "DomainControllers",
+              "resourceIds": [
+                "{DomainControllers}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--Percentage CPU",
+                  "aggregation": 4
+                }
+              ],
+              "title": "CPU %",
+              "showOpenInMe": true
+            },
+            "name": "identity-cpu",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookb8ef5099-fcc2-5d64-ac85-5ad81d99a7b9",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.compute/virtualmachines",
+              "metricScope": 0,
+              "resourceParameter": "DomainControllers",
+              "resourceIds": [
+                "{DomainControllers}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.compute/virtualmachines",
+                  "metric": "microsoft.compute/virtualmachines--Available Memory Percentage",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Available memory %",
+              "showOpenInMe": true
+            },
+            "name": "identity-mem",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see domain controller heartbeats, directory service errors and failed logons.",
+              "style": "info"
+            },
+            "name": "identity-logs-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Heartbeat\n| where TimeGenerated {TimeRange}\n| where Computer matches regex @'{DcPattern}'\n| summarize LastHeartbeat = max(TimeGenerated) by Computer\n| extend Status = iff(LastHeartbeat < ago(15m), 'Silent', 'Reporting')\n| order by Status desc, Computer asc",
+              "size": 0,
+              "title": "Domain controller heartbeats",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No heartbeats from machines matching the domain controller name pattern.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Reporting",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Silent",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "identity-heartbeat",
+            "customWidth": "30",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Event\n| where TimeGenerated {TimeRange}\n| where Computer matches regex @'{DcPattern}'\n| where EventLog in ('Directory Service', 'DFS Replication', 'DNS Server', 'Active Directory Web Services')\n| where EventLevelName in ('Error', 'Warning')\n| summarize Events = count(), LastSeen = max(TimeGenerated), Message = take_any(substring(RenderedDescription, 0, 250))\n    by Computer, EventLog, Level = EventLevelName, Source, EventID\n| top 50 by Events desc",
+              "size": 0,
+              "title": "Directory, replication and DNS errors and warnings",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No errors or warnings (or these event logs are not collected from the domain controllers).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Level",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Error",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "identity-ad-events",
+            "customWidth": "70",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "SecurityEvent\n| where TimeGenerated {TimeRange}\n| where EventID in (4625, 4740, 4771)\n| extend Event = case(EventID == 4740, 'Account locked out', EventID == 4771, 'Kerberos pre-authentication failed', 'Logon failed')\n| summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), Event",
+              "size": 0,
+              "title": "Failed logons and account lockouts",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "identity-logons",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-identity",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "identity"
       }
     },
     {

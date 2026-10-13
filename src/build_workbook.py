@@ -112,7 +112,7 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "identity-kpis",
     "gov-score", "mgmt-vaults",
 }
 
@@ -306,6 +306,8 @@ Q_STORAGE = ("resources\n| where type =~ 'microsoft.storage/storageaccounts'"
              "\n| where name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'")
 Q_AGENT_VMSS = ("resources\n| where type =~ 'microsoft.compute/virtualmachinescalesets'"
                 "\n| where name matches regex @'{BuildAgentPattern}'")
+Q_DC_VMS = ("resources\n| where type =~ 'microsoft.compute/virtualmachines'"
+            "\n| where name matches regex @'{DcPattern}'")
 Q_BASTIONS = "resources\n| where type =~ 'microsoft.network/bastionhosts'"
 Q_PUBLIC_IPS = "resources\n| where type =~ 'microsoft.network/publicipaddresses'"
 Q_KEYVAULTS = "resources\n| where type =~ 'microsoft.keyvault/vaults'"
@@ -495,6 +497,7 @@ TABS = [
     ("vpn", "VPN"),
     ("connectivity", "Connectivity"),
     ("shared", "Shared Services"),
+    ("identity", "Identity"),
     ("buildagents", "Build Agents"),
     ("avs", "AVS"),
     ("avd", "AVD"),
@@ -1335,6 +1338,115 @@ resources
             status_fmt("PublicNetwork", good=["Disabled"], warn=["Enabled"]),
         ], labels={"id": "Key vault"}, no_data="No key vaults found."),
     ], tab="shared")
+
+
+def identity_tab():
+    vm = "microsoft.compute/virtualmachines"
+    domain_services_q = """
+resources
+| where type =~ 'microsoft.aad/domainservices'
+| mv-expand replica = properties.replicaSets
+| project id,
+    Domain = tostring(properties.domainName),
+    Sku = tostring(properties.sku),
+    ReplicaLocation = tostring(replica.location),
+    ServiceStatus = tostring(replica.serviceStatus),
+    HealthAlerts = coalesce(array_length(replica.healthAlerts), 0),
+    HealthEvaluated = todatetime(replica.healthLastEvaluated),
+    Ldaps = tostring(properties.ldapsSettings.ldaps),
+    LdapsCertExpires = todatetime(properties.ldapsSettings.certificateNotAfter),
+    Provisioning = tostring(properties.provisioningState)
+"""
+    dcs_q = Q_DC_VMS + """
+| project id = tolower(id),
+    Power = tostring(properties.extended.instanceView.powerState.displayStatus),
+    Size = tostring(properties.hardwareProfile.vmSize),
+    Zone = strcat_array(zones, ','),
+    ResourceGroup = resourceGroup, Location = location
+| join kind=leftouter (
+    healthresources
+    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'
+    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),
+        Health = tostring(properties.availabilityState)
+  ) on id
+| join kind=leftouter (
+    patchassessmentresources
+    | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'
+    | extend c = properties.availablePatchCountByClassification
+    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),
+        CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),
+        RebootPending = tostring(properties.rebootPending)
+  ) on id
+| project id, Health, Power, CriticalPatches, SecurityPatches, RebootPending, Size, Zone, ResourceGroup, Location
+| order by id asc
+"""
+    heartbeat_q = """
+Heartbeat
+| where TimeGenerated {TimeRange}
+| where Computer matches regex @'{DcPattern}'
+| summarize LastHeartbeat = max(TimeGenerated) by Computer
+| extend Status = iff(LastHeartbeat < ago(15m), 'Silent', 'Reporting')
+| order by Status desc, Computer asc
+"""
+    ad_events_q = """
+Event
+| where TimeGenerated {TimeRange}
+| where Computer matches regex @'{DcPattern}'
+| where EventLog in ('Directory Service', 'DFS Replication', 'DNS Server', 'Active Directory Web Services')
+| where EventLevelName in ('Error', 'Warning')
+| summarize Events = count(), LastSeen = max(TimeGenerated), Message = take_any(substring(RenderedDescription, 0, 250))
+    by Computer, EventLog, Level = EventLevelName, Source, EventID
+| top 50 by Events desc
+"""
+    logon_q = """
+SecurityEvent
+| where TimeGenerated {TimeRange}
+| where EventID in (4625, 4740, 4771)
+| extend Event = case(EventID == 4740, 'Account locked out', EventID == 4771, 'Kerberos pre-authentication failed', 'Logon failed')
+| summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), Event
+"""
+    return group("tab-identity", [
+        text("identity-intro",
+             "Domain controller virtual machines are found by **name** using the *Domain controller name pattern* "
+             "parameter at the top. A managed domain in Microsoft Entra Domain Services is listed without it.", "info"),
+        text("identity-ds-h", "### Microsoft Entra Domain Services"),
+        arg("identity-domain-services", "Managed domains by replica set", domain_services_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("ServiceStatus", good=["Running"], warn=["Starting", "Stopping", "Deploying"], bad=["Stopped", "Failed"]),
+            low_is_good("HealthAlerts", 1, 1),
+        ], labels={"id": "Managed domain", "ReplicaLocation": "Replica set", "ServiceStatus": "Service status",
+                   "HealthAlerts": "Health alerts", "HealthEvaluated": "Health evaluated", "Ldaps": "Secure LDAP",
+                   "LdapsCertExpires": "Secure LDAP certificate expires"},
+            no_data="No Microsoft Entra Domain Services managed domains found."),
+        text("identity-dc-h", "### Domain controllers"),
+        params("identity-params", [resource_param("DomainControllers", "Domain controllers", Q_DC_VMS)]),
+        arg("identity-dcs", "Domain controller virtual machines", dcs_q, formatters=[
+            resource_link(), health_fmt(),
+            status_fmt("Power", good=["VM running"], bad=["VM deallocated", "VM stopped"], warn=["VM starting", "VM stopping", "VM deallocating"]),
+            low_is_good("CriticalPatches", 1, 1), low_is_good("SecurityPatches", 1, 10),
+            status_fmt("RebootPending", warn=["true"]),
+        ], labels={"id": "Domain controller", "CriticalPatches": "Critical patches", "SecurityPatches": "Security patches",
+                   "RebootPending": "Reboot pending"},
+            no_data="No virtual machines matched the domain controller name pattern."),
+        metric_grid("identity-kpis", "Domain controller metrics (over time range)", vm, "DomainControllers", [
+            ("VmAvailabilityMetric", AVG, "VM availability", None),
+            ("Percentage CPU", AVG, "Avg CPU %", ("low", 80, 95)),
+            ("Available Memory Percentage", AVG, "Avg free memory %", ("high", 20, 10)),
+            ("OS Disk IOPS Consumed Percentage", AVG, "OS disk IOPS used %", ("low", 80, 95)),
+        ]),
+        metrics("identity-cpu", "CPU %", vm, "DomainControllers", [m(vm, "Percentage CPU", AVG)], width=50),
+        metrics("identity-mem", "Available memory %", vm, "DomainControllers",
+                [m(vm, "Available Memory Percentage", AVG)], width=50),
+        text("identity-logs-hint", "Select a **Log Analytics workspace** at the top to see domain controller "
+             "heartbeats, directory service errors and failed logons.", "info", visible_when=WORKSPACE_UNSET),
+        la("identity-heartbeat", "Domain controller heartbeats", heartbeat_q, width=30,
+           formatters=[status_fmt("Status", good=["Reporting"], bad=["Silent"])],
+           no_data="No heartbeats from machines matching the domain controller name pattern."),
+        la("identity-ad-events", "Directory, replication and DNS errors and warnings", ad_events_q, width=70,
+           formatters=[status_fmt("Level", warn=["Warning"], bad=["Error"])],
+           no_data="No errors or warnings (or these event logs are not collected from the domain controllers)."),
+        la("identity-logons", "Failed logons and account lockouts", logon_q, vis="timechart"),
+    ], tab="identity")
 
 
 def buildagents_tab():
@@ -2393,6 +2505,16 @@ def global_params():
             "description": "Regex matched against scale set names to identify build agent pools.",
         },
         {
+            "id": gid("param-DcPattern"),
+            "version": "KqlParameterItem/1.0",
+            "name": "DcPattern",
+            "label": "Domain controller name pattern",
+            "type": 1,
+            "isRequired": True,
+            "value": "(?i)(dc|adds)",
+            "description": "Regex matched against virtual machine and computer names on the Identity tab.",
+        },
+        {
             "id": gid("param-StoragePattern"),
             "version": "KqlParameterItem/1.0",
             "name": "StoragePattern",
@@ -2427,7 +2549,7 @@ def workbook():
         "items": [
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
-                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, Azure VMware Solution, Azure Virtual Desktop, storage, "
+                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
                  "build agents, governance, monitoring and backup."),
             global_params(),
             tabs(),
@@ -2438,6 +2560,7 @@ def workbook():
             vpn_tab(),
             connectivity_tab(),
             shared_tab(),
+            identity_tab(),
             buildagents_tab(),
             avs_tab(),
             avd_tab(),
