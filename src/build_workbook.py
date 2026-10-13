@@ -113,7 +113,7 @@ FULL_HEIGHT = {
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
     "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "identity-kpis",
-    "gov-score", "mgmt-vaults",
+    "sec-score", "mgmt-vaults",
 }
 
 
@@ -503,6 +503,7 @@ TABS = [
     ("avd", "AVD"),
     ("storage", "Storage"),
     ("governance", "Governance"),
+    ("security", "Security"),
     ("management", "Monitoring & Backup"),
     ("capacity", "Capacity"),
     ("throughput", "Throughput"),
@@ -1910,6 +1911,54 @@ resources
     ], tab="capacity")
 
 
+def security_tab():
+    score_q = """
+securityresources
+| where type =~ 'microsoft.security/securescores'
+| project subscriptionId, ScorePct = round(100 * toreal(properties.score.percentage), 0),
+    Current = toreal(properties.score.current), Max = toreal(properties.score.max)
+""" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), ScorePct, Current, Max
+| order by ScorePct asc
+"""
+    controls_q = """
+securityresources
+| where type =~ 'microsoft.security/securescores/securescorecontrols'
+| extend Unhealthy = toint(properties.unhealthyResourceCount)
+| where Unhealthy > 0
+| summarize Unhealthy = sum(Unhealthy), AvgScorePct = round(100 * avg(toreal(properties.score.percentage)), 0)
+    by Control = tostring(properties.displayName)
+| order by Unhealthy desc
+"""
+    alerts_q = """
+securityresources
+| where type =~ 'microsoft.security/locations/alerts'
+| where tostring(properties.Status) =~ 'Active'
+| project Severity = tostring(properties.Severity), Alert = tostring(properties.AlertDisplayName),
+    Entity = tostring(properties.CompromisedEntity), Started = todatetime(properties.StartTimeUtc),
+    Tactics = strcat_array(properties.Intent, ', ')
+| order by case(Severity =~ 'High', 0, Severity =~ 'Medium', 1, 2) asc, Started desc
+"""
+    recs_q = """
+securityresources
+| where type =~ 'microsoft.security/assessments'
+| where tostring(properties.status.code) =~ 'Unhealthy'
+| extend Severity = tostring(properties.metadata.severity)
+| where Severity in~ ('High', 'Medium')
+| summarize Resources = count() by Recommendation = tostring(properties.displayName), Severity
+| order by case(Severity =~ 'High', 0, 1) asc, Resources desc
+"""
+    sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
+    return group("tab-security", [
+        text("sec-defender-h", "### Microsoft Defender for Cloud"),
+        arg("sec-score", "Secure score by subscription", score_q,
+            formatters=[high_is_good("ScorePct", 80, 50, digits=0)], labels={"ScorePct": "Score %"}, width=40),
+        arg("sec-controls", "Security controls with unhealthy resources", controls_q, width=60),
+        arg("sec-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
+        arg("sec-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
+    ], tab="security")
+
+
 def governance_tab():
     compliance_q = """
 policyresources
@@ -1947,42 +1996,6 @@ policyresources
 | summarize Resources = max(Resources), Assignments = make_set(Assignment) by Policy
 | project Policy, Resources, Assignments = strcat_array(Assignments, ', ')
 | top 100 by Resources desc
-"""
-    score_q = """
-securityresources
-| where type =~ 'microsoft.security/securescores'
-| project subscriptionId, ScorePct = round(100 * toreal(properties.score.percentage), 0),
-    Current = toreal(properties.score.current), Max = toreal(properties.score.max)
-""" + SUBSCRIPTION_NAMES + """
-| project Subscription = coalesce(Subscription, subscriptionId), ScorePct, Current, Max
-| order by ScorePct asc
-"""
-    controls_q = """
-securityresources
-| where type =~ 'microsoft.security/securescores/securescorecontrols'
-| extend Unhealthy = toint(properties.unhealthyResourceCount)
-| where Unhealthy > 0
-| summarize Unhealthy = sum(Unhealthy), AvgScorePct = round(100 * avg(toreal(properties.score.percentage)), 0)
-    by Control = tostring(properties.displayName)
-| order by Unhealthy desc
-"""
-    alerts_q = """
-securityresources
-| where type =~ 'microsoft.security/locations/alerts'
-| where tostring(properties.Status) =~ 'Active'
-| project Severity = tostring(properties.Severity), Alert = tostring(properties.AlertDisplayName),
-    Entity = tostring(properties.CompromisedEntity), Started = todatetime(properties.StartTimeUtc),
-    Tactics = strcat_array(properties.Intent, ', ')
-| order by case(Severity =~ 'High', 0, Severity =~ 'Medium', 1, 2) asc, Started desc
-"""
-    recs_q = """
-securityresources
-| where type =~ 'microsoft.security/assessments'
-| where tostring(properties.status.code) =~ 'Unhealthy'
-| extend Severity = tostring(properties.metadata.severity)
-| where Severity in~ ('High', 'Medium')
-| summarize Resources = count() by Recommendation = tostring(properties.displayName), Severity
-| order by case(Severity =~ 'High', 0, 1) asc, Resources desc
 """
     advisor_q = """
 advisorresources
@@ -2077,7 +2090,6 @@ resources
     patch_q = patch_base + """| project id, OS, Assessment, Assessed, Critical, Security, Other, RebootPending, PatchMode, ResourceGroup
 | order by Critical desc, Security desc, case(Assessment == 'Succeeded', 1, 0) asc
 """
-    sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
     return group("tab-governance", [
         text("gov-deadlines-h", "### Expiry & retirement"),
         arg("gov-retirements", "Service retirements affecting your resources (Azure Advisor)", retirements_q, formatters=[
@@ -2101,12 +2113,6 @@ resources
             formatters=[high_is_good("CompliancePct", 90, 70, digits=1)], labels={"CompliancePct": "Compliant %"}, width=40),
         arg("gov-noncompliant", "Top non-compliant policies", noncompliant_q, width=60,
             no_data="No non-compliant resources."),
-        text("gov-defender-h", "### Microsoft Defender for Cloud"),
-        arg("gov-score", "Secure score by subscription", score_q,
-            formatters=[high_is_good("ScorePct", 80, 50, digits=0)], labels={"ScorePct": "Score %"}, width=40),
-        arg("gov-controls", "Security controls with unhealthy resources", controls_q, width=60),
-        arg("gov-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
-        arg("gov-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
         text("gov-patch-h", "### Patch compliance (Azure Update Manager)"),
         text("gov-patch-note", "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD "
              "session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not "
@@ -2677,7 +2683,7 @@ def workbook():
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
                  "ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
-                 "build agents, governance, monitoring and backup."),
+                 "build agents, governance, security, monitoring and backup."),
             global_params(),
             tabs(),
             overview_tab(),
@@ -2693,6 +2699,7 @@ def workbook():
             avd_tab(),
             storage_tab(),
             governance_tab(),
+            security_tab(),
             management_tab(),
             capacity_tab(),
             throughput_tab(),

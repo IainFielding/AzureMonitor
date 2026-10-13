@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, monitoring and backup."
+        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, security, monitoring and backup."
       },
       "name": "header"
     },
@@ -255,6 +255,14 @@
             "linkTarget": "parameter",
             "linkLabel": "Governance",
             "subTarget": "governance",
+            "style": "link"
+          },
+          {
+            "id": "36d92bc4-10cf-5c2a-8c0f-b61590817290",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Security",
+            "subTarget": "security",
             "style": "link"
           },
           {
@@ -11560,221 +11568,6 @@
           {
             "type": 1,
             "content": {
-              "json": "### Microsoft Defender for Cloud"
-            },
-            "name": "gov-defender-h"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ 'microsoft.security/securescores'\n| project subscriptionId, ScorePct = round(100 * toreal(properties.score.percentage), 0),\n    Current = toreal(properties.score.current), Max = toreal(properties.score.max)\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Subscription = coalesce(Subscription, subscriptionId), ScorePct, Current, Max\n| order by ScorePct asc",
-              "size": 3,
-              "title": "Secure score by subscription",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "ScorePct",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "<",
-                          "thresholdValue": "50",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "<",
-                          "thresholdValue": "80",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "success",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    },
-                    "numberFormat": {
-                      "unit": 0,
-                      "options": {
-                        "style": "decimal",
-                        "maximumFractionDigits": 0
-                      }
-                    }
-                  }
-                ],
-                "filter": true,
-                "labelSettings": [
-                  {
-                    "columnId": "ScorePct",
-                    "label": "Score %"
-                  }
-                ]
-              }
-            },
-            "name": "gov-score",
-            "customWidth": "40"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ 'microsoft.security/securescores/securescorecontrols'\n| extend Unhealthy = toint(properties.unhealthyResourceCount)\n| where Unhealthy > 0\n| summarize Unhealthy = sum(Unhealthy), AvgScorePct = round(100 * avg(toreal(properties.score.percentage)), 0)\n    by Control = tostring(properties.displayName)\n| order by Unhealthy desc",
-              "size": 0,
-              "title": "Security controls with unhealthy resources",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [],
-                "filter": true
-              }
-            },
-            "name": "gov-controls",
-            "customWidth": "60"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ 'microsoft.security/locations/alerts'\n| where tostring(properties.Status) =~ 'Active'\n| project Severity = tostring(properties.Severity), Alert = tostring(properties.AlertDisplayName),\n    Entity = tostring(properties.CompromisedEntity), Started = todatetime(properties.StartTimeUtc),\n    Tactics = strcat_array(properties.Intent, ', ')\n| order by case(Severity =~ 'High', 0, Severity =~ 'Medium', 1, 2) asc, Started desc",
-              "size": 0,
-              "title": "Active security alerts",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "noDataMessage": "No active security alerts.",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "Severity",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Medium",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "High",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Low",
-                          "representation": "unknown",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Informational",
-                          "representation": "unknown",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  }
-                ],
-                "filter": true
-              }
-            },
-            "name": "gov-alerts"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "securityresources\n| where type =~ 'microsoft.security/assessments'\n| where tostring(properties.status.code) =~ 'Unhealthy'\n| extend Severity = tostring(properties.metadata.severity)\n| where Severity in~ ('High', 'Medium')\n| summarize Resources = count() by Recommendation = tostring(properties.displayName), Severity\n| order by case(Severity =~ 'High', 0, 1) asc, Resources desc",
-              "size": 0,
-              "title": "Unhealthy recommendations (high & medium)",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "Severity",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Medium",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "High",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Low",
-                          "representation": "unknown",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Informational",
-                          "representation": "unknown",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  }
-                ],
-                "filter": true
-              }
-            },
-            "name": "gov-recs"
-          },
-          {
-            "type": 1,
-            "content": {
               "json": "### Patch compliance (Azure Update Manager)"
             },
             "name": "gov-patch-h"
@@ -12109,6 +11902,236 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "governance"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Microsoft Defender for Cloud"
+            },
+            "name": "sec-defender-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/securescores'\n| project subscriptionId, ScorePct = round(100 * toreal(properties.score.percentage), 0),\n    Current = toreal(properties.score.current), Max = toreal(properties.score.max)\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Subscription = coalesce(Subscription, subscriptionId), ScorePct, Current, Max\n| order by ScorePct asc",
+              "size": 3,
+              "title": "Secure score by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "ScorePct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "50",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "80",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ScorePct",
+                    "label": "Score %"
+                  }
+                ]
+              }
+            },
+            "name": "sec-score",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/securescores/securescorecontrols'\n| extend Unhealthy = toint(properties.unhealthyResourceCount)\n| where Unhealthy > 0\n| summarize Unhealthy = sum(Unhealthy), AvgScorePct = round(100 * avg(toreal(properties.score.percentage)), 0)\n    by Control = tostring(properties.displayName)\n| order by Unhealthy desc",
+              "size": 0,
+              "title": "Security controls with unhealthy resources",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "sec-controls",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/locations/alerts'\n| where tostring(properties.Status) =~ 'Active'\n| project Severity = tostring(properties.Severity), Alert = tostring(properties.AlertDisplayName),\n    Entity = tostring(properties.CompromisedEntity), Started = todatetime(properties.StartTimeUtc),\n    Tactics = strcat_array(properties.Intent, ', ')\n| order by case(Severity =~ 'High', 0, Severity =~ 'Medium', 1, 2) asc, Started desc",
+              "size": 0,
+              "title": "Active security alerts",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No active security alerts.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "sec-alerts"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/assessments'\n| where tostring(properties.status.code) =~ 'Unhealthy'\n| extend Severity = tostring(properties.metadata.severity)\n| where Severity in~ ('High', 'Medium')\n| summarize Resources = count() by Recommendation = tostring(properties.displayName), Severity\n| order by case(Severity =~ 'High', 0, 1) asc, Resources desc",
+              "size": 0,
+              "title": "Unhealthy recommendations (high & medium)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "sec-recs"
+          }
+        ]
+      },
+      "name": "tab-security",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "security"
       }
     },
     {
