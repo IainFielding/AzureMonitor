@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), application delivery, shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, security, monitoring and backup."
+        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), application delivery, AI Foundry, shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, security, monitoring and backup."
       },
       "name": "header"
     },
@@ -210,6 +210,14 @@
             "style": "link"
           },
           {
+            "id": "3b8f038a-b114-59fb-a5a5-5dfca6da8291",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "AI Foundry",
+            "subTarget": "foundry",
+            "style": "link"
+          },
+          {
             "id": "ea5651f4-a375-5c1b-8e9e-665213f5c8cd",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
@@ -277,7 +285,7 @@
             "id": "7d235798-3b39-5f76-80c9-7baeb316c4da",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Monitoring & Backup",
+            "linkLabel": "Monitoring",
             "subTarget": "management",
             "style": "link"
           },
@@ -334,7 +342,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n    'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',\n    'microsoft.network/virtualnetworks', 'microsoft.network/applicationgateways', 'microsoft.compute/disks',\n    'microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')\n| extend endpointState = coalesce(\n    tostring(properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status),\n    tostring(properties.manualPrivateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status))\n| summarize\n    Endpoints = countif(type =~ 'microsoft.network/privateendpoints' and endpointState !~ 'Approved'),\n    Peerings = countif(type =~ 'microsoft.network/virtualnetworks' and tostring(properties.virtualNetworkPeerings) contains 'Disconnected'),\n    Gateways = countif(type =~ 'microsoft.network/applicationgateways' and tostring(properties.operationalState) !~ 'Running'),\n    ThreatIntelOff = countif(type =~ 'microsoft.network/firewallpolicies' and tostring(properties.threatIntelMode) =~ 'Off'),\n    WafDetection = countif(type endswith 'webapplicationfirewallpolicies' and tostring(properties.policySettings.mode) =~ 'Detection'),\n    RulesDisabled = countif(type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n        'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),\n    GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),\n    Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))\n| extend rows = pack_array(\n    pack('Check', 'Endpoints not approved', 'Count', Endpoints, 'Tab', 'Shared', 'Severity', 'Unavailable'),\n    pack('Check', 'Peerings disconnected', 'Count', Peerings, 'Tab', 'Virtual WAN', 'Severity', 'Unavailable'),\n    pack('Check', 'App gateways stopped', 'Count', Gateways, 'Tab', 'App Delivery', 'Severity', 'Unavailable'),\n    pack('Check', 'Threat intel off', 'Count', ThreatIntelOff, 'Tab', 'Firewall', 'Severity', 'Degraded'),\n    pack('Check', 'WAF in detection mode', 'Count', WafDetection, 'Tab', 'App Delivery', 'Severity', 'Degraded'),\n    pack('Check', 'Alert rules disabled', 'Count', RulesDisabled, 'Tab', 'Monitoring & Backup', 'Severity', 'Degraded'),\n    pack('Check', 'Action groups disabled', 'Count', GroupsDisabled, 'Tab', 'Monitoring & Backup', 'Severity', 'Degraded'),\n    pack('Check', 'Unattached disks', 'Count', Disks, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "query": "resources\n| where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n    'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',\n    'microsoft.network/virtualnetworks', 'microsoft.network/applicationgateways', 'microsoft.compute/disks',\n    'microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')\n| extend endpointState = coalesce(\n    tostring(properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status),\n    tostring(properties.manualPrivateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status))\n| summarize\n    Endpoints = countif(type =~ 'microsoft.network/privateendpoints' and endpointState !~ 'Approved'),\n    Peerings = countif(type =~ 'microsoft.network/virtualnetworks' and tostring(properties.virtualNetworkPeerings) contains 'Disconnected'),\n    Gateways = countif(type =~ 'microsoft.network/applicationgateways' and tostring(properties.operationalState) !~ 'Running'),\n    ThreatIntelOff = countif(type =~ 'microsoft.network/firewallpolicies' and tostring(properties.threatIntelMode) =~ 'Off'),\n    WafDetection = countif(type endswith 'webapplicationfirewallpolicies' and tostring(properties.policySettings.mode) =~ 'Detection'),\n    RulesDisabled = countif(type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n        'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),\n    GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),\n    Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))\n| extend rows = pack_array(\n    pack('Check', 'Endpoints not approved', 'Count', Endpoints, 'Tab', 'Shared', 'Severity', 'Unavailable'),\n    pack('Check', 'Peerings disconnected', 'Count', Peerings, 'Tab', 'Virtual WAN', 'Severity', 'Unavailable'),\n    pack('Check', 'App gateways stopped', 'Count', Gateways, 'Tab', 'App Delivery', 'Severity', 'Unavailable'),\n    pack('Check', 'Threat intel off', 'Count', ThreatIntelOff, 'Tab', 'Firewall', 'Severity', 'Degraded'),\n    pack('Check', 'WAF in detection mode', 'Count', WafDetection, 'Tab', 'App Delivery', 'Severity', 'Degraded'),\n    pack('Check', 'Alert rules disabled', 'Count', RulesDisabled, 'Tab', 'Monitoring', 'Severity', 'Degraded'),\n    pack('Check', 'Action groups disabled', 'Count', GroupsDisabled, 'Tab', 'Monitoring', 'Severity', 'Degraded'),\n    pack('Check', 'Unattached disks', 'Count', Disks, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -918,7 +926,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring & Backup', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, below', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
+              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, below', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 0,
@@ -6935,6 +6943,33 @@
                   ],
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "b1626d82-d304-5d90-98e0-11034e6714b8",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ApiManagement",
+                  "label": "API Management",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.apimanagement/service'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
                 }
               ],
               "style": "pills",
@@ -8002,6 +8037,582 @@
           {
             "type": 1,
             "content": {
+              "json": "### API Management"
+            },
+            "name": "apim-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.apimanagement/service'\n| project id,\n    Tier = tostring(sku.name),\n    Units = toint(sku.capacity),\n    Network = tostring(properties.virtualNetworkType),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    Platform = tostring(properties.platformVersion),\n    Regions = 1 + coalesce(array_length(properties.additionalLocations), 0),\n    Zones = strcat_array(zones, ','),\n    Gateway = tostring(properties.gatewayUrl),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 3,
+              "title": "API Management services",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No API Management services found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Platform",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stv2",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stv2.1",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "mtv1",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stv1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "undetermined",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PublicAccess",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Service"
+                  },
+                  {
+                    "columnId": "PublicAccess",
+                    "label": "Public access"
+                  },
+                  {
+                    "columnId": "Gateway",
+                    "label": "Gateway URL"
+                  }
+                ]
+              }
+            },
+            "name": "apim-inventory"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook49aadc55-cd04-5a38-bbb9-bf826a5d057a",
+              "version": "MetricsItem/2.0",
+              "size": 3,
+              "chartType": 0,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Capacity",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Requests",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Duration",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--BackendDuration",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Capacity Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Requests Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Duration Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--BackendDuration Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Capacity$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.apimanagement/service--Duration$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "3000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1000",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.apimanagement/service--Capacity",
+                    "label": "Capacity %"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Requests",
+                    "label": "Requests"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Duration",
+                    "label": "Overall duration (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--BackendDuration",
+                    "label": "Backend duration (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Capacity Timeline",
+                    "label": "Capacity % trend"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Requests Timeline",
+                    "label": "Requests trend"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--Duration Timeline",
+                    "label": "Overall duration (ms) trend"
+                  },
+                  {
+                    "columnId": "microsoft.apimanagement/service--BackendDuration Timeline",
+                    "label": "Backend duration (ms) trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "apim-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookad21f634-c2ec-5438-97b3-4cc13a38042f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Requests",
+                  "aggregation": 1,
+                  "splitBy": "GatewayResponseCodeCategory",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Requests by gateway response",
+              "showOpenInMe": true
+            },
+            "name": "apim-requests",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook29c0a8b1-f9a9-5070-a5d2-63c4c15b665f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Requests",
+                  "aggregation": 1,
+                  "splitBy": "BackendResponseCodeCategory",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Requests by backend response",
+              "showOpenInMe": true
+            },
+            "name": "apim-backend",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook5b2ae5a5-efb4-5b04-8fd2-c4e0baf8a0db",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Duration",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--BackendDuration",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Overall and backend duration (ms)",
+              "showOpenInMe": true
+            },
+            "name": "apim-duration",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookf70f7dee-11e3-5204-9921-4fb70c4a85b8",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.apimanagement/service",
+              "metricScope": 0,
+              "resourceParameter": "ApiManagement",
+              "resourceIds": [
+                "{ApiManagement}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.apimanagement/service",
+                  "metric": "microsoft.apimanagement/service--Capacity",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Capacity %",
+              "showOpenInMe": true
+            },
+            "name": "apim-capacity",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (ApiManagementGatewayLogs)\n| where TimeGenerated {TimeRange}\n| extend Code = toint(column_ifexists('ResponseCode', 0))\n| where Code >= 400\n| extend Api = tostring(column_ifexists('ApiId', '')), Operation = tostring(column_ifexists('OperationId', '')),\n    BackendCode = toint(column_ifexists('BackendResponseCode', 0)),\n    Reason = tostring(column_ifexists('LastErrorReason', '')),\n    Ms = todouble(column_ifexists('TotalTime', 0))\n| summarize Failures = count(), P95Ms = round(percentile(Ms, 95), 0), LastSeen = max(TimeGenerated)\n    by Api, Operation, Code, BackendCode, Reason\n| top 50 by Failures desc",
+              "size": 0,
+              "title": "API operations returning errors",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed requests in the time range (or gateway logs are not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Code",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "500",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "400",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Api",
+                    "label": "API"
+                  },
+                  {
+                    "columnId": "Code",
+                    "label": "Response code"
+                  },
+                  {
+                    "columnId": "BackendCode",
+                    "label": "Backend code"
+                  },
+                  {
+                    "columnId": "P95Ms",
+                    "label": "P95 time (ms)"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "apim-failures",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Capacity* is the gateway's own load figure; Microsoft's guidance is to add units or scale up when it stays above about 70%. A 4xx from the gateway with a backend code of 0 was rejected by the gateway itself (authentication, rate limit or policy) and never reached the backend.",
+              "style": "info"
+            },
+            "name": "apim-note"
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "### Web Application Firewall"
             },
             "name": "waf-h"
@@ -8247,6 +8858,955 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "appdelivery"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "cc7e34ef-2d56-5dec-b589-8feb55ab8a64",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "FoundryAccounts",
+                  "label": "AI Foundry resources",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "foundry-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| project id,\n    Kind = iff(kind =~ 'OpenAI', 'Azure OpenAI', 'AI Foundry'),\n    Sku = tostring(sku.name),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = coalesce(array_length(properties.privateEndpointConnections), 0),\n    KeyAccess = iff(tobool(properties.disableLocalAuth), 'Disabled', 'Enabled'),\n    Endpoint = tostring(properties.endpoint),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "AI Foundry and Azure OpenAI resources",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No AI Foundry or Azure OpenAI resources found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PublicAccess",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "KeyAccess",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "PublicAccess",
+                    "label": "Public access"
+                  },
+                  {
+                    "columnId": "PrivateEndpoints",
+                    "label": "Private endpoints"
+                  },
+                  {
+                    "columnId": "KeyAccess",
+                    "label": "Key access"
+                  }
+                ]
+              }
+            },
+            "name": "foundry-accounts"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts/deployments'\n| project Account = tostring(split(id, '/')[8]),\n    Deployment = name,\n    Model = tostring(properties.model.name),\n    Version = tostring(properties.model.version),\n    Sku = tostring(sku.name),\n    Capacity = toint(sku.capacity),\n    Upgrade = tostring(properties.versionUpgradeOption),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup\n| order by Account asc, Deployment asc",
+              "size": 0,
+              "title": "Model deployments",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No model deployments found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Sku",
+                    "label": "Deployment type"
+                  },
+                  {
+                    "columnId": "Upgrade",
+                    "label": "Version upgrade"
+                  }
+                ]
+              }
+            },
+            "name": "foundry-deployments",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.machinelearningservices/workspaces'\n| where kind in~ ('Hub', 'Project')\n| project id, Kind = kind,\n    Hub = tostring(split(tostring(properties.hubResourceId), '/')[8]),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location\n| order by Kind asc, Hub asc",
+              "size": 0,
+              "title": "Hubs and projects (hub-based)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No hub-based AI Foundry hubs or projects found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "PublicAccess",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Hub or project"
+                  },
+                  {
+                    "columnId": "PublicAccess",
+                    "label": "Public access"
+                  }
+                ]
+              }
+            },
+            "name": "foundry-hubs",
+            "customWidth": "40"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Usage and performance"
+            },
+            "name": "foundry-usage-h"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookfac9dfbe-dac2-53c6-a1be-ab56dbad49db",
+              "version": "MetricsItem/2.0",
+              "size": 3,
+              "chartType": 0,
+              "resourceType": "microsoft.cognitiveservices/accounts",
+              "metricScope": 0,
+              "resourceParameter": "FoundryAccounts",
+              "resourceIds": [
+                "{FoundryAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--SuccessRate",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--TotalCalls",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--ClientErrors",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--ServerErrors",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--TokenTransaction",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cognitiveservices/accounts--SuccessRate Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cognitiveservices/accounts--TotalCalls Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cognitiveservices/accounts--ClientErrors Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cognitiveservices/accounts--ServerErrors Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cognitiveservices/accounts--TokenTransaction Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cognitiveservices/accounts--SuccessRate$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99.9",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--SuccessRate",
+                    "label": "Availability %"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--TotalCalls",
+                    "label": "Calls"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--ClientErrors",
+                    "label": "Client errors (4xx)"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--ServerErrors",
+                    "label": "Server errors (5xx)"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--TokenTransaction",
+                    "label": "Tokens processed"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--SuccessRate Timeline",
+                    "label": "Availability % trend"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--TotalCalls Timeline",
+                    "label": "Calls trend"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--ClientErrors Timeline",
+                    "label": "Client errors (4xx) trend"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--ServerErrors Timeline",
+                    "label": "Server errors (5xx) trend"
+                  },
+                  {
+                    "columnId": "microsoft.cognitiveservices/accounts--TokenTransaction Timeline",
+                    "label": "Tokens processed trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "foundry-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook85fcee5b-a1db-5c74-96f1-d432b32cd983",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cognitiveservices/accounts",
+              "metricScope": 0,
+              "resourceParameter": "FoundryAccounts",
+              "resourceIds": [
+                "{FoundryAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--AzureOpenAIRequests",
+                  "aggregation": 1,
+                  "splitBy": "StatusCode",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Requests by status code (429 = throttled)",
+              "showOpenInMe": true
+            },
+            "name": "foundry-status",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook8d6081b3-6d2b-5d47-a921-b8d397ec1dae",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cognitiveservices/accounts",
+              "metricScope": 0,
+              "resourceParameter": "FoundryAccounts",
+              "resourceIds": [
+                "{FoundryAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--AzureOpenAIRequests",
+                  "aggregation": 1,
+                  "splitBy": "ModelDeploymentName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Requests by deployment",
+              "showOpenInMe": true
+            },
+            "name": "foundry-requests",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook1dc9860a-a80f-563d-b3cd-9af2a1b1ce09",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cognitiveservices/accounts",
+              "metricScope": 0,
+              "resourceParameter": "FoundryAccounts",
+              "resourceIds": [
+                "{FoundryAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--ProcessedPromptTokens",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--GeneratedTokens",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Prompt and generated tokens",
+              "showOpenInMe": true
+            },
+            "name": "foundry-tokens",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookaa24ce2d-1a6b-531f-b4cb-c67de3bd05ca",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cognitiveservices/accounts",
+              "metricScope": 0,
+              "resourceParameter": "FoundryAccounts",
+              "resourceIds": [
+                "{FoundryAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--TokenTransaction",
+                  "aggregation": 1,
+                  "splitBy": "ModelDeploymentName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Tokens processed by deployment",
+              "showOpenInMe": true
+            },
+            "name": "foundry-tokens-deployment",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookca9b550f-cead-5a1f-9779-9d1440e743b6",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cognitiveservices/accounts",
+              "metricScope": 0,
+              "resourceParameter": "FoundryAccounts",
+              "resourceIds": [
+                "{FoundryAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--AzureOpenAITimeToResponse",
+                  "aggregation": 4,
+                  "splitBy": "ModelDeploymentName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Time to response (ms) by deployment",
+              "showOpenInMe": true
+            },
+            "name": "foundry-latency",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookfd232b14-4bc0-595b-993d-4835d0b2ad2a",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cognitiveservices/accounts",
+              "metricScope": 0,
+              "resourceParameter": "FoundryAccounts",
+              "resourceIds": [
+                "{FoundryAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cognitiveservices/accounts",
+                  "metric": "microsoft.cognitiveservices/accounts--AzureOpenAIProvisionedManagedUtilizationV2",
+                  "aggregation": 4,
+                  "splitBy": "ModelDeploymentName",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Provisioned utilisation % by deployment",
+              "showOpenInMe": true
+            },
+            "name": "foundry-ptu",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A deployment is throttled when it runs past its tokens-per-minute or requests-per-minute limit, which shows as status 429. *Provisioned utilisation* only has data for provisioned deployments; above 100% they start returning 429 too.",
+              "style": "info"
+            },
+            "name": "foundry-metrics-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Model quota"
+            },
+            "name": "foundry-quota-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Quota is granted per subscription, region and model, in thousands of tokens a minute, and is shared by every deployment of that model in the region. It is read from Azure Resource Manager for one subscription and region at a time.",
+              "style": "info"
+            },
+            "name": "foundry-quota-note"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "c5183f99-8ffe-51c6-8041-65663da02616",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "FoundrySubscription",
+                  "label": "Subscription",
+                  "type": 6,
+                  "isRequired": true,
+                  "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::1"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::1",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "c0b468be-d578-57fc-b3df-1ef597a80d57",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "FoundryRegion",
+                  "label": "Region",
+                  "type": 2,
+                  "isRequired": true,
+                  "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| summarize Resources = count() by location\n| order by Resources desc\n| project value = location, label = location",
+                  "crossComponentResources": [
+                    "{FoundrySubscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::1"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::1",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "foundry-quota-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{FoundrySubscription}/providers/Microsoft.CognitiveServices/locations/{FoundryRegion}/usages\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-05-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name.value\", \"columnid\": \"Quota\"}, {\"path\": \"$.currentValue\", \"columnid\": \"Used\", \"columnType\": \"long\"}, {\"path\": \"$.limit\", \"columnid\": \"Limit\", \"columnType\": \"long\"}]}}]}",
+              "size": 0,
+              "title": "Model quota used against limit",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "Used",
+                    "sortOrder": 2
+                  }
+                ]
+              },
+              "noDataMessage": "No model quota returned for this subscription and region."
+            },
+            "name": "foundry-quota"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see the requests that failed or were throttled.",
+              "style": "info"
+            },
+            "name": "foundry-logs-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (AzureDiagnostics)\n| where TimeGenerated {TimeRange}\n| where column_ifexists('ResourceProvider', '') =~ 'MICROSOFT.COGNITIVESERVICES'\n| extend Status = tostring(column_ifexists('ResultSignature', '')), Account = tostring(column_ifexists('Resource', '')),\n    Operation = tostring(column_ifexists('OperationName', '')), Ms = todouble(column_ifexists('DurationMs', 0))\n| where isnotempty(Status) and Status !startswith '2'\n| summarize Requests = count(), P95Ms = round(percentile(Ms, 95), 0), LastSeen = max(TimeGenerated)\n    by Account, Operation, Status\n| top 50 by Requests desc",
+              "size": 0,
+              "title": "Requests that failed or were throttled",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed requests in the time range (or request logs are not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "P95Ms",
+                    "label": "P95 duration (ms)"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "foundry-errors",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "tab-foundry",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "foundry"
       }
     },
     {
