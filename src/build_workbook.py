@@ -112,7 +112,7 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "agw-inventory", "agw-kpis", "apim-inventory", "apim-kpis", "afd-inventory", "afd-kpis", "identity-kpis",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "agw-inventory", "agw-kpis", "apim-inventory", "apim-kpis", "foundry-kpis", "afd-inventory", "afd-kpis", "identity-kpis",
     "sec-score", "mgmt-vaults",
 }
 
@@ -326,6 +326,8 @@ Q_APP_GATEWAYS = "resources\n| where type =~ 'microsoft.network/applicationgatew
 Q_FRONT_DOORS = ("resources\n| where type =~ 'microsoft.cdn/profiles'"
                  "\n| where tostring(sku.name) contains 'AzureFrontDoor'")
 Q_APIM = "resources\n| where type =~ 'microsoft.apimanagement/service'"
+Q_FOUNDRY = ("resources\n| where type =~ 'microsoft.cognitiveservices/accounts'"
+             "\n| where kind in~ ('AIServices', 'OpenAI')")
 Q_BASTIONS = "resources\n| where type =~ 'microsoft.network/bastionhosts'"
 Q_PUBLIC_IPS = "resources\n| where type =~ 'microsoft.network/publicipaddresses'"
 Q_KEYVAULTS = "resources\n| where type =~ 'microsoft.keyvault/vaults'"
@@ -532,6 +534,7 @@ TABS = [
     ("vpn", "VPN"),
     ("connectivity", "Connectivity"),
     ("appdelivery", "App Delivery"),
+    ("foundry", "AI Foundry"),
     ("shared", "Shared"),
     ("identity", "Identity"),
     ("buildagents", "Agents"),
@@ -540,7 +543,7 @@ TABS = [
     ("storage", "Storage"),
     ("governance", "Governance"),
     ("security", "Security"),
-    ("management", "Monitoring & Backup"),
+    ("management", "Monitoring"),
     ("capacity", "Capacity"),
     ("throughput", "Throughput"),
 ]
@@ -826,8 +829,8 @@ policyresources
         ("App gateways stopped", "Gateways", "App Delivery", "Unavailable"),
         ("Threat intel off", "ThreatIntelOff", "Firewall", "Degraded"),
         ("WAF in detection mode", "WafDetection", "App Delivery", "Degraded"),
-        ("Alert rules disabled", "RulesDisabled", "Monitoring & Backup", "Degraded"),
-        ("Action groups disabled", "GroupsDisabled", "Monitoring & Backup", "Degraded"),
+        ("Alert rules disabled", "RulesDisabled", "Monitoring", "Degraded"),
+        ("Action groups disabled", "GroupsDisabled", "Monitoring", "Degraded"),
         ("Unattached disks", "Disks", "Governance", "Degraded"),
     ])
     issues_health_q = counts_health + issue_rows([("Health incidents", "Impaired", "Overview, below", "Degraded")])
@@ -857,7 +860,7 @@ union isfuzzy=true
     (Heartbeat | where TimeGenerated {{TimeRange}}
         | summarize lastSeen = max(TimeGenerated) by Computer
         | summarize Count = countif(lastSeen < ago(15m))
-        | extend Check = 'Machines not reporting', Tab = 'Monitoring & Backup', Severity = 'Degraded'),
+        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),
     (AzureActivity | where TimeGenerated {{TimeRange}}
         | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')
         | extend parts = split(tolower(_ResourceId), '/')
@@ -1773,6 +1776,141 @@ union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (ApiManagementGatewayL
         text("waf-note", "A policy in *Detection* mode logs matches but lets the request through. TLS certificates "
              "for both products are held in Key Vault or managed by Azure, so their expiry is not shown here.", "info"),
     ], tab="appdelivery")
+
+
+def foundry_tab():
+    ns = "microsoft.cognitiveservices/accounts"
+    accounts_q = Q_FOUNDRY + """
+| project id,
+    Kind = iff(kind =~ 'OpenAI', 'Azure OpenAI', 'AI Foundry'),
+    Sku = tostring(sku.name),
+    PublicAccess = tostring(properties.publicNetworkAccess),
+    PrivateEndpoints = coalesce(array_length(properties.privateEndpointConnections), 0),
+    KeyAccess = iff(tobool(properties.disableLocalAuth), 'Disabled', 'Enabled'),
+    Endpoint = tostring(properties.endpoint),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup, Location = location
+"""
+    hubs_q = """
+resources
+| where type =~ 'microsoft.machinelearningservices/workspaces'
+| where kind in~ ('Hub', 'Project')
+| project id, Kind = kind,
+    Hub = tostring(split(tostring(properties.hubResourceId), '/')[8]),
+    PublicAccess = tostring(properties.publicNetworkAccess),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup, Location = location
+| order by Kind asc, Hub asc
+"""
+    # Capacity is in thousands of tokens a minute for standard deployments and in provisioned throughput units
+    # for provisioned ones; the SKU column says which.
+    deployments_q = """
+resources
+| where type =~ 'microsoft.cognitiveservices/accounts/deployments'
+| project Account = tostring(split(id, '/')[8]),
+    Deployment = name,
+    Model = tostring(properties.model.name),
+    Version = tostring(properties.model.version),
+    Sku = tostring(sku.name),
+    Capacity = toint(sku.capacity),
+    Upgrade = tostring(properties.versionUpgradeOption),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup
+| order by Account asc, Deployment asc
+"""
+    request_errors_q = """
+union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (AzureDiagnostics)
+| where TimeGenerated {TimeRange}
+| where column_ifexists('ResourceProvider', '') =~ 'MICROSOFT.COGNITIVESERVICES'
+| extend Status = tostring(column_ifexists('ResultSignature', '')), Account = tostring(column_ifexists('Resource', '')),
+    Operation = tostring(column_ifexists('OperationName', '')), Ms = todouble(column_ifexists('DurationMs', 0))
+| where isnotempty(Status) and Status !startswith '2'
+| summarize Requests = count(), P95Ms = round(percentile(Ms, 95), 0), LastSeen = max(TimeGenerated)
+    by Account, Operation, Status
+| top 50 by Requests desc
+"""
+    foundry_sub = {
+        "id": gid("param-FoundrySubscription"),
+        "version": "KqlParameterItem/1.0",
+        "name": "FoundrySubscription",
+        "label": "Subscription",
+        "type": 6,
+        "isRequired": True,
+        "query": Q_FOUNDRY + "\n| summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+        "crossComponentResources": ["{Subscription}"],
+        "typeSettings": {"additionalResourceOptions": ["value::1"], "showDefault": False},
+        "defaultValue": "value::1",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+    }
+    foundry_region = {
+        "id": gid("param-FoundryRegion"),
+        "version": "KqlParameterItem/1.0",
+        "name": "FoundryRegion",
+        "label": "Region",
+        "type": 2,
+        "isRequired": True,
+        "query": Q_FOUNDRY + "\n| summarize Resources = count() by location\n| order by Resources desc\n"
+                             "| project value = location, label = location",
+        "crossComponentResources": ["{FoundrySubscription}"],
+        "typeSettings": {"additionalResourceOptions": ["value::1"], "showDefault": False},
+        "defaultValue": "value::1",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+    }
+    return group("tab-foundry", [
+        params("foundry-params", [resource_param("FoundryAccounts", "AI Foundry resources", Q_FOUNDRY)]),
+        arg("foundry-accounts", "AI Foundry and Azure OpenAI resources", accounts_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("PublicAccess", good=["Disabled"], warn=["Enabled"]),
+            status_fmt("KeyAccess", good=["Disabled"], warn=["Enabled"]),
+        ], labels={"id": "Resource", "PublicAccess": "Public access", "PrivateEndpoints": "Private endpoints",
+                   "KeyAccess": "Key access"}, no_data="No AI Foundry or Azure OpenAI resources found."),
+        arg("foundry-deployments", "Model deployments", deployments_q, formatters=[PROVISIONING],
+            labels={"Sku": "Deployment type", "Upgrade": "Version upgrade"},
+            no_data="No model deployments found.", width=60),
+        arg("foundry-hubs", "Hubs and projects (hub-based)", hubs_q, formatters=[
+            resource_link(), PROVISIONING, status_fmt("PublicAccess", good=["Disabled"], warn=["Enabled"]),
+        ], labels={"id": "Hub or project", "PublicAccess": "Public access"},
+            no_data="No hub-based AI Foundry hubs or projects found.", width=40),
+        text("foundry-usage-h", "### Usage and performance"),
+        metric_grid("foundry-kpis", "Key metrics (over time range)", ns, "FoundryAccounts", [
+            ("SuccessRate", AVG, "Availability %", ("high", 99.9, 99)),
+            ("TotalCalls", SUM, "Calls", None),
+            ("ClientErrors", SUM, "Client errors (4xx)", None),
+            ("ServerErrors", SUM, "Server errors (5xx)", None),
+            ("TokenTransaction", SUM, "Tokens processed", None),
+        ]),
+        metrics("foundry-status", "Requests by status code (429 = throttled)", ns, "FoundryAccounts",
+                [m(ns, "AzureOpenAIRequests", SUM, split="StatusCode")], width=50),
+        metrics("foundry-requests", "Requests by deployment", ns, "FoundryAccounts",
+                [m(ns, "AzureOpenAIRequests", SUM, split="ModelDeploymentName")], width=50),
+        metrics("foundry-tokens", "Prompt and generated tokens", ns, "FoundryAccounts",
+                [m(ns, "ProcessedPromptTokens", SUM), m(ns, "GeneratedTokens", SUM)], width=50),
+        metrics("foundry-tokens-deployment", "Tokens processed by deployment", ns, "FoundryAccounts",
+                [m(ns, "TokenTransaction", SUM, split="ModelDeploymentName")], width=50),
+        metrics("foundry-latency", "Time to response (ms) by deployment", ns, "FoundryAccounts",
+                [m(ns, "AzureOpenAITimeToResponse", AVG, split="ModelDeploymentName")], width=50),
+        metrics("foundry-ptu", "Provisioned utilisation % by deployment", ns, "FoundryAccounts",
+                [m(ns, "AzureOpenAIProvisionedManagedUtilizationV2", AVG, split="ModelDeploymentName")], width=50),
+        text("foundry-metrics-note", "A deployment is throttled when it runs past its tokens-per-minute or "
+             "requests-per-minute limit, which shows as status 429. *Provisioned utilisation* only has data for "
+             "provisioned deployments; above 100% they start returning 429 too.", "info"),
+        text("foundry-quota-h", "### Model quota"),
+        text("foundry-quota-note", "Quota is granted per subscription, region and model, in thousands of tokens a "
+             "minute, and is shared by every deployment of that model in the region. It is read from Azure Resource "
+             "Manager for one subscription and region at a time.", "info"),
+        params("foundry-quota-params", [foundry_sub, foundry_region]),
+        arm("foundry-quota", "Model quota used against limit",
+            "{FoundrySubscription}/providers/Microsoft.CognitiveServices/locations/{FoundryRegion}/usages", "2023-05-01",
+            [("Quota", "$.name.value", None), ("Used", "$.currentValue", "long"), ("Limit", "$.limit", "long")],
+            sort_desc="Used", no_data="No model quota returned for this subscription and region."),
+        text("foundry-logs-hint", "Select a **Log Analytics workspace** at the top to see the requests that failed "
+             "or were throttled.", "info", visible_when=WORKSPACE_UNSET),
+        la("foundry-errors", "Requests that failed or were throttled", request_errors_q,
+           labels={"P95Ms": "P95 duration (ms)", "LastSeen": "Last seen"},
+           no_data="No failed requests in the time range (or request logs are not sent to this workspace)."),
+    ], tab="foundry")
 
 
 def identity_tab():
@@ -3402,7 +3540,7 @@ def workbook():
         "items": [
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
-                 "ExpressRoute, VPN, end-to-end connectivity tests), application delivery, shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
+                 "ExpressRoute, VPN, end-to-end connectivity tests), application delivery, AI Foundry, shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
                  "build agents, governance, security, monitoring and backup."),
             global_params(),
             tabs(),
@@ -3413,6 +3551,7 @@ def workbook():
             vpn_tab(),
             connectivity_tab(),
             appdelivery_tab(),
+            foundry_tab(),
             shared_tab(),
             identity_tab(),
             buildagents_tab(),
