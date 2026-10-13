@@ -5,16 +5,17 @@ generator script rather than the JSON.
 
 ## Making a change
 
-Edit [src/build_workbook.py](src/build_workbook.py), regenerate, and commit both the script and
-the generated JSON:
+Edit [src/build_workbook.py](src/build_workbook.py), regenerate, and commit the script and the
+generated JSON. The Grafana dashboards are generated from the workbook definition, so run both:
 
 ```sh
 python src/build_workbook.py
+python src/build_grafana.py
 ```
 
 ## Before opening a pull request
 
-- Regenerating the workbook leaves no uncommitted changes.
+- Regenerating the workbook and the Grafana dashboards leaves no uncommitted changes (CI checks this).
 - The change has been imported and checked in the Azure portal — nothing in CI runs the workbook.
 
 Keep pull requests small and focused; unrelated changes bundled together are much slower
