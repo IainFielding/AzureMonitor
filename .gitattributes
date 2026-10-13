@@ -1,0 +1,2 @@
+# The git hooks are shell scripts, which a Unix shell (WSL, Linux, macOS) can't run with CRLF line endings.
+.githooks/* text eol=lf
