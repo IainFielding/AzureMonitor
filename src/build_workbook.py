@@ -162,15 +162,22 @@ def arg(name, title, query, **kw):
                   resources=["{Subscription}"], **kw)
 
 
-def arm(name, title, path, api_version, columns, *, sort_desc=None, no_data=None, width=None):
-    """GET against Azure Resource Manager. columns: list of (column, JSONPath, type-or-None) read from `$.value`."""
+def arm(name, title, path, api_version, columns, *, sort_desc=None, no_data=None, width=None,
+        body=None, table="$.value", formatters=None, labels=None):
+    """Call Azure Resource Manager: GET, or POST when a body is given.
+
+    columns: list of (column, JSONPath, type-or-None), each path relative to a row of `table`.
+    """
     request = {
-        "version": "ARMEndpoint/1.0", "data": None, "headers": [], "method": "GET", "path": path,
+        "version": "ARMEndpoint/1.0", "data": json.dumps(body) if body else None, "headers": [],
+        "method": "POST" if body else "GET", "path": path,
         "urlParams": [{"key": "api-version", "value": api_version}], "batchDisabled": False,
-        "transformers": [{"type": "jsonpath", "settings": {"tablePath": "$.value", "columns": [
+        "transformers": [{"type": "jsonpath", "settings": {"tablePath": table, "columns": [
             {"path": jp, "columnid": col, **({"columnType": kind} if kind else {})} for col, jp, kind in columns]}}],
     }
-    grid = {"filter": True}
+    grid = {"formatters": formatters or [], "filter": True}
+    if labels:
+        grid["labelSettings"] = [{"columnId": k, "label": v} for k, v in labels.items()]
     if sort_desc:
         grid["sortBy"] = [{"itemKey": sort_desc, "sortOrder": 2}]
     content = {"version": "KqlItem/1.0", "query": json.dumps(request), "size": 0, "title": title, "queryType": 12,
@@ -1957,6 +1964,26 @@ resources
             "{QuotaSubscription}/providers/Microsoft.Network/locations/{QuotaRegion}/usages", "2023-09-01",
             [("Quota", "$.name.localizedValue", None), ("Used", "$.currentValue", "long"), ("Limit", "$.limit", "long")],
             sort_desc="Used", no_data="No network usage returned for this subscription and region."),
+        text("cap-cost-h", "### Cost"),
+        text("cap-cost-note", "Month-to-date spend for the subscription selected under *Network quotas*, read from "
+             "Cost Management. It covers everything in that subscription, so it is platform cost only when the "
+             "subscription holds only platform resources.", "info"),
+        arm("cap-cost-services", "Cost by service, month to date",
+            "{QuotaSubscription}/providers/Microsoft.CostManagement/query", "2023-11-01",
+            [("Service", "$[1]", None), ("Cost", "$[0]", None), ("Currency", "$[2]", None)],
+            table="$.properties.rows", sort_desc="Cost", width=50,
+            body={"type": "ActualCost", "timeframe": "MonthToDate", "dataset": {
+                "granularity": "None",
+                "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
+                "grouping": [{"type": "Dimension", "name": "ServiceName"}]}},
+            formatters=[{"columnMatch": "Cost", "formatter": 0,
+                         "numberFormat": {"unit": 0, "options": {"style": "decimal", "maximumFractionDigits": 2}}}],
+            no_data="Cost Management returned no cost for this subscription this month."),
+        arm("cap-budgets", "Budgets", "{QuotaSubscription}/providers/Microsoft.Consumption/budgets", "2023-05-01",
+            [("Budget", "$.name", None), ("Amount", "$.properties.amount", None),
+             ("Spent", "$.properties.currentSpend.amount", None), ("Forecast", "$.properties.forecastSpend.amount", None),
+             ("Currency", "$.properties.currentSpend.unit", None), ("Period", "$.properties.timeGrain", None)],
+            width=50, no_data="No budgets are defined on this subscription."),
         text("cap-subnets-h", "### Subnet address space"),
         text("cap-subnets-note", "*Used* counts the IP configurations attached to each subnet (NICs, private "
              "endpoints, load balancer front ends). Application Gateway instances and delegated services such as "

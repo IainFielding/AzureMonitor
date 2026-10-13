@@ -14643,6 +14643,7 @@
               "visualization": "table",
               "showExportToExcel": true,
               "gridSettings": {
+                "formatters": [],
                 "filter": true,
                 "sortBy": [
                   {
@@ -14654,6 +14655,77 @@
               "noDataMessage": "No network usage returned for this subscription and region."
             },
             "name": "cap-network-quota"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Cost"
+            },
+            "name": "cap-cost-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Month-to-date spend for the subscription selected under *Network quotas*, read from Cost Management. It covers everything in that subscription, so it is platform cost only when the subscription holds only platform resources.",
+              "style": "info"
+            },
+            "name": "cap-cost-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": \"{\\\"type\\\": \\\"ActualCost\\\", \\\"timeframe\\\": \\\"MonthToDate\\\", \\\"dataset\\\": {\\\"granularity\\\": \\\"None\\\", \\\"aggregation\\\": {\\\"totalCost\\\": {\\\"name\\\": \\\"Cost\\\", \\\"function\\\": \\\"Sum\\\"}}, \\\"grouping\\\": [{\\\"type\\\": \\\"Dimension\\\", \\\"name\\\": \\\"ServiceName\\\"}]}}\", \"headers\": [], \"method\": \"POST\", \"path\": \"{QuotaSubscription}/providers/Microsoft.CostManagement/query\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-11-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.properties.rows\", \"columns\": [{\"path\": \"$[1]\", \"columnid\": \"Service\"}, {\"path\": \"$[0]\", \"columnid\": \"Cost\"}, {\"path\": \"$[2]\", \"columnid\": \"Currency\"}]}}]}",
+              "size": 0,
+              "title": "Cost by service, month to date",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Cost",
+                    "formatter": 0,
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 2
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "Cost",
+                    "sortOrder": 2
+                  }
+                ]
+              },
+              "noDataMessage": "Cost Management returned no cost for this subscription this month."
+            },
+            "name": "cap-cost-services",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{QuotaSubscription}/providers/Microsoft.Consumption/budgets\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-05-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Budget\"}, {\"path\": \"$.properties.amount\", \"columnid\": \"Amount\"}, {\"path\": \"$.properties.currentSpend.amount\", \"columnid\": \"Spent\"}, {\"path\": \"$.properties.forecastSpend.amount\", \"columnid\": \"Forecast\"}, {\"path\": \"$.properties.currentSpend.unit\", \"columnid\": \"Currency\"}, {\"path\": \"$.properties.timeGrain\", \"columnid\": \"Period\"}]}}]}",
+              "size": 0,
+              "title": "Budgets",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              },
+              "noDataMessage": "No budgets are defined on this subscription."
+            },
+            "name": "cap-budgets",
+            "customWidth": "50"
           },
           {
             "type": 1,
