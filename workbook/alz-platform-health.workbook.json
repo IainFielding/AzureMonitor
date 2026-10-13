@@ -637,7 +637,10 @@
               }
             },
             "name": "overview-servicehealth-tile",
-            "customWidth": "20"
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
           },
           {
             "type": 3,
@@ -718,7 +721,10 @@
               }
             },
             "name": "overview-policy",
-            "customWidth": "20"
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
           },
           {
             "type": 3,
@@ -799,7 +805,10 @@
               }
             },
             "name": "overview-defender",
-            "customWidth": "20"
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
           },
           {
             "type": 3,
@@ -873,7 +882,10 @@
               }
             },
             "name": "overview-advisor",
-            "customWidth": "20"
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
           },
           {
             "type": 3,
@@ -947,7 +959,10 @@
               }
             },
             "name": "overview-backup",
-            "customWidth": "20"
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
           },
           {
             "type": 3,
@@ -1147,7 +1162,10 @@
               }
             },
             "name": "overview-avs-clouds",
-            "customWidth": "25",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
               "comparison": "isNotEqualTo",
@@ -1246,7 +1264,10 @@
               }
             },
             "name": "overview-avs-cpu",
-            "customWidth": "25",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "410px"
+            },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
               "comparison": "isNotEqualTo",
@@ -1345,7 +1366,10 @@
               }
             },
             "name": "overview-avs-mem",
-            "customWidth": "25",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "410px"
+            },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
               "comparison": "isNotEqualTo",
@@ -1444,7 +1468,10 @@
               }
             },
             "name": "overview-avs-vsan",
-            "customWidth": "25",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "410px"
+            },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
               "comparison": "isNotEqualTo",

@@ -117,9 +117,18 @@ FULL_HEIGHT = {
 }
 
 
+def _size(item, width, fixed_px):
+    """Size an item as a percentage of the page, or to a fixed pixel width so its neighbours pack up against it."""
+    if fixed_px:
+        item["customWidth"] = "0"
+        item["styleSettings"] = {"maxWidth": f"{fixed_px}px"}
+    elif width:
+        item["customWidth"] = str(width)
+
+
 def _query(name, title, query, *, query_type, resource_type, resources, vis="table",
            formatters=None, labels=None, tiles=None, chart=None, width=None, size=0,
-           no_data=None, group_by=None, visible_when=None, time=False):
+           no_data=None, group_by=None, visible_when=None, time=False, fixed_px=None):
     content = {
         "version": "KqlItem/1.0",
         "query": query.strip(),
@@ -149,8 +158,7 @@ def _query(name, title, query, *, query_type, resource_type, resources, vis="tab
     if chart:
         content["chartSettings"] = chart
     item = {"type": 3, "content": content, "name": name}
-    if width:
-        item["customWidth"] = str(width)
+    _size(item, width, fixed_px)
     if visible_when:
         item["conditionalVisibility"] = visible_when
     return item
@@ -209,7 +217,7 @@ def m(namespace, metric, agg, split=None, limit=10):
 
 
 def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=None, labels=None,
-            width=None, size=0, tiles=None, visible_when=None):
+            width=None, size=0, tiles=None, visible_when=None, fixed_px=None):
     content = {
         "chartId": "workbook" + gid(name),
         "version": "MetricsItem/2.0",
@@ -240,8 +248,7 @@ def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=
         # One tile per resource and metric; the rows carry Metric, Value, Timeline and Name (the resource).
         content.update({"chartType": -1, "gridFormatType": 1, "tileSettings": tiles, "size": 3})
     item = {"type": 10, "content": content, "name": name}
-    if width:
-        item["customWidth"] = str(width)
+    _size(item, width, fixed_px)
     if visible_when:
         item["conditionalVisibility"] = visible_when
     return item
@@ -521,11 +528,11 @@ TABS = [
 ]
 
 
-# Width (%) of a slot that holds one tile. A tile has a fixed pixel width, so a slot narrower than its tile gets
-# a horizontal scroll bar; these are the narrowest slots on the page and stay wider than a tile until the page
-# itself is under about 1,000 pixels. Prefer one full-width item with many tiles where the queries allow it.
-GLANCE_WIDTH = 20
-AVS_TILE_WIDTH = 25
+# Pixel width of a slot that holds one tile, or two side by side. A tile is a fixed 188 pixels including its
+# margin, so fixed slots pack the tiles to the left; slots sized as a percentage of the page spread them out on
+# a wide screen and scroll sideways on a narrow one.
+ONE_TILE = 220
+TWO_TILES = 410
 
 
 def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
@@ -870,22 +877,22 @@ union isfuzzy=true
         arg("overview-issues-state", "", issues_state_q, vis="tiles", tiles=issue_tiles),
         la("overview-issues-logs", "", issues_logs_q, vis="tiles", tiles=issue_tiles),
         text("overview-glance-h", "### At a glance"),
-        arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=GLANCE_WIDTH),
+        arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, fixed_px=ONE_TILE),
         *[arg(f"overview-{key}", "", q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail", unit),
-              width=GLANCE_WIDTH) for key, unit, q in GOVERNANCE_TILES],
+              fixed_px=ONE_TILE) for key, unit, q in GOVERNANCE_TILES],
         arg("overview-tiles", "Platform services", summary_q, vis="tiles", tiles=service_tiles,
             no_data="No platform resources found in the selected subscriptions."),
         # The AVS tab's own picker is not evaluated while that tab is hidden, so the Overview has its own.
         params("overview-avs-params", [resource_param("OvPrivateClouds", "AVS private clouds", Q_AVS, hidden_when_locked=True)]),
         text("overview-avs-h", "### Azure VMware Solution at a glance", visible_when=avs_found),
         arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
-            tiles=big_number_tiles("Signal", "State", "Value", "Detail"), width=AVS_TILE_WIDTH, visible_when=avs_found),
+            tiles=big_number_tiles("Signal", "State", "Value", "Detail"), fixed_px=ONE_TILE, visible_when=avs_found),
         metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=AVS_TILE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), fixed_px=TWO_TILES, visible_when=avs_found),
         metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=AVS_TILE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), fixed_px=TWO_TILES, visible_when=avs_found),
         metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
-                tiles=metric_tiles(70, 75), width=AVS_TILE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(70, 75), fixed_px=TWO_TILES, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
