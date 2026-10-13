@@ -298,8 +298,11 @@ def params(name, plist):
             "name": name}
 
 
-def group(name, items, tab=None):
+def group(name, items, tab=None, load_button=None):
+    """A group of items. With load_button, nothing inside runs until the user selects that button."""
     g = {"type": 12, "content": {"version": "NotebookGroup/1.0", "groupType": "editable", "items": items}, "name": name}
+    if load_button:
+        g["content"].update({"loadType": "explicit", "loadButtonText": load_button})
     if tab:
         g["conditionalVisibility"] = {"parameterName": "selectedTab", "comparison": "isEqualTo", "value": tab}
     return g
@@ -833,7 +836,7 @@ policyresources
         ("Action groups disabled", "GroupsDisabled", "Monitoring", "Degraded"),
         ("Unattached disks", "Disks", "Governance", "Degraded"),
     ])
-    issues_health_q = counts_health + issue_rows([("Health incidents", "Impaired", "Overview, below", "Degraded")])
+    issues_health_q = counts_health + issue_rows([("Health incidents", "Impaired", "Overview, History", "Degraded")])
     issues_patch_q = counts_patch + issue_rows([
         ("Critical patches due", "Critical", "Governance", "Unavailable"),
         ("Reboot pending", "Reboot", "Governance", "Degraded"),
@@ -868,7 +871,7 @@ union isfuzzy=true
             strcat(tostring(parts[6]), '/', tostring(parts[7])))
         | where type in~ ({TYPE_LIST}, 'microsoft.resources/deployments')
         | summarize Count = count()
-        | extend Check = 'Failed operations', Tab = 'Overview, below', Severity = 'Degraded'),
+        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),
     (SecurityIncident | where TimeGenerated {{TimeRange}}
         | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber
         | summarize Count = countif(Status != 'Closed' and Severity == 'High')
@@ -886,8 +889,9 @@ union isfuzzy=true
         text("overview-intro",
              "Status comes from **Azure Resource Health** where available; otherwise from the resource's "
              "configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace "
-             "ingestion) — see the *Signal* column. Each service tab adds metric-based health. *Health state changes* "
-             "and *Recent changes* further down show what happened earlier in the time range.", "info"),
+             "ingestion) — see the *Signal* column. Each service tab adds metric-based health. *History and inventory* "
+             "at the bottom of this tab loads health state changes, availability, recent changes and the full "
+             "inventory when asked.", "info"),
         text("overview-issues-h", "### Issues"),
         text("overview-issues-note", "One tile per check, drawn from every tab. The number is how many things the check "
              "found wrong; a green tick means none. The line under it names the tab that has the detail. *Defender "
@@ -930,25 +934,32 @@ union isfuzzy=true
         arg("overview-servicehealth", "Active Azure Service Health events", service_health_q,
             formatters=[status_fmt("EventType", warn=["PlannedMaintenance", "HealthAdvisory"], bad=["ServiceIssue"])],
             no_data="No active Service Health events."),
-        arg("overview-health-history", "Health state changes (time range, up to 14 days)", health_history_q,
-            formatters=[resource_link(), health_fmt("Previous"), health_fmt()],
-            labels={"id": "Resource", "Previous": "From", "Health": "To"},
-            no_data="No Resource Health state changes on platform resources in the time range."),
-        arg("overview-availability", "Availability over the time range (resources with health incidents, up to 14 days)",
-            availability_q, formatters=[resource_link(), high_is_good("AvailabilityPct", 99.9, 99, digits=3)],
-            labels={"id": "Resource", "AvailabilityPct": "Available %", "ImpairedMinutes": "Minutes impaired",
-                    "LongestMinutes": "Longest incident (min)", "LastIncident": "Last incident"},
-            no_data="No platform resource left the Available state in the time range."),
-        arg("overview-changes", "Recent changes to platform resources (time range, up to 14 days)", changes_q,
-            formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
-            labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},
-            no_data="No changes to platform resources in the time range."),
-        la("overview-failed-ops", "Failed operations and deployments on platform resources", failed_ops_q,
-           formatters=[resource_link("ResourceId")],
-           labels={"ResourceId": "Resource", "LastSeen": "Last seen"},
-           no_data="No failed operations in the time range (or the activity log is not sent to this workspace)."),
-        arg("overview-all", "All platform resources", all_q, group_by="Service",
-            formatters=[resource_link(), health_fmt(), hidden("Type")], labels={"id": "Resource"}),
+        # The Overview runs every query on it as soon as the workbook opens. These are the heaviest and the least
+        # often needed, so each set waits behind a button.
+        text("overview-detail-h", "### History and inventory"),
+        group("overview-history", [
+            arg("overview-health-history", "Health state changes (time range, up to 14 days)", health_history_q,
+                formatters=[resource_link(), health_fmt("Previous"), health_fmt()],
+                labels={"id": "Resource", "Previous": "From", "Health": "To"},
+                no_data="No Resource Health state changes on platform resources in the time range."),
+            arg("overview-availability", "Availability over the time range (resources with health incidents, up to 14 days)",
+                availability_q, formatters=[resource_link(), high_is_good("AvailabilityPct", 99.9, 99, digits=3)],
+                labels={"id": "Resource", "AvailabilityPct": "Available %", "ImpairedMinutes": "Minutes impaired",
+                        "LongestMinutes": "Longest incident (min)", "LastIncident": "Last incident"},
+                no_data="No platform resource left the Available state in the time range."),
+            arg("overview-changes", "Recent changes to platform resources (time range, up to 14 days)", changes_q,
+                formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
+                labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},
+                no_data="No changes to platform resources in the time range."),
+            la("overview-failed-ops", "Failed operations and deployments on platform resources", failed_ops_q,
+               formatters=[resource_link("ResourceId")],
+               labels={"ResourceId": "Resource", "LastSeen": "Last seen"},
+               no_data="No failed operations in the time range (or the activity log is not sent to this workspace)."),
+        ], load_button="Show health history, availability, changes and failed operations"),
+        group("overview-inventory", [
+            arg("overview-all", "All platform resources", all_q, group_by="Service",
+                formatters=[resource_link(), health_fmt(), hidden("Type")], labels={"id": "Resource"}),
+        ], load_button="Show all platform resources"),
     ], tab="overview")
 
 

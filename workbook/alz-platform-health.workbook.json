@@ -318,7 +318,7 @@
           {
             "type": 1,
             "content": {
-              "json": "Status comes from **Azure Resource Health** where available; otherwise from the resource's configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace ingestion) — see the *Signal* column. Each service tab adds metric-based health. *Health state changes* and *Recent changes* further down show what happened earlier in the time range.",
+              "json": "Status comes from **Azure Resource Health** where available; otherwise from the resource's configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace ingestion) — see the *Signal* column. Each service tab adds metric-based health. *History and inventory* at the bottom of this tab loads health state changes, availability, recent changes and the full inventory when asked.",
               "style": "info"
             },
             "name": "overview-intro"
@@ -422,7 +422,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded')\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| summarize Impaired = dcount(id)\n| extend rows = pack_array(\n    pack('Check', 'Health incidents', 'Count', Impaired, 'Tab', 'Overview, below', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded')\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| summarize Impaired = dcount(id)\n| extend rows = pack_array(\n    pack('Check', 'Health incidents', 'Count', Impaired, 'Tab', 'Overview, History', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -926,7 +926,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, below', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
+              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 0,
@@ -2258,420 +2258,451 @@
             "name": "overview-servicehealth"
           },
           {
-            "type": 3,
+            "type": 1,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "healthresourcechanges\n| where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend state = properties.changes['properties.availabilityState']\n| where isnotempty(tostring(state.newValue))\n| extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| project Time, id, Service, Previous = tostring(state.previousValue), Health = tostring(state.newValue)\n| order by Time desc\n| take 500",
-              "size": 0,
-              "title": "Health state changes (time range, up to 14 days)",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "noDataMessage": "No Resource Health state changes on platform resources in the time range.",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "id",
-                    "formatter": 13,
-                    "formatOptions": {
-                      "linkTarget": "Resource",
-                      "showIcon": true
-                    }
-                  },
-                  {
-                    "columnMatch": "Previous",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Available",
-                          "representation": "success",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Degraded",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Unavailable",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Unknown",
-                          "representation": "unknown",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "columnMatch": "Health",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Available",
-                          "representation": "success",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Degraded",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Unavailable",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Unknown",
-                          "representation": "unknown",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  }
-                ],
-                "filter": true,
-                "labelSettings": [
-                  {
-                    "columnId": "id",
-                    "label": "Resource"
-                  },
-                  {
-                    "columnId": "Previous",
-                    "label": "From"
-                  },
-                  {
-                    "columnId": "Health",
-                    "label": "To"
-                  }
-                ]
-              }
+              "json": "### History and inventory"
             },
-            "name": "overview-health-history"
+            "name": "overview-detail-h"
           },
           {
-            "type": 3,
+            "type": 12,
             "content": {
-              "version": "KqlItem/1.0",
-              "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded') and From !in ('Unavailable', 'Degraded')\n| project id, Start = Time\n| join kind=leftouter (\n    healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n    | where To !in ('Unavailable', 'Degraded') and From in ('Unavailable', 'Degraded')\n    | project id, End = Time\n  ) on id\n| extend End = iff(isnull(End) or End <= Start, now(), End)\n| summarize Recovered = min(End) by id, Start\n| extend Minutes = datetime_diff('minute', Recovered, Start)\n| summarize Incidents = count(), ImpairedMinutes = sum(Minutes), LongestMinutes = max(Minutes), LastIncident = max(Start) by id\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend windowMin = datetime_diff('minute', now(), todatetime('{TimeRange:startISO}'))\n| extend windowMin = iff(windowMin > 20160, 20160, windowMin)\n| project id, Service, AvailabilityPct = round(100.0 - 100.0 * ImpairedMinutes / windowMin, 3), Incidents,\n    ImpairedMinutes, LongestMinutes, LastIncident\n| order by AvailabilityPct asc",
-              "size": 0,
-              "title": "Availability over the time range (resources with health incidents, up to 14 days)",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "noDataMessage": "No platform resource left the Available state in the time range.",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "id",
-                    "formatter": 13,
-                    "formatOptions": {
-                      "linkTarget": "Resource",
-                      "showIcon": true
-                    }
-                  },
-                  {
-                    "columnMatch": "AvailabilityPct",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "healthresourcechanges\n| where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend state = properties.changes['properties.availabilityState']\n| where isnotempty(tostring(state.newValue))\n| extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| project Time, id, Service, Previous = tostring(state.previousValue), Health = tostring(state.newValue)\n| order by Time desc\n| take 500",
+                    "size": 0,
+                    "title": "Health state changes (time range, up to 14 days)",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "{Subscription}"
+                    ],
+                    "visualization": "table",
+                    "noDataMessage": "No Resource Health state changes on platform resources in the time range.",
+                    "showExportToExcel": true,
+                    "gridSettings": {
+                      "formatters": [
                         {
-                          "operator": "<",
-                          "thresholdValue": "99",
-                          "representation": "4",
-                          "text": "{0}{1}"
+                          "columnMatch": "id",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true
+                          }
                         },
                         {
-                          "operator": "<",
-                          "thresholdValue": "99.9",
-                          "representation": "2",
-                          "text": "{0}{1}"
+                          "columnMatch": "Previous",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Available",
+                                "representation": "success",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Degraded",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Unavailable",
+                                "representation": "4",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Unknown",
+                                "representation": "unknown",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "Blank",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
                         },
                         {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "success",
-                          "text": "{0}{1}"
+                          "columnMatch": "Health",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Available",
+                                "representation": "success",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Degraded",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Unavailable",
+                                "representation": "4",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Unknown",
+                                "representation": "unknown",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "Blank",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "id",
+                          "label": "Resource"
+                        },
+                        {
+                          "columnId": "Previous",
+                          "label": "From"
+                        },
+                        {
+                          "columnId": "Health",
+                          "label": "To"
                         }
                       ]
+                    }
+                  },
+                  "name": "overview-health-history"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded') and From !in ('Unavailable', 'Degraded')\n| project id, Start = Time\n| join kind=leftouter (\n    healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n    | where To !in ('Unavailable', 'Degraded') and From in ('Unavailable', 'Degraded')\n    | project id, End = Time\n  ) on id\n| extend End = iff(isnull(End) or End <= Start, now(), End)\n| summarize Recovered = min(End) by id, Start\n| extend Minutes = datetime_diff('minute', Recovered, Start)\n| summarize Incidents = count(), ImpairedMinutes = sum(Minutes), LongestMinutes = max(Minutes), LastIncident = max(Start) by id\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend windowMin = datetime_diff('minute', now(), todatetime('{TimeRange:startISO}'))\n| extend windowMin = iff(windowMin > 20160, 20160, windowMin)\n| project id, Service, AvailabilityPct = round(100.0 - 100.0 * ImpairedMinutes / windowMin, 3), Incidents,\n    ImpairedMinutes, LongestMinutes, LastIncident\n| order by AvailabilityPct asc",
+                    "size": 0,
+                    "title": "Availability over the time range (resources with health incidents, up to 14 days)",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "{Subscription}"
+                    ],
+                    "visualization": "table",
+                    "noDataMessage": "No platform resource left the Available state in the time range.",
+                    "showExportToExcel": true,
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "id",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true
+                          }
+                        },
+                        {
+                          "columnMatch": "AvailabilityPct",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "<",
+                                "thresholdValue": "99",
+                                "representation": "4",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "<",
+                                "thresholdValue": "99.9",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "success",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          },
+                          "numberFormat": {
+                            "unit": 0,
+                            "options": {
+                              "style": "decimal",
+                              "maximumFractionDigits": 3
+                            }
+                          }
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "id",
+                          "label": "Resource"
+                        },
+                        {
+                          "columnId": "AvailabilityPct",
+                          "label": "Available %"
+                        },
+                        {
+                          "columnId": "ImpairedMinutes",
+                          "label": "Minutes impaired"
+                        },
+                        {
+                          "columnId": "LongestMinutes",
+                          "label": "Longest incident (min)"
+                        },
+                        {
+                          "columnId": "LastIncident",
+                          "label": "Last incident"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "overview-availability"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)),\n    type = tolower(tostring(properties.targetResourceType)), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(split(id, '/')[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| project Time, id, Service, ChangeType = tostring(properties.changeType),\n    Properties = strcat_array(bag_keys(properties.changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy),\n    Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| order by Time desc\n| take 500",
+                    "size": 0,
+                    "title": "Recent changes to platform resources (time range, up to 14 days)",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "{Subscription}"
+                    ],
+                    "visualization": "table",
+                    "noDataMessage": "No changes to platform resources in the time range.",
+                    "showExportToExcel": true,
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "id",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true
+                          }
+                        },
+                        {
+                          "columnMatch": "ChangeType",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Delete",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "Blank",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "id",
+                          "label": "Resource"
+                        },
+                        {
+                          "columnId": "ChangeType",
+                          "label": "Change"
+                        },
+                        {
+                          "columnId": "Properties",
+                          "label": "Properties changed"
+                        },
+                        {
+                          "columnId": "ChangedBy",
+                          "label": "Changed by"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "overview-changes"
+                },
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n| extend parts = split(tolower(_ResourceId), '/')\n| extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n    strcat(tostring(parts[6]), '/', tostring(parts[7])))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| summarize Failures = count(), LastSeen = max(TimeGenerated),\n    Error = take_any(substring(tostring(props.statusMessage), 0, 300))\n    by Operation = OperationNameValue, ResourceId = _ResourceId, Caller\n| top 100 by LastSeen desc",
+                    "size": 0,
+                    "title": "Failed operations and deployments on platform resources",
+                    "queryType": 0,
+                    "resourceType": "microsoft.operationalinsights/workspaces",
+                    "crossComponentResources": [
+                      "{Workspace}"
+                    ],
+                    "visualization": "table",
+                    "timeContextFromParameter": "TimeRange",
+                    "timeContext": {
+                      "durationMs": 86400000
                     },
-                    "numberFormat": {
-                      "unit": 0,
-                      "options": {
-                        "style": "decimal",
-                        "maximumFractionDigits": 3
+                    "noDataMessage": "No failed operations in the time range (or the activity log is not sent to this workspace).",
+                    "showExportToExcel": true,
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "ResourceId",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true
+                          }
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "ResourceId",
+                          "label": "Resource"
+                        },
+                        {
+                          "columnId": "LastSeen",
+                          "label": "Last seen"
+                        }
+                      ]
+                    }
+                  },
+                  "name": "overview-failed-ops",
+                  "conditionalVisibility": {
+                    "parameterName": "Workspace",
+                    "comparison": "isNotEqualTo",
+                    "value": ""
+                  }
+                }
+              ],
+              "loadType": "explicit",
+              "loadButtonText": "Show health history, availability, changes and failed operations"
+            },
+            "name": "overview-history"
+          },
+          {
+            "type": 12,
+            "content": {
+              "version": "NotebookGroup/1.0",
+              "groupType": "editable",
+              "items": [
+                {
+                  "type": 3,
+                  "content": {
+                    "version": "KqlItem/1.0",
+                    "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{BuildAgentPattern}'\n| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'\n| where type !~ 'microsoft.cognitiveservices/accounts' or kind in~ ('AIServices', 'OpenAI')\n| where type !~ 'microsoft.machinelearningservices/workspaces' or kind in~ ('Hub', 'Project')\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    routingState = tostring(properties.routingState),\n    ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    recordSetPct = 100.0 * todouble(properties.numberOfRecordSets) / todouble(properties.maxNumberOfRecordSets)\n| extend ConfigHealth = case(\n        provisioning =~ 'Failed', 'Unavailable',\n        routingState =~ 'Failed', 'Unavailable',\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'Unavailable',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended'), 'Unavailable',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n        routingState =~ 'Provisioning', 'Degraded',\n        ingestion =~ 'ApproachingQuota', 'Degraded',\n        recordSetPct >= 80, 'Degraded',\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Degraded',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n        'Available'),\n    ConfigReason = case(\n        provisioning =~ 'Failed', 'Provisioning failed',\n        routingState in~ ('Failed', 'Provisioning'), strcat('Hub routing state: ', routingState),\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'DNS resolver disconnected',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Circuit disabled',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned',\n            strcat('Provider state: ', tostring(properties.serviceProviderProvisioningState)),\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Primary region unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended', 'ApproachingQuota'), strcat('Ingestion: ', ingestion),\n        recordSetPct >= 80, strcat('Record sets at ', round(recordSetPct, 0), '% of limit'),\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Zone not linked to any VNet',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), strcat('Provisioning: ', provisioning),\n        '')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId,\n    Location = location, ConfigHealth, ConfigReason\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health),\n    Reason = iff(isempty(Reason), ConfigReason, Reason)\n| project-away ConfigHealth, ConfigReason\n\n| project id, Service, Health, Signal, Reason, Type, ResourceGroup, Location\n| order by Service asc",
+                    "size": 0,
+                    "title": "All platform resources",
+                    "queryType": 1,
+                    "resourceType": "microsoft.resourcegraph/resources",
+                    "crossComponentResources": [
+                      "{Subscription}"
+                    ],
+                    "visualization": "table",
+                    "showExportToExcel": true,
+                    "gridSettings": {
+                      "formatters": [
+                        {
+                          "columnMatch": "id",
+                          "formatter": 13,
+                          "formatOptions": {
+                            "linkTarget": "Resource",
+                            "showIcon": true
+                          }
+                        },
+                        {
+                          "columnMatch": "Health",
+                          "formatter": 18,
+                          "formatOptions": {
+                            "thresholdsOptions": "icons",
+                            "thresholdsGrid": [
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Available",
+                                "representation": "success",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Degraded",
+                                "representation": "2",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Unavailable",
+                                "representation": "4",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "==",
+                                "thresholdValue": "Unknown",
+                                "representation": "unknown",
+                                "text": "{0}{1}"
+                              },
+                              {
+                                "operator": "Default",
+                                "thresholdValue": null,
+                                "representation": "Blank",
+                                "text": "{0}{1}"
+                              }
+                            ]
+                          }
+                        },
+                        {
+                          "columnMatch": "Type",
+                          "formatter": 5
+                        }
+                      ],
+                      "filter": true,
+                      "labelSettings": [
+                        {
+                          "columnId": "id",
+                          "label": "Resource"
+                        }
+                      ],
+                      "hierarchySettings": {
+                        "treeType": 1,
+                        "groupBy": [
+                          "Service"
+                        ],
+                        "expandTopLevel": false
                       }
                     }
-                  }
-                ],
-                "filter": true,
-                "labelSettings": [
-                  {
-                    "columnId": "id",
-                    "label": "Resource"
                   },
-                  {
-                    "columnId": "AvailabilityPct",
-                    "label": "Available %"
-                  },
-                  {
-                    "columnId": "ImpairedMinutes",
-                    "label": "Minutes impaired"
-                  },
-                  {
-                    "columnId": "LongestMinutes",
-                    "label": "Longest incident (min)"
-                  },
-                  {
-                    "columnId": "LastIncident",
-                    "label": "Last incident"
-                  }
-                ]
-              }
-            },
-            "name": "overview-availability"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)),\n    type = tolower(tostring(properties.targetResourceType)), gatewayType = ''\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(split(id, '/')[8]) matches regex @'{BuildAgentPattern}'\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| project Time, id, Service, ChangeType = tostring(properties.changeType),\n    Properties = strcat_array(bag_keys(properties.changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy),\n    Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| order by Time desc\n| take 500",
-              "size": 0,
-              "title": "Recent changes to platform resources (time range, up to 14 days)",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "noDataMessage": "No changes to platform resources in the time range.",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "id",
-                    "formatter": 13,
-                    "formatOptions": {
-                      "linkTarget": "Resource",
-                      "showIcon": true
-                    }
-                  },
-                  {
-                    "columnMatch": "ChangeType",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Delete",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  }
-                ],
-                "filter": true,
-                "labelSettings": [
-                  {
-                    "columnId": "id",
-                    "label": "Resource"
-                  },
-                  {
-                    "columnId": "ChangeType",
-                    "label": "Change"
-                  },
-                  {
-                    "columnId": "Properties",
-                    "label": "Properties changed"
-                  },
-                  {
-                    "columnId": "ChangedBy",
-                    "label": "Changed by"
-                  }
-                ]
-              }
-            },
-            "name": "overview-changes"
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n| extend parts = split(tolower(_ResourceId), '/')\n| extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n    strcat(tostring(parts[6]), '/', tostring(parts[7])))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| summarize Failures = count(), LastSeen = max(TimeGenerated),\n    Error = take_any(substring(tostring(props.statusMessage), 0, 300))\n    by Operation = OperationNameValue, ResourceId = _ResourceId, Caller\n| top 100 by LastSeen desc",
-              "size": 0,
-              "title": "Failed operations and deployments on platform resources",
-              "queryType": 0,
-              "resourceType": "microsoft.operationalinsights/workspaces",
-              "crossComponentResources": [
-                "{Workspace}"
-              ],
-              "visualization": "table",
-              "timeContextFromParameter": "TimeRange",
-              "timeContext": {
-                "durationMs": 86400000
-              },
-              "noDataMessage": "No failed operations in the time range (or the activity log is not sent to this workspace).",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "ResourceId",
-                    "formatter": 13,
-                    "formatOptions": {
-                      "linkTarget": "Resource",
-                      "showIcon": true
-                    }
-                  }
-                ],
-                "filter": true,
-                "labelSettings": [
-                  {
-                    "columnId": "ResourceId",
-                    "label": "Resource"
-                  },
-                  {
-                    "columnId": "LastSeen",
-                    "label": "Last seen"
-                  }
-                ]
-              }
-            },
-            "name": "overview-failed-ops",
-            "conditionalVisibility": {
-              "parameterName": "Workspace",
-              "comparison": "isNotEqualTo",
-              "value": ""
-            }
-          },
-          {
-            "type": 3,
-            "content": {
-              "version": "KqlItem/1.0",
-              "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{BuildAgentPattern}'\n| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'\n| where type !~ 'microsoft.cognitiveservices/accounts' or kind in~ ('AIServices', 'OpenAI')\n| where type !~ 'microsoft.machinelearningservices/workspaces' or kind in~ ('Hub', 'Project')\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',\n    type =~ 'microsoft.apimanagement/service', 'API Management',\n    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    routingState = tostring(properties.routingState),\n    ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    recordSetPct = 100.0 * todouble(properties.numberOfRecordSets) / todouble(properties.maxNumberOfRecordSets)\n| extend ConfigHealth = case(\n        provisioning =~ 'Failed', 'Unavailable',\n        routingState =~ 'Failed', 'Unavailable',\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'Unavailable',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended'), 'Unavailable',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n        routingState =~ 'Provisioning', 'Degraded',\n        ingestion =~ 'ApproachingQuota', 'Degraded',\n        recordSetPct >= 80, 'Degraded',\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Degraded',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n        'Available'),\n    ConfigReason = case(\n        provisioning =~ 'Failed', 'Provisioning failed',\n        routingState in~ ('Failed', 'Provisioning'), strcat('Hub routing state: ', routingState),\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'DNS resolver disconnected',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Circuit disabled',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned',\n            strcat('Provider state: ', tostring(properties.serviceProviderProvisioningState)),\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Primary region unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended', 'ApproachingQuota'), strcat('Ingestion: ', ingestion),\n        recordSetPct >= 80, strcat('Record sets at ', round(recordSetPct, 0), '% of limit'),\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Zone not linked to any VNet',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), strcat('Provisioning: ', provisioning),\n        '')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId,\n    Location = location, ConfigHealth, ConfigReason\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health),\n    Reason = iff(isempty(Reason), ConfigReason, Reason)\n| project-away ConfigHealth, ConfigReason\n\n| project id, Service, Health, Signal, Reason, Type, ResourceGroup, Location\n| order by Service asc",
-              "size": 0,
-              "title": "All platform resources",
-              "queryType": 1,
-              "resourceType": "microsoft.resourcegraph/resources",
-              "crossComponentResources": [
-                "{Subscription}"
-              ],
-              "visualization": "table",
-              "showExportToExcel": true,
-              "gridSettings": {
-                "formatters": [
-                  {
-                    "columnMatch": "id",
-                    "formatter": 13,
-                    "formatOptions": {
-                      "linkTarget": "Resource",
-                      "showIcon": true
-                    }
-                  },
-                  {
-                    "columnMatch": "Health",
-                    "formatter": 18,
-                    "formatOptions": {
-                      "thresholdsOptions": "icons",
-                      "thresholdsGrid": [
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Available",
-                          "representation": "success",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Degraded",
-                          "representation": "2",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Unavailable",
-                          "representation": "4",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "==",
-                          "thresholdValue": "Unknown",
-                          "representation": "unknown",
-                          "text": "{0}{1}"
-                        },
-                        {
-                          "operator": "Default",
-                          "thresholdValue": null,
-                          "representation": "Blank",
-                          "text": "{0}{1}"
-                        }
-                      ]
-                    }
-                  },
-                  {
-                    "columnMatch": "Type",
-                    "formatter": 5
-                  }
-                ],
-                "filter": true,
-                "labelSettings": [
-                  {
-                    "columnId": "id",
-                    "label": "Resource"
-                  }
-                ],
-                "hierarchySettings": {
-                  "treeType": 1,
-                  "groupBy": [
-                    "Service"
-                  ],
-                  "expandTopLevel": false
+                  "name": "overview-all"
                 }
-              }
+              ],
+              "loadType": "explicit",
+              "loadButtonText": "Show all platform resources"
             },
-            "name": "overview-all"
+            "name": "overview-inventory"
           }
         ]
       },
