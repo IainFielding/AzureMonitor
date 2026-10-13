@@ -343,6 +343,8 @@ PLATFORM_TYPES = [
     "microsoft.compute/virtualmachinescalesets",
     "microsoft.operationalinsights/workspaces",
     "microsoft.recoveryservices/vaults",
+    "microsoft.cdn/profiles",          # Front Door Standard and Premium (other CDN profiles are filtered out)
+    "microsoft.network/frontdoors",    # Front Door classic
 ]
 TYPE_LIST = ", ".join(f"'{t}'" for t in PLATFORM_TYPES)
 
@@ -362,6 +364,7 @@ SERVICE_CASE = """| extend Service = case(
     type =~ 'microsoft.storage/storageaccounts', 'Storage',
     type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',
     type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',
+    type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',
     'Build Agents')"""
 
 # Every platform resource we care about, tagged with a Service, joined to Resource Health.
@@ -370,6 +373,7 @@ Q_INVENTORY_HEALTH = f"""
 resources
 | where type in~ ({TYPE_LIST})
 | where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'
 | extend gatewayType = tostring(properties.gatewayType)
 {SERVICE_CASE}
 | extend provisioning = tostring(properties.provisioningState),
@@ -2642,6 +2646,7 @@ resourcecontainers
 resources
 | where type in~ ({TYPE_LIST})
 | where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'
 | extend gatewayType = tostring(properties.gatewayType)
 {SERVICE_CASE}
 | extend rid = tolower(id), sub = tolower(strcat('/subscriptions/', subscriptionId))
@@ -2847,6 +2852,7 @@ recoveryservicesresources
 resources
 | where type in~ ({TYPE_LIST})
 | where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'
 | extend gatewayType = tostring(properties.gatewayType)
 {SERVICE_CASE}
 | extend rid = tolower(id), rtype = tolower(type), sub = tolower(strcat('/subscriptions/', subscriptionId))
