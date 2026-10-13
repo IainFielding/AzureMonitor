@@ -11473,6 +11473,76 @@
             }
           },
           {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.authorization/policyexemptions'\n| extend Expires = todatetime(properties.expiresOn),\n    scope = tostring(split(tolower(id), '/providers/microsoft.authorization/policyexemptions/')[0])\n| project Exemption = coalesce(tostring(properties.displayName), name),\n    Status = case(isnull(Expires), 'No expiry', Expires < now(), 'Expired', Expires < now() + 30d, 'Expiring', 'Active'),\n    Expires,\n    Category = tostring(properties.exemptionCategory),\n    Assignment = tostring(split(tostring(properties.policyAssignmentId), '/')[-1]),\n    Scope = scope\n| order by case(Status == 'Expired', 0, Status == 'Expiring', 1, Status == 'No expiry', 2, 3) asc, Expires asc",
+              "size": 0,
+              "title": "Policy exemptions",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No policy exemptions in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Active",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expiring",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No expiry",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "gov-exemptions"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "An expired exemption no longer applies, so the resources it covered count as non-compliant again. One with no expiry hides them from the compliance figure for good. *Waiver* means the non-compliance is accepted; *Mitigated* means the intent is met another way.",
+              "style": "info"
+            },
+            "name": "gov-exemptions-note"
+          },
+          {
             "type": 1,
             "content": {
               "json": "### Azure Policy"

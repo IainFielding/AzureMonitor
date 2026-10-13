@@ -2162,6 +2162,19 @@ resources
     patch_q = patch_base + """| project id, OS, Assessment, Assessed, Critical, Security, Other, RebootPending, PatchMode, ResourceGroup
 | order by Critical desc, Security desc, case(Assessment == 'Succeeded', 1, 0) asc
 """
+    exemptions_q = """
+policyresources
+| where type =~ 'microsoft.authorization/policyexemptions'
+| extend Expires = todatetime(properties.expiresOn),
+    scope = tostring(split(tolower(id), '/providers/microsoft.authorization/policyexemptions/')[0])
+| project Exemption = coalesce(tostring(properties.displayName), name),
+    Status = case(isnull(Expires), 'No expiry', Expires < now(), 'Expired', Expires < now() + 30d, 'Expiring', 'Active'),
+    Expires,
+    Category = tostring(properties.exemptionCategory),
+    Assignment = tostring(split(tostring(properties.policyAssignmentId), '/')[-1]),
+    Scope = scope
+| order by case(Status == 'Expired', 0, Status == 'Expiring', 1, Status == 'No expiry', 2, 3) asc, Expires asc
+"""
     return group("tab-governance", [
         text("gov-deadlines-h", "### Expiry & retirement"),
         arg("gov-retirements", "Service retirements affecting your resources (Azure Advisor)", retirements_q, formatters=[
@@ -2180,6 +2193,12 @@ resources
            formatters=[status_fmt("State", warn=["Near expiry"], bad=["Expired"])], labels={"LastSeen": "Reported"},
            no_data="No expiry events in the time range. Key Vault reports near-expiry once, about 30 days ahead, "
                    "so use a 30-day time range; vaults must send audit logs to this workspace."),
+        arg("gov-exemptions", "Policy exemptions", exemptions_q, formatters=[
+            status_fmt("Status", good=["Active"], warn=["Expiring", "No expiry"], bad=["Expired"]),
+        ], no_data="No policy exemptions in the selected subscriptions."),
+        text("gov-exemptions-note", "An expired exemption no longer applies, so the resources it covered count as "
+             "non-compliant again. One with no expiry hides them from the compliance figure for good. *Waiver* means "
+             "the non-compliance is accepted; *Mitigated* means the intent is met another way.", "info"),
         text("gov-policy-h", "### Azure Policy"),
         arg("gov-compliance", "Compliance by subscription", compliance_q,
             formatters=[high_is_good("CompliancePct", 90, 70, digits=1)], labels={"CompliancePct": "Compliant %"}, width=40),
