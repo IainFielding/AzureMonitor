@@ -13528,6 +13528,82 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| project id = tolower(id),\n    OS = tostring(properties.storageProfile.osDisk.osType),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n    | where tostring(properties.backupManagementType) =~ 'AzureIaasVM'\n    | project vmId = tolower(coalesce(tostring(properties.sourceResourceId), tostring(properties.virtualMachineId))),\n        vault = tostring(split(id, '/')[8]), lastBackup = todatetime(properties.lastBackupTime)\n    | where isnotempty(vmId)\n    | summarize Vault = max(vault), LastBackup = max(lastBackup) by id = vmId\n  ) on id\n| project id, Protection = iff(isempty(Vault), 'Not protected', 'Protected'), Vault, LastBackup, OS, Power, ResourceGroup, Location\n| order by case(Protection == 'Not protected', 0, 1) asc, ResourceGroup asc",
+              "size": 0,
+              "title": "Virtual machines by backup protection",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Protection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Protected",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not protected",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Virtual machine"
+                  },
+                  {
+                    "columnId": "LastBackup",
+                    "label": "Last backup"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-vm-protection"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Pooled AVD session hosts and scale set build agents are normally rebuilt from an image, so *Not protected* is expected for them.",
+              "style": "info"
+            },
+            "name": "mgmt-vm-protection-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
               "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'\n| project Vault = tostring(split(id, '/')[8]),\n    Item = tostring(properties.friendlyName),\n    Health = tostring(properties.replicationHealth),\n    State = tostring(properties.protectionStateDescription),\n    ActiveLocation = tostring(properties.activeLocation)\n| order by case(Health =~ 'Critical', 0, Health =~ 'Warning', 1, 2) asc",
               "size": 0,
               "title": "Site Recovery replicated items",

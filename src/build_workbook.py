@@ -2408,6 +2408,27 @@ resourcecontainers
     ServiceHealth, ResourceHealth
 | order by case(Status == 'Both', 1, 0) asc, Subscription asc
 """
+    # Protected items only list what is enrolled, so a machine that was never added to a vault is found by
+    # starting from the machines instead.
+    vm_protection_q = """
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| project id = tolower(id),
+    OS = tostring(properties.storageProfile.osDisk.osType),
+    Power = tostring(properties.extended.instanceView.powerState.displayStatus),
+    ResourceGroup = resourceGroup, Location = location
+| join kind=leftouter (
+    recoveryservicesresources
+    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'
+    | where tostring(properties.backupManagementType) =~ 'AzureIaasVM'
+    | project vmId = tolower(coalesce(tostring(properties.sourceResourceId), tostring(properties.virtualMachineId))),
+        vault = tostring(split(id, '/')[8]), lastBackup = todatetime(properties.lastBackupTime)
+    | where isnotempty(vmId)
+    | summarize Vault = max(vault), LastBackup = max(lastBackup) by id = vmId
+  ) on id
+| project id, Protection = iff(isempty(Vault), 'Not protected', 'Protected'), Vault, LastBackup, OS, Power, ResourceGroup, Location
+| order by case(Protection == 'Not protected', 0, 1) asc, ResourceGroup asc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -2496,6 +2517,12 @@ resourcecontainers
             status_fmt("Health", good=["Passed"], warn=["ActionSuggested"], bad=["ActionRequired"]),
             status_fmt("LastBackup", good=["Healthy"], bad=["Failed", "IRPending"]),
         ], no_data="No protected items.", width=50),
+        arg("mgmt-vm-protection", "Virtual machines by backup protection", vm_protection_q, formatters=[
+            resource_link(), status_fmt("Protection", good=["Protected"], bad=["Not protected"]),
+        ], labels={"id": "Virtual machine", "LastBackup": "Last backup"},
+            no_data="No virtual machines found."),
+        text("mgmt-vm-protection-note", "Pooled AVD session hosts and scale set build agents are normally rebuilt "
+             "from an image, so *Not protected* is expected for them.", "info"),
         arg("mgmt-asr", "Site Recovery replicated items", asr_q,
             formatters=[status_fmt("Health", good=["Normal"], warn=["Warning"], bad=["Critical"])],
             no_data="No Site Recovery replicated items."),
