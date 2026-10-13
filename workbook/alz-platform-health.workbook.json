@@ -334,7 +334,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n    'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',\n    'microsoft.network/virtualnetworks', 'microsoft.network/applicationgateways', 'microsoft.compute/disks',\n    'microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')\n| extend endpointState = coalesce(\n    tostring(properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status),\n    tostring(properties.manualPrivateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status))\n| summarize\n    Endpoints = countif(type =~ 'microsoft.network/privateendpoints' and endpointState !~ 'Approved'),\n    Peerings = countif(type =~ 'microsoft.network/virtualnetworks' and tostring(properties.virtualNetworkPeerings) contains 'Disconnected'),\n    Gateways = countif(type =~ 'microsoft.network/applicationgateways' and tostring(properties.operationalState) !~ 'Running'),\n    ThreatIntelOff = countif(type =~ 'microsoft.network/firewallpolicies' and tostring(properties.threatIntelMode) =~ 'Off'),\n    WafDetection = countif(type endswith 'webapplicationfirewallpolicies' and tostring(properties.policySettings.mode) =~ 'Detection'),\n    RulesDisabled = countif(type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n        'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),\n    GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),\n    Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))\n| extend k = 1\n| join kind=leftouter (\n    securityresources\n    | where type =~ 'microsoft.security/pricings'\n    | where not(tobool(properties.deprecated))\n    | summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')\n    | extend k = 1\n  ) on k\n| join kind=leftouter (\n    authorizationresources\n    | where type =~ 'microsoft.authorization/roleassignments'\n    | where tolower(tostring(properties.roleDefinitionId)) endswith '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'\n    | extend scope = tolower(tostring(properties.scope))\n    | where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3\n    | summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n    | summarize DirectOwners = countif(principalType =~ 'User')\n    | extend k = 1\n  ) on k\n| extend rows = pack_array(\n    pack('Check', 'Endpoints not approved', 'Count', Endpoints, 'Tab', 'Shared', 'Severity', 'Unavailable'),\n    pack('Check', 'Peerings disconnected', 'Count', Peerings, 'Tab', 'Virtual WAN', 'Severity', 'Unavailable'),\n    pack('Check', 'App gateways stopped', 'Count', Gateways, 'Tab', 'App Delivery', 'Severity', 'Unavailable'),\n    pack('Check', 'Threat intel off', 'Count', ThreatIntelOff, 'Tab', 'Firewall', 'Severity', 'Degraded'),\n    pack('Check', 'WAF in detection mode', 'Count', WafDetection, 'Tab', 'App Delivery', 'Severity', 'Degraded'),\n    pack('Check', 'Alert rules disabled', 'Count', RulesDisabled, 'Tab', 'Monitoring & Backup', 'Severity', 'Degraded'),\n    pack('Check', 'Action groups disabled', 'Count', GroupsDisabled, 'Tab', 'Monitoring & Backup', 'Severity', 'Degraded'),\n    pack('Check', 'Unattached disks', 'Count', Disks, 'Tab', 'Governance', 'Severity', 'Degraded'),\n    pack('Check', 'Defender plans off', 'Count', PlansOff, 'Tab', 'Security', 'Severity', 'Degraded'),\n    pack('Check', 'Owners set on users', 'Count', DirectOwners, 'Tab', 'Security', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "query": "resources\n| where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n    'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',\n    'microsoft.network/virtualnetworks', 'microsoft.network/applicationgateways', 'microsoft.compute/disks',\n    'microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')\n| extend endpointState = coalesce(\n    tostring(properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status),\n    tostring(properties.manualPrivateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status))\n| summarize\n    Endpoints = countif(type =~ 'microsoft.network/privateendpoints' and endpointState !~ 'Approved'),\n    Peerings = countif(type =~ 'microsoft.network/virtualnetworks' and tostring(properties.virtualNetworkPeerings) contains 'Disconnected'),\n    Gateways = countif(type =~ 'microsoft.network/applicationgateways' and tostring(properties.operationalState) !~ 'Running'),\n    ThreatIntelOff = countif(type =~ 'microsoft.network/firewallpolicies' and tostring(properties.threatIntelMode) =~ 'Off'),\n    WafDetection = countif(type endswith 'webapplicationfirewallpolicies' and tostring(properties.policySettings.mode) =~ 'Detection'),\n    RulesDisabled = countif(type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',\n        'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),\n    GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),\n    Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))\n| extend rows = pack_array(\n    pack('Check', 'Endpoints not approved', 'Count', Endpoints, 'Tab', 'Shared', 'Severity', 'Unavailable'),\n    pack('Check', 'Peerings disconnected', 'Count', Peerings, 'Tab', 'Virtual WAN', 'Severity', 'Unavailable'),\n    pack('Check', 'App gateways stopped', 'Count', Gateways, 'Tab', 'App Delivery', 'Severity', 'Unavailable'),\n    pack('Check', 'Threat intel off', 'Count', ThreatIntelOff, 'Tab', 'Firewall', 'Severity', 'Degraded'),\n    pack('Check', 'WAF in detection mode', 'Count', WafDetection, 'Tab', 'App Delivery', 'Severity', 'Degraded'),\n    pack('Check', 'Alert rules disabled', 'Count', RulesDisabled, 'Tab', 'Monitoring & Backup', 'Severity', 'Degraded'),\n    pack('Check', 'Action groups disabled', 'Count', GroupsDisabled, 'Tab', 'Monitoring & Backup', 'Severity', 'Degraded'),\n    pack('Check', 'Unattached disks', 'Count', Disks, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -392,6 +392,13 @@
                   "formatter": 12,
                   "formatOptions": {
                     "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
                   }
                 },
                 "showBorder": true,
@@ -401,13 +408,13 @@
                 }
               }
             },
-            "name": "overview-issues-config"
+            "name": "overview-issues-resources"
           },
           {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded')\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| summarize Impaired = dcount(id)\n| extend k = 1\n| join kind=leftouter (\n    patchassessmentresources\n    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n    | summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),\n        Reboot = countif(tobool(properties.rebootPending))\n    | extend k = 1\n  ) on k\n| join kind=leftouter (\n    advisorresources\n    | where type =~ 'microsoft.advisor/recommendations'\n    | where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n    | extend retires = todatetime(properties.extendedProperties.retirementDate)\n    | summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)\n    | extend k = 1\n  ) on k\n| join kind=leftouter (\n    policyresources\n    | where type =~ 'microsoft.authorization/policyexemptions'\n    | extend expires = todatetime(properties.expiresOn)\n    | summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)\n    | extend k = 1\n  ) on k\n| extend rows = pack_array(\n    pack('Check', 'Health incidents', 'Count', Impaired, 'Tab', 'Overview, below', 'Severity', 'Degraded'),\n    pack('Check', 'Critical patches due', 'Count', Critical, 'Tab', 'Governance', 'Severity', 'Unavailable'),\n    pack('Check', 'Reboot pending', 'Count', Reboot, 'Tab', 'Governance', 'Severity', 'Degraded'),\n    pack('Check', 'Retiring in 90 days', 'Count', Soon, 'Tab', 'Governance', 'Severity', 'Degraded'),\n    pack('Check', 'Exemptions expired', 'Count', Expired, 'Tab', 'Governance', 'Severity', 'Degraded'),\n    pack('Check', 'Exemptions expiring', 'Count', Expiring, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "query": "healthresourcechanges\n    | where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | extend Time = todatetime(properties.changeAttributes.timestamp)\n    | where Time >= todatetime('{TimeRange:startISO}')\n    | extend state = properties.changes['properties.availabilityState']\n    | extend To = tostring(state.newValue), From = tostring(state.previousValue)\n    | where isnotempty(To)\n    | extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| where To in ('Unavailable', 'Degraded')\n| extend parts = split(id, '/')\n| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{BuildAgentPattern}'\n| summarize Impaired = dcount(id)\n| extend rows = pack_array(\n    pack('Check', 'Health incidents', 'Count', Impaired, 'Tab', 'Overview, below', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -465,6 +472,13 @@
                   "formatter": 12,
                   "formatOptions": {
                     "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
                   }
                 },
                 "showBorder": true,
@@ -474,7 +488,431 @@
                 }
               }
             },
-            "name": "overview-issues-state"
+            "name": "overview-issues-health",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "patchassessmentresources\n| where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n| summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),\n    Reboot = countif(tobool(properties.rebootPending))\n| extend rows = pack_array(\n    pack('Check', 'Critical patches due', 'Count', Critical, 'Tab', 'Governance', 'Severity', 'Unavailable'),\n    pack('Check', 'Reboot pending', 'Count', Reboot, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Check",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Count",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Where",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-issues-patch",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "410px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend retires = todatetime(properties.extendedProperties.retirementDate)\n| summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)\n| extend rows = pack_array(\n    pack('Check', 'Retiring in 90 days', 'Count', Soon, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Check",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Count",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Where",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-issues-retirement",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.authorization/policyexemptions'\n| extend expires = todatetime(properties.expiresOn)\n| summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)\n| extend rows = pack_array(\n    pack('Check', 'Exemptions expired', 'Count', Expired, 'Tab', 'Governance', 'Severity', 'Degraded'),\n    pack('Check', 'Exemptions expiring', 'Count', Expiring, 'Tab', 'Governance', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Check",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Count",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Where",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-issues-exemptions",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "410px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/pricings'\n| where not(tobool(properties.deprecated))\n| summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')\n| extend rows = pack_array(\n    pack('Check', 'Defender plans off', 'Count', PlansOff, 'Tab', 'Security', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Check",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Count",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Where",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-issues-defender",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| where tolower(tostring(properties.roleDefinitionId)) endswith '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'\n| extend scope = tolower(tostring(properties.scope))\n| where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3\n| summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n| summarize DirectOwners = countif(principalType =~ 'User')\n| extend rows = pack_array(\n    pack('Check', 'Owners set on users', 'Count', DirectOwners, 'Tab', 'Security', 'Severity', 'Degraded'))\n| mv-expand r = rows\n| extend Count = tolong(r.Count)\n| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),\n    State = iff(Count > 0, tostring(r.Severity), 'Available')\n| order by Count desc",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Check",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Count",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Where",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "overview-issues-access",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
           },
           {
             "type": 3,
@@ -542,6 +980,13 @@
                   "formatter": 12,
                   "formatOptions": {
                     "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 0,
+                    "options": {
+                      "style": "decimal",
+                      "useGrouping": false
+                    }
                   }
                 },
                 "showBorder": true,
@@ -1266,7 +1711,7 @@
             "name": "overview-avs-cpu",
             "customWidth": "0",
             "styleSettings": {
-              "maxWidth": "410px"
+              "maxWidth": "470px"
             },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
@@ -1368,7 +1813,7 @@
             "name": "overview-avs-mem",
             "customWidth": "0",
             "styleSettings": {
-              "maxWidth": "410px"
+              "maxWidth": "470px"
             },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
@@ -1470,7 +1915,7 @@
             "name": "overview-avs-vsan",
             "customWidth": "0",
             "styleSettings": {
-              "maxWidth": "410px"
+              "maxWidth": "470px"
             },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
@@ -10051,7 +10496,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id = tolower(id),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    Size = tostring(properties.hardwareProfile.vmSize),\n    Zone = strcat_array(zones, ','),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState)\n  ) on id\n| join kind=leftouter (\n    patchassessmentresources\n    | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),\n        RebootPending = tostring(properties.rebootPending)\n  ) on id\n| project id, Health, Power, CriticalPatches, SecurityPatches, RebootPending, Size, Zone, ResourceGroup, Location\n| order by id asc",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id = tolower(id),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    Size = tostring(properties.hardwareProfile.vmSize),\n    Zone = strcat_array(zones, ','),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState)\n  ) on id\n| project id, Health, Power, Size, Zone, ResourceGroup, Location\n| order by id asc",
               "size": 0,
               "title": "Domain controller virtual machines",
               "queryType": 1,
@@ -10161,6 +10606,44 @@
                         }
                       ]
                     }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Domain controller"
+                  }
+                ]
+              }
+            },
+            "name": "identity-dcs",
+            "customWidth": "55"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id = tolower(id)\n| join kind=leftouter (\n    patchassessmentresources\n    | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        Assessed = todatetime(properties.lastModifiedDateTime),\n        CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),\n        RebootPending = tostring(properties.rebootPending)\n  ) on id\n| project id, CriticalPatches, SecurityPatches, RebootPending, Assessed\n| order by id asc",
+              "size": 0,
+              "title": "Pending patches (Azure Update Manager)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines matched the domain controller name pattern.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
                   },
                   {
                     "columnMatch": "CriticalPatches",
@@ -10259,7 +10742,8 @@
                 ]
               }
             },
-            "name": "identity-dcs"
+            "name": "identity-dc-patches",
+            "customWidth": "45"
           },
           {
             "type": 10,

@@ -550,6 +550,8 @@ TABS = [
 # a wide screen and scroll sideways on a narrow one.
 ONE_TILE = 220
 TWO_TILES = 410
+# Metric tiles sit in a container with more padding than query tiles: at 410 pixels two of them stack.
+TWO_METRIC_TILES = 470
 
 
 def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
@@ -738,9 +740,10 @@ AzureActivity
 | order by AvailabilityPct asc
 """
     # Issues board: one tile per check, each a count of things wrong, with the tab that has the detail.
-    # Every Resource Graph table needs its own query, and a query of its own would mean a narrow one-tile item,
-    # so each table is reduced to a single row of counts and the rows are joined on a constant key. Resource
-    # Graph allows three joins a query, hence two queries. The joined row is then unpacked into one row per check.
+    # Resource Graph refuses a query that touches two of its tables other than resources ("disallowed in the same
+    # cross table queries"), so every table has its own query and its own item. Each query reduces its table to
+    # one row of counts, then unpacks that into one row per check. The single-table items sit in fixed pixel
+    # slots so their tiles pack to the left.
     def issue_rows(checks):
         """checks: list of (label, count column, tab, state when the count is above zero)."""
         packs = ",\n    ".join(f"pack('Check', '{label}', 'Count', {col}, 'Tab', '{tab}', 'Severity', '{state}')"
@@ -753,14 +756,6 @@ AzureActivity
     State = iff(Count > 0, tostring(r.Severity), 'Available')
 | order by Count desc
 """
-
-    def joined(first, *others):
-        """Join single-row count queries side by side into one row."""
-        query = first.strip() + "\n| extend k = 1\n"
-        for other in others:
-            body = other.strip().replace("\n", "\n    ")
-            query += f"| join kind=leftouter (\n    {body}\n    | extend k = 1\n  ) on k\n"
-        return query
 
     counts_resources = """
 resources
@@ -824,7 +819,7 @@ policyresources
 | extend expires = todatetime(properties.expiresOn)
 | summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)
 """
-    issues_config_q = joined(counts_resources, counts_defender, counts_access) + issue_rows([
+    issues_resources_q = counts_resources + issue_rows([
         ("Endpoints not approved", "Endpoints", "Shared", "Unavailable"),
         ("Peerings disconnected", "Peerings", "Virtual WAN", "Unavailable"),
         ("App gateways stopped", "Gateways", "App Delivery", "Unavailable"),
@@ -833,17 +828,19 @@ policyresources
         ("Alert rules disabled", "RulesDisabled", "Monitoring & Backup", "Degraded"),
         ("Action groups disabled", "GroupsDisabled", "Monitoring & Backup", "Degraded"),
         ("Unattached disks", "Disks", "Governance", "Degraded"),
-        ("Defender plans off", "PlansOff", "Security", "Degraded"),
-        ("Owners set on users", "DirectOwners", "Security", "Degraded"),
     ])
-    issues_state_q = joined(counts_health, counts_patch, counts_retirement, counts_exemptions) + issue_rows([
-        ("Health incidents", "Impaired", "Overview, below", "Degraded"),
+    issues_health_q = counts_health + issue_rows([("Health incidents", "Impaired", "Overview, below", "Degraded")])
+    issues_patch_q = counts_patch + issue_rows([
         ("Critical patches due", "Critical", "Governance", "Unavailable"),
         ("Reboot pending", "Reboot", "Governance", "Degraded"),
-        ("Retiring in 90 days", "Soon", "Governance", "Degraded"),
+    ])
+    issues_retirement_q = counts_retirement + issue_rows([("Retiring in 90 days", "Soon", "Governance", "Degraded")])
+    issues_exemptions_q = counts_exemptions + issue_rows([
         ("Exemptions expired", "Expired", "Governance", "Degraded"),
         ("Exemptions expiring", "Expiring", "Governance", "Degraded"),
     ])
+    issues_defender_q = counts_defender + issue_rows([("Defender plans off", "PlansOff", "Security", "Degraded")])
+    issues_access_q = counts_access + issue_rows([("Owners set on users", "DirectOwners", "Security", "Degraded")])
     # Log checks. A leg whose table is missing from the workspace is skipped, so its tile is simply absent.
     issues_logs_q = f"""
 union isfuzzy=true
@@ -876,6 +873,8 @@ union isfuzzy=true
 | order by Count desc
 """
     issue_tiles = big_number_tiles("Check", "State", "Count", "Where")
+    # No thousands separator: with one, a four-digit count is too wide for the tile and gets cut off.
+    issue_tiles["rightContent"]["numberFormat"] = {"unit": 0, "options": {"style": "decimal", "useGrouping": False}}
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -890,8 +889,13 @@ union isfuzzy=true
              "found wrong; a green tick means none. The line under it names the tab that has the detail. *Defender "
              "plans off* counts subscriptions, *Exemptions expiring* looks 30 days ahead, and *High incidents open* "
              "is Sentinel.", "info"),
-        arg("overview-issues-config", "", issues_config_q, vis="tiles", tiles=issue_tiles),
-        arg("overview-issues-state", "", issues_state_q, vis="tiles", tiles=issue_tiles),
+        arg("overview-issues-resources", "", issues_resources_q, vis="tiles", tiles=issue_tiles),
+        arg("overview-issues-health", "", issues_health_q, vis="tiles", tiles=issue_tiles, fixed_px=ONE_TILE),
+        arg("overview-issues-patch", "", issues_patch_q, vis="tiles", tiles=issue_tiles, fixed_px=TWO_TILES),
+        arg("overview-issues-retirement", "", issues_retirement_q, vis="tiles", tiles=issue_tiles, fixed_px=ONE_TILE),
+        arg("overview-issues-exemptions", "", issues_exemptions_q, vis="tiles", tiles=issue_tiles, fixed_px=TWO_TILES),
+        arg("overview-issues-defender", "", issues_defender_q, vis="tiles", tiles=issue_tiles, fixed_px=ONE_TILE),
+        arg("overview-issues-access", "", issues_access_q, vis="tiles", tiles=issue_tiles, fixed_px=ONE_TILE),
         la("overview-issues-logs", "", issues_logs_q, vis="tiles", tiles=issue_tiles),
         text("overview-glance-h", "### At a glance"),
         arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, fixed_px=ONE_TILE),
@@ -905,11 +909,11 @@ union isfuzzy=true
         arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
             tiles=big_number_tiles("Signal", "State", "Value", "Detail"), fixed_px=ONE_TILE, visible_when=avs_found),
         metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
-                tiles=metric_tiles(80, 90), fixed_px=TWO_TILES, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), fixed_px=TWO_METRIC_TILES, visible_when=avs_found),
         metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
-                tiles=metric_tiles(80, 90), fixed_px=TWO_TILES, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), fixed_px=TWO_METRIC_TILES, visible_when=avs_found),
         metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
-                tiles=metric_tiles(70, 75), fixed_px=TWO_TILES, visible_when=avs_found),
+                tiles=metric_tiles(70, 75), fixed_px=TWO_METRIC_TILES, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
@@ -1730,6 +1734,8 @@ resources
     LdapsCertExpires = todatetime(properties.ldapsSettings.certificateNotAfter),
     Provisioning = tostring(properties.provisioningState)
 """
+    # Health and patch state are two tables, not one: Resource Graph refuses a query that joins resources to
+    # both healthresources and patchassessmentresources.
     dcs_q = Q_DC_VMS + """
 | project id = tolower(id),
     Power = tostring(properties.extended.instanceView.powerState.displayStatus),
@@ -1742,15 +1748,21 @@ resources
     | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),
         Health = tostring(properties.availabilityState)
   ) on id
+| project id, Health, Power, Size, Zone, ResourceGroup, Location
+| order by id asc
+"""
+    dc_patches_q = Q_DC_VMS + """
+| project id = tolower(id)
 | join kind=leftouter (
     patchassessmentresources
     | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'
     | extend c = properties.availablePatchCountByClassification
     | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),
+        Assessed = todatetime(properties.lastModifiedDateTime),
         CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),
         RebootPending = tostring(properties.rebootPending)
   ) on id
-| project id, Health, Power, CriticalPatches, SecurityPatches, RebootPending, Size, Zone, ResourceGroup, Location
+| project id, CriticalPatches, SecurityPatches, RebootPending, Assessed
 | order by id asc
 """
     heartbeat_q = """
@@ -1894,11 +1906,14 @@ AuditLogs
         arg("identity-dcs", "Domain controller virtual machines", dcs_q, formatters=[
             resource_link(), health_fmt(),
             status_fmt("Power", good=["VM running"], bad=["VM deallocated", "VM stopped"], warn=["VM starting", "VM stopping", "VM deallocating"]),
-            low_is_good("CriticalPatches", 1, 1), low_is_good("SecurityPatches", 1, 10),
+        ], labels={"id": "Domain controller"},
+            no_data="No virtual machines matched the domain controller name pattern.", width=55),
+        arg("identity-dc-patches", "Pending patches (Azure Update Manager)", dc_patches_q, formatters=[
+            resource_link(), low_is_good("CriticalPatches", 1, 1), low_is_good("SecurityPatches", 1, 10),
             status_fmt("RebootPending", warn=["true"]),
         ], labels={"id": "Domain controller", "CriticalPatches": "Critical patches", "SecurityPatches": "Security patches",
                    "RebootPending": "Reboot pending"},
-            no_data="No virtual machines matched the domain controller name pattern."),
+            no_data="No virtual machines matched the domain controller name pattern.", width=45),
         metric_grid("identity-kpis", "Domain controller metrics (over time range)", vm, "DomainControllers", [
             ("VmAvailabilityMetric", AVG, "VM availability", None),
             ("Percentage CPU", AVG, "Avg CPU %", ("low", 80, 95)),
