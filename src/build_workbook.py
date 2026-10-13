@@ -2917,28 +2917,30 @@ resources
         "microsoft.keyvault/vaults", "microsoft.avs/privateclouds", "microsoft.desktopvirtualization/hostpools",
         "microsoft.storage/storageaccounts", "microsoft.recoveryservices/vaults",
     ])
+    # withsource names the column that holds each row's table. It must not match a column of any table in the
+    # workspace, or the union fails; a custom table can easily have one called SourceTable, hence the odd name.
     log_sources_q = f"""
 arg("").Resources
 | where type in~ ({logging_types})
 | where type !~ 'microsoft.storage/storageaccounts' or name matches regex @'{{StoragePattern}}' or resourceGroup matches regex @'{{StoragePattern}}'
 | project ResourceId = tolower(id), Type = type, ResourceGroup = resourceGroup
 | join kind=leftouter (
-    union withsource=SourceTable *
+    union withsource=LogTable_ *
     | where TimeGenerated {{TimeRange}}
     | where _ResourceId has_any ('microsoft.network', 'microsoft.keyvault', 'microsoft.avs', 'microsoft.desktopvirtualization', 'microsoft.storage', 'microsoft.recoveryservices')
     | extend ResourceId = strcat_array(array_slice(split(tolower(_ResourceId), '/'), 0, 8), '/')
-    | summarize LastRecord = max(TimeGenerated), Tables = strcat_array(make_set(SourceTable, 8), ', ') by ResourceId
+    | summarize LastRecord = max(TimeGenerated), Tables = strcat_array(make_set(LogTable_, 8), ', ') by ResourceId
   ) on ResourceId
 | extend Status = case(isnull(LastRecord), 'No logs', LastRecord < ago(1d), 'Stale', 'Logging')
 | project ResourceId, Status, LastRecord, Tables, Type, ResourceGroup
 | order by case(Status == 'No logs', 0, Status == 'Stale', 1, 2) asc, Type asc
 """
     ingestion_delay_q = """
-union withsource=SourceTable *
+union withsource=LogTable_ *
 | where TimeGenerated {TimeRange} and TimeGenerated > ago(1d)
 | extend DelayMin = (ingestion_time() - TimeGenerated) / 1m
 | summarize Records = count(), MedianDelayMin = round(percentile(DelayMin, 50), 1),
-    P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by SourceTable
+    P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by LogTable = LogTable_
 | top 30 by P95DelayMin desc
 """
     dcr_associations = """
@@ -3120,7 +3122,7 @@ resources
         ], labels={"ResourceId": "Resource", "LastRecord": "Last record"}, width=60),
         la("mgmt-ingestion-delay", "Ingestion delay by table (last 24 hours at most)", ingestion_delay_q, formatters=[
             low_is_good("P95DelayMin", 15, 60, digits=1),
-        ], labels={"SourceTable": "Table", "MedianDelayMin": "Median delay (min)", "P95DelayMin": "P95 delay (min)",
+        ], labels={"LogTable": "Table", "MedianDelayMin": "Median delay (min)", "P95DelayMin": "P95 delay (min)",
                    "LastRecord": "Last record"}, width=40),
         text("mgmt-alerting-h", "### Alerting coverage"),
         text("mgmt-alerting-note",

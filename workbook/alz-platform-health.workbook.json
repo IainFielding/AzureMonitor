@@ -15558,7 +15558,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "arg(\"\").Resources\n| where type in~ ('microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.storage/storageaccounts' or name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'\n| project ResourceId = tolower(id), Type = type, ResourceGroup = resourceGroup\n| join kind=leftouter (\n    union withsource=SourceTable *\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId has_any ('microsoft.network', 'microsoft.keyvault', 'microsoft.avs', 'microsoft.desktopvirtualization', 'microsoft.storage', 'microsoft.recoveryservices')\n    | extend ResourceId = strcat_array(array_slice(split(tolower(_ResourceId), '/'), 0, 8), '/')\n    | summarize LastRecord = max(TimeGenerated), Tables = strcat_array(make_set(SourceTable, 8), ', ') by ResourceId\n  ) on ResourceId\n| extend Status = case(isnull(LastRecord), 'No logs', LastRecord < ago(1d), 'Stale', 'Logging')\n| project ResourceId, Status, LastRecord, Tables, Type, ResourceGroup\n| order by case(Status == 'No logs', 0, Status == 'Stale', 1, 2) asc, Type asc",
+              "query": "arg(\"\").Resources\n| where type in~ ('microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.storage/storageaccounts' or name matches regex @'{StoragePattern}' or resourceGroup matches regex @'{StoragePattern}'\n| project ResourceId = tolower(id), Type = type, ResourceGroup = resourceGroup\n| join kind=leftouter (\n    union withsource=LogTable_ *\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId has_any ('microsoft.network', 'microsoft.keyvault', 'microsoft.avs', 'microsoft.desktopvirtualization', 'microsoft.storage', 'microsoft.recoveryservices')\n    | extend ResourceId = strcat_array(array_slice(split(tolower(_ResourceId), '/'), 0, 8), '/')\n    | summarize LastRecord = max(TimeGenerated), Tables = strcat_array(make_set(LogTable_, 8), ', ') by ResourceId\n  ) on ResourceId\n| extend Status = case(isnull(LastRecord), 'No logs', LastRecord < ago(1d), 'Stale', 'Logging')\n| project ResourceId, Status, LastRecord, Tables, Type, ResourceGroup\n| order by case(Status == 'No logs', 0, Status == 'Stale', 1, 2) asc, Type asc",
               "size": 0,
               "title": "Platform resources by last record in the workspace",
               "queryType": 0,
@@ -15641,7 +15641,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "union withsource=SourceTable *\n| where TimeGenerated {TimeRange} and TimeGenerated > ago(1d)\n| extend DelayMin = (ingestion_time() - TimeGenerated) / 1m\n| summarize Records = count(), MedianDelayMin = round(percentile(DelayMin, 50), 1),\n    P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by SourceTable\n| top 30 by P95DelayMin desc",
+              "query": "union withsource=LogTable_ *\n| where TimeGenerated {TimeRange} and TimeGenerated > ago(1d)\n| extend DelayMin = (ingestion_time() - TimeGenerated) / 1m\n| summarize Records = count(), MedianDelayMin = round(percentile(DelayMin, 50), 1),\n    P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by LogTable = LogTable_\n| top 30 by P95DelayMin desc",
               "size": 0,
               "title": "Ingestion delay by table (last 24 hours at most)",
               "queryType": 0,
@@ -15695,7 +15695,7 @@
                 "filter": true,
                 "labelSettings": [
                   {
-                    "columnId": "SourceTable",
+                    "columnId": "LogTable",
                     "label": "Table"
                   },
                   {
