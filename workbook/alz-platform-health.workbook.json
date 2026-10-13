@@ -10496,7 +10496,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id = tolower(id),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    Size = tostring(properties.hardwareProfile.vmSize),\n    Zone = strcat_array(zones, ','),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState)\n  ) on id\n| join kind=leftouter (\n    patchassessmentresources\n    | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),\n        RebootPending = tostring(properties.rebootPending)\n  ) on id\n| project id, Health, Power, CriticalPatches, SecurityPatches, RebootPending, Size, Zone, ResourceGroup, Location\n| order by id asc",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id = tolower(id),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    Size = tostring(properties.hardwareProfile.vmSize),\n    Zone = strcat_array(zones, ','),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState)\n  ) on id\n| project id, Health, Power, Size, Zone, ResourceGroup, Location\n| order by id asc",
               "size": 0,
               "title": "Domain controller virtual machines",
               "queryType": 1,
@@ -10606,6 +10606,44 @@
                         }
                       ]
                     }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Domain controller"
+                  }
+                ]
+              }
+            },
+            "name": "identity-dcs",
+            "customWidth": "55"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where name matches regex @'{DcPattern}'\n| project id = tolower(id)\n| join kind=leftouter (\n    patchassessmentresources\n    | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        Assessed = todatetime(properties.lastModifiedDateTime),\n        CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),\n        RebootPending = tostring(properties.rebootPending)\n  ) on id\n| project id, CriticalPatches, SecurityPatches, RebootPending, Assessed\n| order by id asc",
+              "size": 0,
+              "title": "Pending patches (Azure Update Manager)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines matched the domain controller name pattern.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
                   },
                   {
                     "columnMatch": "CriticalPatches",
@@ -10704,7 +10742,8 @@
                 ]
               }
             },
-            "name": "identity-dcs"
+            "name": "identity-dc-patches",
+            "customWidth": "45"
           },
           {
             "type": 10,

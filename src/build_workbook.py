@@ -1732,6 +1732,8 @@ resources
     LdapsCertExpires = todatetime(properties.ldapsSettings.certificateNotAfter),
     Provisioning = tostring(properties.provisioningState)
 """
+    # Health and patch state are two tables, not one: Resource Graph refuses a query that joins resources to
+    # both healthresources and patchassessmentresources.
     dcs_q = Q_DC_VMS + """
 | project id = tolower(id),
     Power = tostring(properties.extended.instanceView.powerState.displayStatus),
@@ -1744,15 +1746,21 @@ resources
     | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),
         Health = tostring(properties.availabilityState)
   ) on id
+| project id, Health, Power, Size, Zone, ResourceGroup, Location
+| order by id asc
+"""
+    dc_patches_q = Q_DC_VMS + """
+| project id = tolower(id)
 | join kind=leftouter (
     patchassessmentresources
     | where type =~ 'microsoft.compute/virtualmachines/patchassessmentresults'
     | extend c = properties.availablePatchCountByClassification
     | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),
+        Assessed = todatetime(properties.lastModifiedDateTime),
         CriticalPatches = coalesce(toint(c.critical), 0), SecurityPatches = coalesce(toint(c.security), 0),
         RebootPending = tostring(properties.rebootPending)
   ) on id
-| project id, Health, Power, CriticalPatches, SecurityPatches, RebootPending, Size, Zone, ResourceGroup, Location
+| project id, CriticalPatches, SecurityPatches, RebootPending, Assessed
 | order by id asc
 """
     heartbeat_q = """
@@ -1896,11 +1904,14 @@ AuditLogs
         arg("identity-dcs", "Domain controller virtual machines", dcs_q, formatters=[
             resource_link(), health_fmt(),
             status_fmt("Power", good=["VM running"], bad=["VM deallocated", "VM stopped"], warn=["VM starting", "VM stopping", "VM deallocating"]),
-            low_is_good("CriticalPatches", 1, 1), low_is_good("SecurityPatches", 1, 10),
+        ], labels={"id": "Domain controller"},
+            no_data="No virtual machines matched the domain controller name pattern.", width=55),
+        arg("identity-dc-patches", "Pending patches (Azure Update Manager)", dc_patches_q, formatters=[
+            resource_link(), low_is_good("CriticalPatches", 1, 1), low_is_good("SecurityPatches", 1, 10),
             status_fmt("RebootPending", warn=["true"]),
         ], labels={"id": "Domain controller", "CriticalPatches": "Critical patches", "SecurityPatches": "Security patches",
                    "RebootPending": "Reboot pending"},
-            no_data="No virtual machines matched the domain controller name pattern."),
+            no_data="No virtual machines matched the domain controller name pattern.", width=45),
         metric_grid("identity-kpis", "Domain controller metrics (over time range)", vm, "DomainControllers", [
             ("VmAvailabilityMetric", AVG, "VM availability", None),
             ("Percentage CPU", AVG, "Avg CPU %", ("low", 80, 95)),
