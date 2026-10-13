@@ -1697,6 +1697,56 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
+              "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n| extend parts = split(tolower(_ResourceId), '/')\n| extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n    strcat(tostring(parts[6]), '/', tostring(parts[7])))\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.resources/deployments')\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| summarize Failures = count(), LastSeen = max(TimeGenerated),\n    Error = take_any(substring(tostring(props.statusMessage), 0, 300))\n    by Operation = OperationNameValue, ResourceId = _ResourceId, Caller\n| top 100 by LastSeen desc",
+              "size": 0,
+              "title": "Failed operations and deployments on platform resources",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed operations in the time range (or the activity log is not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "ResourceId",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ResourceId",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "overview-failed-ops",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
               "query": "resources\n| where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{BuildAgentPattern}'\n| extend gatewayType = tostring(properties.gatewayType)\n| extend Service = case(\n    type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',\n    type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',\n    type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',\n    type =~ 'microsoft.network/virtualnetworkgateways' and gatewayType =~ 'ExpressRoute', 'ExpressRoute',\n    type in~ ('microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways'), 'VPN',\n    type =~ 'microsoft.network/bastionhosts', 'Bastion',\n    type =~ 'microsoft.network/ddosprotectionplans', 'DDoS Protection',\n    type in~ ('microsoft.network/privatednszones', 'microsoft.network/dnsresolvers'), 'DNS',\n    type =~ 'microsoft.keyvault/vaults', 'Key Vault',\n    type =~ 'microsoft.avs/privateclouds', 'Azure VMware Solution',\n    type =~ 'microsoft.desktopvirtualization/hostpools', 'Azure Virtual Desktop',\n    type =~ 'microsoft.storage/storageaccounts', 'Storage',\n    type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',\n    type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',\n    'Build Agents')\n| extend provisioning = tostring(properties.provisioningState),\n    routingState = tostring(properties.routingState),\n    ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    recordSetPct = 100.0 * todouble(properties.numberOfRecordSets) / todouble(properties.maxNumberOfRecordSets)\n| extend ConfigHealth = case(\n        provisioning =~ 'Failed', 'Unavailable',\n        routingState =~ 'Failed', 'Unavailable',\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'Unavailable',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Unavailable',\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended'), 'Unavailable',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned', 'Degraded',\n        routingState =~ 'Provisioning', 'Degraded',\n        ingestion =~ 'ApproachingQuota', 'Degraded',\n        recordSetPct >= 80, 'Degraded',\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Degraded',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), 'Degraded',\n        'Available'),\n    ConfigReason = case(\n        provisioning =~ 'Failed', 'Provisioning failed',\n        routingState in~ ('Failed', 'Provisioning'), strcat('Hub routing state: ', routingState),\n        tostring(properties.dnsResolverState) =~ 'Disconnected', 'DNS resolver disconnected',\n        tostring(properties.circuitProvisioningState) =~ 'Disabled', 'Circuit disabled',\n        type =~ 'microsoft.network/expressroutecircuits' and tostring(properties.serviceProviderProvisioningState) !~ 'Provisioned',\n            strcat('Provider state: ', tostring(properties.serviceProviderProvisioningState)),\n        tostring(properties.statusOfPrimary) =~ 'unavailable', 'Primary region unavailable',\n        ingestion in~ ('OverQuota', 'ForceOff', 'SubscriptionSuspended', 'ApproachingQuota'), strcat('Ingestion: ', ingestion),\n        recordSetPct >= 80, strcat('Record sets at ', round(recordSetPct, 0), '% of limit'),\n        type =~ 'microsoft.network/privatednszones' and toint(properties.numberOfVirtualNetworkLinks) == 0, 'Zone not linked to any VNet',\n        provisioning in~ ('Updating', 'Deleting', 'Canceled'), strcat('Provisioning: ', provisioning),\n        '')\n| project id = tolower(id), Service, Type = type, ResourceGroup = resourceGroup, SubscriptionId = subscriptionId,\n    Location = location, ConfigHealth, ConfigReason\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState),\n        Reason = tostring(properties.summary),\n        Since = todatetime(properties.occurredTime)\n  ) on id\n| project-away id1\n| extend Signal = iff(isempty(Health), 'Config state', 'Resource Health')\n| extend Health = iff(isempty(Health), ConfigHealth, Health),\n    Reason = iff(isempty(Reason), ConfigReason, Reason)\n| project-away ConfigHealth, ConfigReason\n\n| project id, Service, Health, Signal, Reason, Type, ResourceGroup, Location\n| order by Service asc",
               "size": 0,
               "title": "All platform resources",

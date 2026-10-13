@@ -645,6 +645,22 @@ healthresourcechanges
 | project Signal = 'Private clouds', Value = Clouds, Detail = strcat(Hosts, ' management cluster hosts'),
     State = case(Failed > 0, 'Unavailable', Busy > 0, 'Degraded', 'Available')
 """
+    # Failed writes, deletes and actions on platform resources, plus failed deployments at any scope
+    # (a subscription-level deployment has its provider at a different position in the id).
+    failed_ops_q = f"""
+AzureActivity
+| where TimeGenerated {{TimeRange}}
+| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')
+| extend parts = split(tolower(_ResourceId), '/')
+| extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),
+    strcat(tostring(parts[6]), '/', tostring(parts[7])))
+| where type in~ ({TYPE_LIST}, 'microsoft.resources/deployments')
+| extend props = column_ifexists('Properties_d', dynamic(null))
+| summarize Failures = count(), LastSeen = max(TimeGenerated),
+    Error = take_any(substring(tostring(props.statusMessage), 0, 300))
+    by Operation = OperationNameValue, ResourceId = _ResourceId, Caller
+| top 100 by LastSeen desc
+"""
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -691,6 +707,10 @@ healthresourcechanges
             formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
             labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},
             no_data="No changes to platform resources in the time range."),
+        la("overview-failed-ops", "Failed operations and deployments on platform resources", failed_ops_q,
+           formatters=[resource_link("ResourceId")],
+           labels={"ResourceId": "Resource", "LastSeen": "Last seen"},
+           no_data="No failed operations in the time range (or the activity log is not sent to this workspace)."),
         arg("overview-all", "All platform resources", all_q, group_by="Service",
             formatters=[resource_link(), health_fmt(), hidden("Type")], labels={"id": "Resource"}),
     ], tab="overview")
