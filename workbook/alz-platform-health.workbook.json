@@ -1711,7 +1711,7 @@
             "name": "overview-avs-cpu",
             "customWidth": "0",
             "styleSettings": {
-              "maxWidth": "410px"
+              "maxWidth": "470px"
             },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
@@ -1813,7 +1813,7 @@
             "name": "overview-avs-mem",
             "customWidth": "0",
             "styleSettings": {
-              "maxWidth": "410px"
+              "maxWidth": "470px"
             },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",
@@ -1915,7 +1915,7 @@
             "name": "overview-avs-vsan",
             "customWidth": "0",
             "styleSettings": {
-              "maxWidth": "410px"
+              "maxWidth": "470px"
             },
             "conditionalVisibility": {
               "parameterName": "OvPrivateClouds",

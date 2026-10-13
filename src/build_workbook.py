@@ -550,6 +550,8 @@ TABS = [
 # a wide screen and scroll sideways on a narrow one.
 ONE_TILE = 220
 TWO_TILES = 410
+# Metric tiles sit in a container with more padding than query tiles: at 410 pixels two of them stack.
+TWO_METRIC_TILES = 470
 
 
 def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
@@ -907,11 +909,11 @@ union isfuzzy=true
         arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
             tiles=big_number_tiles("Signal", "State", "Value", "Detail"), fixed_px=ONE_TILE, visible_when=avs_found),
         metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
-                tiles=metric_tiles(80, 90), fixed_px=TWO_TILES, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), fixed_px=TWO_METRIC_TILES, visible_when=avs_found),
         metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
-                tiles=metric_tiles(80, 90), fixed_px=TWO_TILES, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), fixed_px=TWO_METRIC_TILES, visible_when=avs_found),
         metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
-                tiles=metric_tiles(70, 75), fixed_px=TWO_TILES, visible_when=avs_found),
+                tiles=metric_tiles(70, 75), fixed_px=TWO_METRIC_TILES, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
