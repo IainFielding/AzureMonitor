@@ -376,7 +376,7 @@ def main():
     for filename, uid, title, description, only_tab in DASHBOARDS:
         out = OUT_DIR / filename
         out.write_text(json.dumps(dashboard(uid, title, description, only_tab), indent=2, ensure_ascii=False) + "\n",
-                       encoding="utf-8")
+                       encoding="utf-8", newline="\n")
         print(f"Wrote {out}")
 
 
