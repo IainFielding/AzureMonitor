@@ -112,7 +112,7 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "identity-kpis",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "agw-inventory", "agw-kpis", "afd-inventory", "afd-kpis", "identity-kpis",
     "sec-score", "mgmt-vaults",
 }
 
@@ -315,6 +315,9 @@ Q_AGENT_VMSS = ("resources\n| where type =~ 'microsoft.compute/virtualmachinesca
                 "\n| where name matches regex @'{BuildAgentPattern}'")
 Q_DC_VMS = ("resources\n| where type =~ 'microsoft.compute/virtualmachines'"
             "\n| where name matches regex @'{DcPattern}'")
+Q_APP_GATEWAYS = "resources\n| where type =~ 'microsoft.network/applicationgateways'"
+Q_FRONT_DOORS = ("resources\n| where type =~ 'microsoft.cdn/profiles'"
+                 "\n| where tostring(sku.name) contains 'AzureFrontDoor'")
 Q_BASTIONS = "resources\n| where type =~ 'microsoft.network/bastionhosts'"
 Q_PUBLIC_IPS = "resources\n| where type =~ 'microsoft.network/publicipaddresses'"
 Q_KEYVAULTS = "resources\n| where type =~ 'microsoft.keyvault/vaults'"
@@ -503,9 +506,10 @@ TABS = [
     ("expressroute", "ExpressRoute"),
     ("vpn", "VPN"),
     ("connectivity", "Connectivity"),
-    ("shared", "Shared Services"),
+    ("appdelivery", "App Delivery"),
+    ("shared", "Shared"),
     ("identity", "Identity"),
-    ("buildagents", "Build Agents"),
+    ("buildagents", "Agents"),
     ("avs", "AVS"),
     ("avd", "AVD"),
     ("storage", "Storage"),
@@ -1407,6 +1411,136 @@ resources
     ], tab="shared")
 
 
+def appdelivery_tab():
+    agw, afd = "microsoft.network/applicationgateways", "microsoft.cdn/profiles"
+    gateways_q = Q_APP_GATEWAYS + """
+| project id,
+    Tier = tostring(properties.sku.tier),
+    State = tostring(properties.operationalState),
+    Instances = iff(isnotnull(properties.autoscaleConfiguration),
+        strcat(tostring(properties.autoscaleConfiguration.minCapacity), ' - ', tostring(properties.autoscaleConfiguration.maxCapacity)),
+        tostring(properties.sku.capacity)),
+    Zones = strcat_array(zones, ','),
+    Listeners = array_length(properties.httpListeners),
+    BackendPools = array_length(properties.backendAddressPools),
+    WafPolicy = tostring(split(tostring(properties.firewallPolicy.id), '/')[8]),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup, Location = location
+"""
+    # Front Door Standard and Premium are CDN profiles; classic Front Door is a separate type that is being retired.
+    front_doors_q = """
+resources
+| where (type =~ 'microsoft.cdn/profiles' and tostring(sku.name) contains 'AzureFrontDoor') or type =~ 'microsoft.network/frontdoors'
+| project id,
+    Tier = iff(type =~ 'microsoft.network/frontdoors', 'Classic (being retired)', tostring(sku.name)),
+    State = coalesce(tostring(properties.resourceState), tostring(properties.enabledState)),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup
+"""
+    waf_policies_q = """
+resources
+| where type in~ ('microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')
+| extend settings = properties.policySettings
+| project id,
+    Protects = iff(type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies', 'Front Door', 'Application Gateway'),
+    Mode = tostring(settings.mode),
+    State = coalesce(tostring(settings.state), tostring(settings.enabledState)),
+    ManagedRuleSets = array_length(properties.managedRules.managedRuleSets),
+    CustomRules = coalesce(array_length(properties.customRules), array_length(properties.customRules.rules), 0),
+    AttachedTo = coalesce(array_length(properties.applicationGateways), 0) + coalesce(array_length(properties.httpListeners), 0)
+        + coalesce(array_length(properties.pathBasedRules), 0) + coalesce(array_length(properties.securityPolicyLinks), 0)
+        + coalesce(array_length(properties.frontendEndpointLinks), 0),
+    ResourceGroup = resourceGroup
+| order by case(Mode =~ 'Prevention', 1, 0) asc, Protects asc
+"""
+    # WAF hits from both products. Each leg reads its columns with column_ifexists because the names differ
+    # between the resource-specific tables and AzureDiagnostics, and a missing table is skipped.
+    waf_hits_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, Product:string, Action:string, Rule:string, Host:string, ClientIp:string)[]),
+    (AGWFirewallLogs | where TimeGenerated {TimeRange}
+        | project TimeGenerated, Product = 'Application Gateway', Action = tostring(column_ifexists('Action', '')),
+            Rule = strcat(tostring(column_ifexists('RuleId', '')), ' ', tostring(column_ifexists('Message', ''))),
+            Host = tostring(column_ifexists('Hostname', '')), ClientIp = tostring(column_ifexists('ClientIp', ''))),
+    (AzureDiagnostics | where TimeGenerated {TimeRange}
+        | where Category in ('ApplicationGatewayFirewallLog', 'FrontDoorWebApplicationFirewallLog', 'FrontdoorWebApplicationFirewallLog')
+        | project TimeGenerated, Product = iff(Category == 'ApplicationGatewayFirewallLog', 'Application Gateway', 'Front Door'),
+            Action = tostring(column_ifexists('action_s', '')),
+            Rule = coalesce(tostring(column_ifexists('ruleName_s', '')),
+                strcat(tostring(column_ifexists('ruleId_s', '')), ' ', tostring(column_ifexists('Message', '')))),
+            Host = coalesce(tostring(column_ifexists('host_s', '')), tostring(column_ifexists('hostname_s', ''))),
+            ClientIp = coalesce(tostring(column_ifexists('clientIP_s', '')), tostring(column_ifexists('clientIp_s', ''))))
+| where Action in~ ('Blocked', 'Block', 'Detected', 'Log', 'Matched')
+| summarize Hits = count(), Clients = dcount(ClientIp), LastSeen = max(TimeGenerated) by Product, Action, Rule = substring(Rule, 0, 160), Host
+| top 50 by Hits desc
+"""
+    return group("tab-appdelivery", [
+        params("appdelivery-params", [
+            resource_param("AppGateways", "Application gateways", Q_APP_GATEWAYS),
+            resource_param("FrontDoors", "Front Door profiles", Q_FRONT_DOORS),
+        ]),
+        text("agw-h", "### Application Gateway"),
+        arg("agw-inventory", "Application gateways", gateways_q, formatters=[
+            resource_link(), PROVISIONING, status_fmt("State", good=["Running"], warn=["Starting", "Stopping"], bad=["Stopped"]),
+        ], labels={"id": "Application gateway", "BackendPools": "Backend pools", "WafPolicy": "WAF policy"},
+            no_data="No application gateways found."),
+        metric_grid("agw-kpis", "Key metrics (over time range)", agw, "AppGateways", [
+            ("UnhealthyHostCount", MAX, "Unhealthy backends (max)", ("low", 1, 1)),
+            ("HealthyHostCount", MIN, "Healthy backends (min)", None),
+            ("FailedRequests", SUM, "Failed requests", None),
+            ("TotalRequests", SUM, "Total requests", None),
+            ("ApplicationGatewayTotalTime", AVG, "Total time (ms)", ("low", 1000, 3000)),
+            ("CapacityUnits", MAX, "Capacity units (max)", None),
+        ]),
+        metrics("agw-hosts", "Unhealthy backends by pool", agw, "AppGateways",
+                [m(agw, "UnhealthyHostCount", MAX, split="BackendSettingsPool")], width=50),
+        metrics("agw-status", "Responses by status group", agw, "AppGateways",
+                [m(agw, "ResponseStatus", SUM, split="HttpStatusGroup")], width=50),
+        metrics("agw-time", "Total time and backend response time (ms)", agw, "AppGateways",
+                [m(agw, "ApplicationGatewayTotalTime", AVG), m(agw, "BackendLastByteResponseTime", AVG)], width=50),
+        metrics("agw-capacity", "Capacity units and throughput", agw, "AppGateways",
+                [m(agw, "CapacityUnits", MAX), m(agw, "Throughput", AVG)], width=50),
+        text("afd-h", "### Azure Front Door"),
+        arg("afd-inventory", "Front Door profiles", front_doors_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("State", good=["Active", "Enabled"], warn=["Creating", "Migrating", "Migrated"], bad=["Disabled", "Deleting"]),
+            status_fmt("Tier", warn=["Classic (being retired)"]),
+        ], labels={"id": "Profile"}, no_data="No Front Door profiles found."),
+        metric_grid("afd-kpis", "Key metrics (over time range)", afd, "FrontDoors", [
+            ("OriginHealthPercentage", AVG, "Origin health %", ("high", 99, 90)),
+            ("Percentage5XX", AVG, "5xx %", ("low", 1, 5)),
+            ("Percentage4XX", AVG, "4xx %", None),
+            ("RequestCount", SUM, "Requests", None),
+            ("TotalLatency", AVG, "Total latency (ms)", ("low", 500, 2000)),
+            ("OriginLatency", AVG, "Origin latency (ms)", None),
+        ]),
+        metrics("afd-origin-health", "Origin health % by origin", afd, "FrontDoors",
+                [m(afd, "OriginHealthPercentage", AVG, split="Origin")], width=50),
+        metrics("afd-errors", "4xx and 5xx %", afd, "FrontDoors",
+                [m(afd, "Percentage4XX", AVG), m(afd, "Percentage5XX", AVG)], width=50),
+        metrics("afd-latency", "Total and origin latency (ms)", afd, "FrontDoors",
+                [m(afd, "TotalLatency", AVG), m(afd, "OriginLatency", AVG)], width=50),
+        metrics("afd-waf", "WAF requests by action", afd, "FrontDoors",
+                [m(afd, "WebApplicationFirewallRequestCount", SUM, split="Action")], width=50),
+        text("waf-h", "### Web Application Firewall"),
+        arg("waf-policies", "WAF policies", waf_policies_q, formatters=[
+            resource_link(),
+            status_fmt("Mode", good=["Prevention"], warn=["Detection"]),
+            status_fmt("State", good=["Enabled"], bad=["Disabled"]),
+            high_is_good("AttachedTo", 1, 0),
+        ], labels={"id": "Policy", "ManagedRuleSets": "Managed rule sets", "CustomRules": "Custom rules",
+                   "AttachedTo": "Attached to"}, no_data="No WAF policies found."),
+        text("waf-logs-hint", "Select a **Log Analytics workspace** at the top to see the WAF rules that are "
+             "matching requests.", "info", visible_when=WORKSPACE_UNSET),
+        la("waf-hits", "Top WAF rule matches", waf_hits_q,
+           formatters=[status_fmt("Action", bad=["Blocked", "Block"], warn=["Detected", "Log", "Matched"])],
+           labels={"LastSeen": "Last seen"},
+           no_data="No WAF matches in the time range (or WAF logs are not sent to this workspace)."),
+        text("waf-note", "A policy in *Detection* mode logs matches but lets the request through. TLS certificates "
+             "for both products are held in Key Vault or managed by Azure, so their expiry is not shown here.", "info"),
+    ], tab="appdelivery")
+
+
 def identity_tab():
     vm = "microsoft.compute/virtualmachines"
     domain_services_q = """
@@ -1949,9 +2083,9 @@ resources
     return group("tab-capacity", [
         text("cap-intro",
              "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the "
-             "services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Azure Firewall), "
-             "circuit utilisation (ExpressRoute), Private DNS zone limits (Shared Services), vSAN (Azure VMware "
-             "Solution) and Azure Files share quota (Storage).", "info"),
+             "services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Firewall), "
+             "circuit utilisation (ExpressRoute), Private DNS zone limits (Shared), vSAN (AVS) and Azure Files "
+             "share quota (Storage).", "info"),
         text("cap-compute-h", "### Compute quotas"),
         arg("cap-compute-quota", "vCPU and compute quotas in use, by subscription and region", compute_quota_q,
             formatters=[low_is_good("UsedPct", 70, 90, digits=1)], labels={"UsedPct": "Used %"},
@@ -2938,7 +3072,7 @@ def workbook():
         "items": [
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
-                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
+                 "ExpressRoute, VPN, end-to-end connectivity tests), application delivery, shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
                  "build agents, governance, security, monitoring and backup."),
             global_params(),
             tabs(),
@@ -2948,6 +3082,7 @@ def workbook():
             expressroute_tab(),
             vpn_tab(),
             connectivity_tab(),
+            appdelivery_tab(),
             shared_tab(),
             identity_tab(),
             buildagents_tab(),

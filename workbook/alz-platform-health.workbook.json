@@ -4,7 +4,7 @@
     {
       "type": 1,
       "content": {
-        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, security, monitoring and backup."
+        "json": "# Enterprise Scale Platform Health\nHealth, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, ExpressRoute, VPN, end-to-end connectivity tests), application delivery, shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, build agents, governance, security, monitoring and backup."
       },
       "name": "header"
     },
@@ -202,10 +202,18 @@
             "style": "link"
           },
           {
+            "id": "1d4a43db-cde2-5d24-95ac-a960e998f5fe",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "App Delivery",
+            "subTarget": "appdelivery",
+            "style": "link"
+          },
+          {
             "id": "ea5651f4-a375-5c1b-8e9e-665213f5c8cd",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Shared Services",
+            "linkLabel": "Shared",
             "subTarget": "shared",
             "style": "link"
           },
@@ -221,7 +229,7 @@
             "id": "d81650d5-fbf2-56fe-909b-d11516beb706",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
-            "linkLabel": "Build Agents",
+            "linkLabel": "Agents",
             "subTarget": "buildagents",
             "style": "link"
           },
@@ -6146,6 +6154,1384 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "connectivity"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "bf63c050-4592-5ed7-ba81-da3bf2bb8efb",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "AppGateways",
+                  "label": "Application gateways",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/applicationgateways'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "dff4b2ad-f519-5931-82b7-ad5a802afb4a",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "FrontDoors",
+                  "label": "Front Door profiles",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.cdn/profiles'\n| where tostring(sku.name) contains 'AzureFrontDoor'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "appdelivery-params"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Application Gateway"
+            },
+            "name": "agw-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/applicationgateways'\n| project id,\n    Tier = tostring(properties.sku.tier),\n    State = tostring(properties.operationalState),\n    Instances = iff(isnotnull(properties.autoscaleConfiguration),\n        strcat(tostring(properties.autoscaleConfiguration.minCapacity), ' - ', tostring(properties.autoscaleConfiguration.maxCapacity)),\n        tostring(properties.sku.capacity)),\n    Zones = strcat_array(zones, ','),\n    Listeners = array_length(properties.httpListeners),\n    BackendPools = array_length(properties.backendAddressPools),\n    WafPolicy = tostring(split(tostring(properties.firewallPolicy.id), '/')[8]),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 3,
+              "title": "Application gateways",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No application gateways found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Running",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Starting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stopping",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stopped",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Application gateway"
+                  },
+                  {
+                    "columnId": "BackendPools",
+                    "label": "Backend pools"
+                  },
+                  {
+                    "columnId": "WafPolicy",
+                    "label": "WAF policy"
+                  }
+                ]
+              }
+            },
+            "name": "agw-inventory"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook4068d0cd-2028-505b-b22f-c427e44e2877",
+              "version": "MetricsItem/2.0",
+              "size": 3,
+              "chartType": 0,
+              "resourceType": "microsoft.network/applicationgateways",
+              "metricScope": 0,
+              "resourceParameter": "AppGateways",
+              "resourceIds": [
+                "{AppGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--UnhealthyHostCount",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--HealthyHostCount",
+                  "aggregation": 2
+                },
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--FailedRequests",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--TotalRequests",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--ApplicationGatewayTotalTime",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--CapacityUnits",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--UnhealthyHostCount Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--HealthyHostCount Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--FailedRequests Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--TotalRequests Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--ApplicationGatewayTotalTime Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--CapacityUnits Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--UnhealthyHostCount$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/applicationgateways--ApplicationGatewayTotalTime$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "3000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1000",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.network/applicationgateways--UnhealthyHostCount",
+                    "label": "Unhealthy backends (max)"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--HealthyHostCount",
+                    "label": "Healthy backends (min)"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--FailedRequests",
+                    "label": "Failed requests"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--TotalRequests",
+                    "label": "Total requests"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--ApplicationGatewayTotalTime",
+                    "label": "Total time (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--CapacityUnits",
+                    "label": "Capacity units (max)"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--UnhealthyHostCount Timeline",
+                    "label": "Unhealthy backends (max) trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--HealthyHostCount Timeline",
+                    "label": "Healthy backends (min) trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--FailedRequests Timeline",
+                    "label": "Failed requests trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--TotalRequests Timeline",
+                    "label": "Total requests trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--ApplicationGatewayTotalTime Timeline",
+                    "label": "Total time (ms) trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/applicationgateways--CapacityUnits Timeline",
+                    "label": "Capacity units (max) trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "agw-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook73e48945-2ac3-59ac-8442-8f68f6099174",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/applicationgateways",
+              "metricScope": 0,
+              "resourceParameter": "AppGateways",
+              "resourceIds": [
+                "{AppGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--UnhealthyHostCount",
+                  "aggregation": 3,
+                  "splitBy": "BackendSettingsPool",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Unhealthy backends by pool",
+              "showOpenInMe": true
+            },
+            "name": "agw-hosts",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook5397efdd-f92c-5f81-86fc-a7845bd9c69c",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/applicationgateways",
+              "metricScope": 0,
+              "resourceParameter": "AppGateways",
+              "resourceIds": [
+                "{AppGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--ResponseStatus",
+                  "aggregation": 1,
+                  "splitBy": "HttpStatusGroup",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Responses by status group",
+              "showOpenInMe": true
+            },
+            "name": "agw-status",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook97897728-0303-5234-8f0b-1eb107afc86c",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/applicationgateways",
+              "metricScope": 0,
+              "resourceParameter": "AppGateways",
+              "resourceIds": [
+                "{AppGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--ApplicationGatewayTotalTime",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--BackendLastByteResponseTime",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Total time and backend response time (ms)",
+              "showOpenInMe": true
+            },
+            "name": "agw-time",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook232f2003-9f64-5d62-a79e-e75edad58dfb",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/applicationgateways",
+              "metricScope": 0,
+              "resourceParameter": "AppGateways",
+              "resourceIds": [
+                "{AppGateways}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--CapacityUnits",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.network/applicationgateways",
+                  "metric": "microsoft.network/applicationgateways--Throughput",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Capacity units and throughput",
+              "showOpenInMe": true
+            },
+            "name": "agw-capacity",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Azure Front Door"
+            },
+            "name": "afd-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where (type =~ 'microsoft.cdn/profiles' and tostring(sku.name) contains 'AzureFrontDoor') or type =~ 'microsoft.network/frontdoors'\n| project id,\n    Tier = iff(type =~ 'microsoft.network/frontdoors', 'Classic (being retired)', tostring(sku.name)),\n    State = coalesce(tostring(properties.resourceState), tostring(properties.enabledState)),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup",
+              "size": 3,
+              "title": "Front Door profiles",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Front Door profiles found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Active",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Migrating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Migrated",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Tier",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Classic (being retired)",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Profile"
+                  }
+                ]
+              }
+            },
+            "name": "afd-inventory"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookb85094d7-e6f7-52c0-9f10-6aa35790db5c",
+              "version": "MetricsItem/2.0",
+              "size": 3,
+              "chartType": 0,
+              "resourceType": "microsoft.cdn/profiles",
+              "metricScope": 0,
+              "resourceParameter": "FrontDoors",
+              "resourceIds": [
+                "{FrontDoors}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--OriginHealthPercentage",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--Percentage5XX",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--Percentage4XX",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--RequestCount",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--TotalLatency",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--OriginLatency",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Key metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--OriginHealthPercentage Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--Percentage5XX Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--Percentage4XX Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--RequestCount Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--TotalLatency Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--OriginLatency Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--OriginHealthPercentage$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--Percentage5XX$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "5",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.cdn/profiles--TotalLatency$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "2000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "500",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.cdn/profiles--OriginHealthPercentage",
+                    "label": "Origin health %"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--Percentage5XX",
+                    "label": "5xx %"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--Percentage4XX",
+                    "label": "4xx %"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--RequestCount",
+                    "label": "Requests"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--TotalLatency",
+                    "label": "Total latency (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--OriginLatency",
+                    "label": "Origin latency (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--OriginHealthPercentage Timeline",
+                    "label": "Origin health % trend"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--Percentage5XX Timeline",
+                    "label": "5xx % trend"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--Percentage4XX Timeline",
+                    "label": "4xx % trend"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--RequestCount Timeline",
+                    "label": "Requests trend"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--TotalLatency Timeline",
+                    "label": "Total latency (ms) trend"
+                  },
+                  {
+                    "columnId": "microsoft.cdn/profiles--OriginLatency Timeline",
+                    "label": "Origin latency (ms) trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "afd-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook6eee686b-e12a-5de0-a57f-3d4109c45ae2",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cdn/profiles",
+              "metricScope": 0,
+              "resourceParameter": "FrontDoors",
+              "resourceIds": [
+                "{FrontDoors}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--OriginHealthPercentage",
+                  "aggregation": 4,
+                  "splitBy": "Origin",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Origin health % by origin",
+              "showOpenInMe": true
+            },
+            "name": "afd-origin-health",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookd9ebc05e-736f-5f33-968e-53a7e14ae8c5",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cdn/profiles",
+              "metricScope": 0,
+              "resourceParameter": "FrontDoors",
+              "resourceIds": [
+                "{FrontDoors}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--Percentage4XX",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--Percentage5XX",
+                  "aggregation": 4
+                }
+              ],
+              "title": "4xx and 5xx %",
+              "showOpenInMe": true
+            },
+            "name": "afd-errors",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook806cb728-db51-5f8c-89f9-ca90ad58cea7",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cdn/profiles",
+              "metricScope": 0,
+              "resourceParameter": "FrontDoors",
+              "resourceIds": [
+                "{FrontDoors}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--TotalLatency",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--OriginLatency",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Total and origin latency (ms)",
+              "showOpenInMe": true
+            },
+            "name": "afd-latency",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook87a3299a-f9f5-5ed4-ac8d-468cfedbe9a6",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.cdn/profiles",
+              "metricScope": 0,
+              "resourceParameter": "FrontDoors",
+              "resourceIds": [
+                "{FrontDoors}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.cdn/profiles",
+                  "metric": "microsoft.cdn/profiles--WebApplicationFirewallRequestCount",
+                  "aggregation": 1,
+                  "splitBy": "Action",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "WAF requests by action",
+              "showOpenInMe": true
+            },
+            "name": "afd-waf",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Web Application Firewall"
+            },
+            "name": "waf-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')\n| extend settings = properties.policySettings\n| project id,\n    Protects = iff(type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies', 'Front Door', 'Application Gateway'),\n    Mode = tostring(settings.mode),\n    State = coalesce(tostring(settings.state), tostring(settings.enabledState)),\n    ManagedRuleSets = array_length(properties.managedRules.managedRuleSets),\n    CustomRules = coalesce(array_length(properties.customRules), array_length(properties.customRules.rules), 0),\n    AttachedTo = coalesce(array_length(properties.applicationGateways), 0) + coalesce(array_length(properties.httpListeners), 0)\n        + coalesce(array_length(properties.pathBasedRules), 0) + coalesce(array_length(properties.securityPolicyLinks), 0)\n        + coalesce(array_length(properties.frontendEndpointLinks), 0),\n    ResourceGroup = resourceGroup\n| order by case(Mode =~ 'Prevention', 1, 0) asc, Protects asc",
+              "size": 0,
+              "title": "WAF policies",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No WAF policies found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Mode",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Prevention",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Detection",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "AttachedTo",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Policy"
+                  },
+                  {
+                    "columnId": "ManagedRuleSets",
+                    "label": "Managed rule sets"
+                  },
+                  {
+                    "columnId": "CustomRules",
+                    "label": "Custom rules"
+                  },
+                  {
+                    "columnId": "AttachedTo",
+                    "label": "Attached to"
+                  }
+                ]
+              }
+            },
+            "name": "waf-policies"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see the WAF rules that are matching requests.",
+              "style": "info"
+            },
+            "name": "waf-logs-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, Product:string, Action:string, Rule:string, Host:string, ClientIp:string)[]),\n    (AGWFirewallLogs | where TimeGenerated {TimeRange}\n        | project TimeGenerated, Product = 'Application Gateway', Action = tostring(column_ifexists('Action', '')),\n            Rule = strcat(tostring(column_ifexists('RuleId', '')), ' ', tostring(column_ifexists('Message', ''))),\n            Host = tostring(column_ifexists('Hostname', '')), ClientIp = tostring(column_ifexists('ClientIp', ''))),\n    (AzureDiagnostics | where TimeGenerated {TimeRange}\n        | where Category in ('ApplicationGatewayFirewallLog', 'FrontDoorWebApplicationFirewallLog', 'FrontdoorWebApplicationFirewallLog')\n        | project TimeGenerated, Product = iff(Category == 'ApplicationGatewayFirewallLog', 'Application Gateway', 'Front Door'),\n            Action = tostring(column_ifexists('action_s', '')),\n            Rule = coalesce(tostring(column_ifexists('ruleName_s', '')),\n                strcat(tostring(column_ifexists('ruleId_s', '')), ' ', tostring(column_ifexists('Message', '')))),\n            Host = coalesce(tostring(column_ifexists('host_s', '')), tostring(column_ifexists('hostname_s', ''))),\n            ClientIp = coalesce(tostring(column_ifexists('clientIP_s', '')), tostring(column_ifexists('clientIp_s', ''))))\n| where Action in~ ('Blocked', 'Block', 'Detected', 'Log', 'Matched')\n| summarize Hits = count(), Clients = dcount(ClientIp), LastSeen = max(TimeGenerated) by Product, Action, Rule = substring(Rule, 0, 160), Host\n| top 50 by Hits desc",
+              "size": 0,
+              "title": "Top WAF rule matches",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No WAF matches in the time range (or WAF logs are not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Action",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Detected",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Log",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Matched",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Blocked",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Block",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "waf-hits",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A policy in *Detection* mode logs matches but lets the request through. TLS certificates for both products are held in Key Vault or managed by Azure, so their expiry is not shown here.",
+              "style": "info"
+            },
+            "name": "waf-note"
+          }
+        ]
+      },
+      "name": "tab-appdelivery",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "appdelivery"
       }
     },
     {
@@ -14488,7 +15874,7 @@
           {
             "type": 1,
             "content": {
-              "json": "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Azure Firewall), circuit utilisation (ExpressRoute), Private DNS zone limits (Shared Services), vSAN (Azure VMware Solution) and Azure Files share quota (Storage).",
+              "json": "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Firewall), circuit utilisation (ExpressRoute), Private DNS zone limits (Shared), vSAN (AVS) and Azure Files share quota (Storage).",
               "style": "info"
             },
             "name": "cap-intro"
