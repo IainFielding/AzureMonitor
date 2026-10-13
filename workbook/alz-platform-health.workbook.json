@@ -9894,13 +9894,14 @@
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
+                      "value::10",
                       "value::all"
                     ],
                     "showDefault": false
                   },
-                  "defaultValue": "value::all",
+                  "defaultValue": "value::10",
                   "value": [
-                    "value::all"
+                    "value::10"
                   ],
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources"
@@ -9921,13 +9922,14 @@
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
+                      "value::10",
                       "value::all"
                     ],
                     "showDefault": false
                   },
-                  "defaultValue": "value::all",
+                  "defaultValue": "value::10",
                   "value": [
-                    "value::all"
+                    "value::10"
                   ],
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources"
@@ -10955,6 +10957,14 @@
               "json": "### Key Vault"
             },
             "name": "shared-kv-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The Key Vault and DDoS charts start with the first 10 key vaults and public IPs selected, because charting hundreds at once is slow. Choose others, or **All**, in the pickers at the top of this tab. The key vault inventory table below always lists every vault.",
+              "style": "info"
+            },
+            "name": "shared-kv-picker-note"
           },
           {
             "type": 10,
@@ -14521,13 +14531,14 @@
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
+                      "value::100",
                       "value::all"
                     ],
                     "showDefault": false
                   },
-                  "defaultValue": "value::all",
+                  "defaultValue": "value::100",
                   "value": [
-                    "value::all"
+                    "value::100"
                   ],
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources"
@@ -19193,13 +19204,14 @@
                   ],
                   "typeSettings": {
                     "additionalResourceOptions": [
+                      "value::100",
                       "value::all"
                     ],
                     "showDefault": false
                   },
-                  "defaultValue": "value::all",
+                  "defaultValue": "value::100",
                   "value": [
-                    "value::all"
+                    "value::100"
                   ],
                   "queryType": 1,
                   "resourceType": "microsoft.resourcegraph/resources",

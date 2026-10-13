@@ -267,8 +267,12 @@ def metric_grid(name, title, resource_type, param, cols, **kw):
     return metrics(name, title, resource_type, param, specs, grid=True, formatters=fmts, labels=labels, **kw)
 
 
-def resource_param(name, label, arg_query, hidden_when_locked=False):
-    """Multi-select resource picker populated from ARG, defaulting to all matches."""
+def resource_param(name, label, arg_query, hidden_when_locked=False, first=None):
+    """Multi-select resource picker populated from ARG, defaulting to all matches.
+
+    first=10 or 100 starts with only that many selected, for types that can match hundreds of resources: a
+    metric grid draws a trend line per resource and metric, which is what makes a tab slow in the browser.
+    """
     p = {
         "id": gid("param-" + name),
         "version": "KqlParameterItem/1.0",
@@ -287,6 +291,10 @@ def resource_param(name, label, arg_query, hidden_when_locked=False):
         "queryType": 1,
         "resourceType": "microsoft.resourcegraph/resources",
     }
+    if first:
+        p["typeSettings"]["additionalResourceOptions"] = [f"value::{first}", "value::all"]
+        p["defaultValue"] = f"value::{first}"
+        p["value"] = [f"value::{first}"]
     if hidden_when_locked:
         p["isHiddenWhenLocked"] = True
     return p
@@ -1540,8 +1548,8 @@ resources
     return group("tab-shared", [
         params("shared-params", [
             resource_param("Bastions", "Bastions", Q_BASTIONS),
-            resource_param("KeyVaults", "Key vaults", Q_KEYVAULTS),
-            resource_param("PublicIps", "Public IPs", Q_PUBLIC_IPS),
+            resource_param("KeyVaults", "Key vaults", Q_KEYVAULTS, first=10),
+            resource_param("PublicIps", "Public IPs", Q_PUBLIC_IPS, first=10),
         ]),
         text("shared-bastion-h", "### Azure Bastion"),
         arg("shared-bastions", "Bastion hosts", bastion_q, formatters=[resource_link(), PROVISIONING],
@@ -1586,6 +1594,9 @@ resources
              "privatelink zone that exists twice splits resolution: a VNet linked to the extra copy cannot see "
              "the records in the central one.", "info"),
         text("shared-kv-h", "### Key Vault"),
+        text("shared-kv-picker-note", "The Key Vault and DDoS charts start with the first 10 key vaults and public IPs "
+             "selected, because charting hundreds at once is slow. Choose others, or **All**, in the pickers at the "
+             "top of this tab. The key vault inventory table below always lists every vault.", "info"),
         metric_grid("shared-kv-kpis", "Key Vault metrics (over time range)", kns, "KeyVaults", [
             ("Availability", AVG, "Availability %", ("high", 99.9, 99)),
             ("SaturationShoebox", AVG, "Saturation %", ("low", 75, 90)),
@@ -2387,7 +2398,7 @@ def storage_tab():
     ResourceGroup = resourceGroup, Location = location
 """
     return group("tab-storage", [
-        params("storage-params", [resource_param("StorageAccounts", "Storage accounts", Q_STORAGE)]),
+        params("storage-params", [resource_param("StorageAccounts", "Storage accounts", Q_STORAGE, first=100)]),
         metric_grid("storage-kpis", "Key metrics (over time range)", ns, "StorageAccounts", [
             ("Availability", AVG, "Availability %", ("high", 99.9, 99)),
             ("SuccessE2ELatency", AVG, "E2E latency (ms)", ("low", 100, 500)),
@@ -3422,7 +3433,7 @@ WVDConnectionNetworkData
             resource_param("TpErGateways", "ER gateways", Q_ER_GATEWAYS, hidden_when_locked=True),
             resource_param("TpVpnGateways", "VPN gateways", Q_VPN_GATEWAYS, hidden_when_locked=True),
             resource_param("TpP2SGateways", "P2S gateways", Q_P2S_GATEWAYS, hidden_when_locked=True),
-            resource_param("TpStorage", "Storage accounts", Q_STORAGE, hidden_when_locked=True),
+            resource_param("TpStorage", "Storage accounts", Q_STORAGE, hidden_when_locked=True, first=100),
         ]),
         metrics("tp-fw-data", "Azure Firewall data processed", fw, "TpFirewalls", [m(fw, "DataProcessed", SUM)], width=50),
         metrics("tp-fw", "Azure Firewall throughput", fw, "TpFirewalls", [m(fw, "Throughput", AVG)], width=50),
