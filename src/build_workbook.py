@@ -521,11 +521,11 @@ TABS = [
 ]
 
 
-# Width (%) of each single-tile slot. A tile has a fixed pixel width that grows with browser zoom, and a slot
-# narrower than its tile gets a horizontal scroll bar, so six slots fill the row and leave room to spare.
-GLANCE_WIDTH = 16
-# Each AVS metric gets one tile per private cloud, so its slot is wide enough for a few side by side.
-AVS_METRIC_WIDTH = 22
+# Width (%) of a slot that holds one tile. A tile has a fixed pixel width, so a slot narrower than its tile gets
+# a horizontal scroll bar; these are the narrowest slots on the page and stay wider than a tile until the page
+# itself is under about 1,000 pixels. Prefer one full-width item with many tiles where the queries allow it.
+GLANCE_WIDTH = 20
+AVS_TILE_WIDTH = 25
 
 
 def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
@@ -714,7 +714,9 @@ AzureActivity
 | order by AvailabilityPct asc
 """
     # Issues board: one tile per check, each a count of things wrong, with the tab that has the detail.
-    # Resource Graph cannot union its tables, so there is one query per table; each packs its checks into rows.
+    # Every Resource Graph table needs its own query, and a query of its own would mean a narrow one-tile item,
+    # so each table is reduced to a single row of counts and the rows are joined on a constant key. Resource
+    # Graph allows three joins a query, hence two queries. The joined row is then unpacked into one row per check.
     def issue_rows(checks):
         """checks: list of (label, count column, tab, state when the count is above zero)."""
         packs = ",\n    ".join(f"pack('Check', '{label}', 'Count', {col}, 'Tab', '{tab}', 'Severity', '{state}')"
@@ -728,7 +730,15 @@ AzureActivity
 | order by Count desc
 """
 
-    issues_resources_q = """
+    def joined(first, *others):
+        """Join single-row count queries side by side into one row."""
+        query = first.strip() + "\n| extend k = 1\n"
+        for other in others:
+            body = other.strip().replace("\n", "\n    ")
+            query += f"| join kind=leftouter (\n    {body}\n    | extend k = 1\n  ) on k\n"
+        return query
+
+    counts_resources = """
 resources
 | where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',
     'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',
@@ -747,7 +757,50 @@ resources
         'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),
     GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),
     Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))
-""" + issue_rows([
+"""
+    counts_defender = """
+securityresources
+| where type =~ 'microsoft.security/pricings'
+| where not(tobool(properties.deprecated))
+| summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')
+"""
+    counts_access = """
+authorizationresources
+| where type =~ 'microsoft.authorization/roleassignments'
+| where tolower(tostring(properties.roleDefinitionId)) endswith '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'
+| extend scope = tolower(tostring(properties.scope))
+| where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3
+| summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)
+| summarize DirectOwners = countif(principalType =~ 'User')
+"""
+    counts_health = health_transitions.strip() + f"""
+| where To in ('Unavailable', 'Degraded')
+| extend parts = split(id, '/')
+| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
+| summarize Impaired = dcount(id)
+"""
+    counts_patch = """
+patchassessmentresources
+| where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
+| summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),
+    Reboot = countif(tobool(properties.rebootPending))
+"""
+    counts_retirement = """
+advisorresources
+| where type =~ 'microsoft.advisor/recommendations'
+| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'
+| extend retires = todatetime(properties.extendedProperties.retirementDate)
+| summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)
+"""
+    counts_exemptions = """
+policyresources
+| where type =~ 'microsoft.authorization/policyexemptions'
+| extend expires = todatetime(properties.expiresOn)
+| summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)
+"""
+    issues_config_q = joined(counts_resources, counts_defender, counts_access) + issue_rows([
         ("Endpoints not approved", "Endpoints", "Shared", "Unavailable"),
         ("Peerings disconnected", "Peerings", "Virtual WAN", "Unavailable"),
         ("App gateways stopped", "Gateways", "App Delivery", "Unavailable"),
@@ -756,55 +809,17 @@ resources
         ("Alert rules disabled", "RulesDisabled", "Monitoring & Backup", "Degraded"),
         ("Action groups disabled", "GroupsDisabled", "Monitoring & Backup", "Degraded"),
         ("Unattached disks", "Disks", "Governance", "Degraded"),
+        ("Defender plans off", "PlansOff", "Security", "Degraded"),
+        ("Owners set on users", "DirectOwners", "Security", "Degraded"),
     ])
-    issues_health_q = health_transitions.strip() + f"""
-| where To in ('Unavailable', 'Degraded')
-| extend parts = split(id, '/')
-| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))
-| where type in~ ({TYPE_LIST})
-| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
-| summarize Impaired = dcount(id)
-""" + issue_rows([("Health incidents", "Impaired", "Overview, below", "Degraded")])
-    issues_patch_q = """
-patchassessmentresources
-| where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
-| summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),
-    Reboot = countif(tobool(properties.rebootPending))
-""" + issue_rows([
+    issues_state_q = joined(counts_health, counts_patch, counts_retirement, counts_exemptions) + issue_rows([
+        ("Health incidents", "Impaired", "Overview, below", "Degraded"),
         ("Critical patches due", "Critical", "Governance", "Unavailable"),
         ("Reboot pending", "Reboot", "Governance", "Degraded"),
-    ])
-    issues_retirement_q = """
-advisorresources
-| where type =~ 'microsoft.advisor/recommendations'
-| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'
-| extend retires = todatetime(properties.extendedProperties.retirementDate)
-| summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)
-""" + issue_rows([("Retiring in 90 days", "Soon", "Governance", "Degraded")])
-    issues_exemptions_q = """
-policyresources
-| where type =~ 'microsoft.authorization/policyexemptions'
-| extend expires = todatetime(properties.expiresOn)
-| summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)
-""" + issue_rows([
+        ("Retiring in 90 days", "Soon", "Governance", "Degraded"),
         ("Exemptions expired", "Expired", "Governance", "Degraded"),
         ("Exemptions expiring", "Expiring", "Governance", "Degraded"),
     ])
-    issues_defender_q = """
-securityresources
-| where type =~ 'microsoft.security/pricings'
-| where not(tobool(properties.deprecated))
-| summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')
-""" + issue_rows([("Defender plans off", "PlansOff", "Security", "Degraded")])
-    issues_access_q = """
-authorizationresources
-| where type =~ 'microsoft.authorization/roleassignments'
-| where tolower(tostring(properties.roleDefinitionId)) endswith '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'
-| extend scope = tolower(tostring(properties.scope))
-| where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3
-| summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)
-| summarize DirectOwners = countif(principalType =~ 'User')
-""" + issue_rows([("Owners set on users", "DirectOwners", "Security", "Degraded")])
     # Log checks. A leg whose table is missing from the workspace is skipped, so its tile is simply absent.
     issues_logs_q = f"""
 union isfuzzy=true
@@ -851,13 +866,8 @@ union isfuzzy=true
              "found wrong; a green tick means none. The line under it names the tab that has the detail. *Defender "
              "plans off* counts subscriptions, *Exemptions expiring* looks 30 days ahead, and *High incidents open* "
              "is Sentinel.", "info"),
-        arg("overview-issues-resources", "", issues_resources_q, vis="tiles", tiles=issue_tiles),
-        arg("overview-issues-health", "", issues_health_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
-        arg("overview-issues-patch", "", issues_patch_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
-        arg("overview-issues-retirement", "", issues_retirement_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
-        arg("overview-issues-exemptions", "", issues_exemptions_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
-        arg("overview-issues-defender", "", issues_defender_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
-        arg("overview-issues-access", "", issues_access_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        arg("overview-issues-config", "", issues_config_q, vis="tiles", tiles=issue_tiles),
+        arg("overview-issues-state", "", issues_state_q, vis="tiles", tiles=issue_tiles),
         la("overview-issues-logs", "", issues_logs_q, vis="tiles", tiles=issue_tiles),
         text("overview-glance-h", "### At a glance"),
         arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=GLANCE_WIDTH),
@@ -869,13 +879,13 @@ union isfuzzy=true
         params("overview-avs-params", [resource_param("OvPrivateClouds", "AVS private clouds", Q_AVS, hidden_when_locked=True)]),
         text("overview-avs-h", "### Azure VMware Solution at a glance", visible_when=avs_found),
         arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
-            tiles=big_number_tiles("Signal", "State", "Value", "Detail"), width=GLANCE_WIDTH, visible_when=avs_found),
+            tiles=big_number_tiles("Signal", "State", "Value", "Detail"), width=AVS_TILE_WIDTH, visible_when=avs_found),
         metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=AVS_METRIC_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), width=AVS_TILE_WIDTH, visible_when=avs_found),
         metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=AVS_METRIC_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), width=AVS_TILE_WIDTH, visible_when=avs_found),
         metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
-                tiles=metric_tiles(70, 75), width=AVS_METRIC_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(70, 75), width=AVS_TILE_WIDTH, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
