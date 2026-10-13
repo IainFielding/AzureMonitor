@@ -521,8 +521,9 @@ TABS = [
 ]
 
 
-# Width (%) of each "At a glance" tile slot; tiles are a fixed ~140px wide.
-GLANCE_WIDTH = 12
+# Width (%) of each single-tile slot. A tile has a fixed pixel width that grows with browser zoom, and a slot
+# narrower than its tile gets a horizontal scroll bar, so six slots fill the row and leave room to spare.
+GLANCE_WIDTH = 16
 # Each AVS metric gets one tile per private cloud, so its slot is wide enough for a few side by side.
 AVS_METRIC_WIDTH = 22
 
@@ -747,11 +748,11 @@ resources
     GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),
     Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))
 """ + issue_rows([
-        ("Private endpoints not approved", "Endpoints", "Shared", "Unavailable"),
-        ("VNets with a disconnected peering", "Peerings", "Virtual WAN", "Unavailable"),
-        ("Application gateways not running", "Gateways", "App Delivery", "Unavailable"),
-        ("Firewall policies with threat intel off", "ThreatIntelOff", "Firewall", "Degraded"),
-        ("WAF policies in detection mode", "WafDetection", "App Delivery", "Degraded"),
+        ("Endpoints not approved", "Endpoints", "Shared", "Unavailable"),
+        ("Peerings disconnected", "Peerings", "Virtual WAN", "Unavailable"),
+        ("App gateways stopped", "Gateways", "App Delivery", "Unavailable"),
+        ("Threat intel off", "ThreatIntelOff", "Firewall", "Degraded"),
+        ("WAF in detection mode", "WafDetection", "App Delivery", "Degraded"),
         ("Alert rules disabled", "RulesDisabled", "Monitoring & Backup", "Degraded"),
         ("Action groups disabled", "GroupsDisabled", "Monitoring & Backup", "Degraded"),
         ("Unattached disks", "Disks", "Governance", "Degraded"),
@@ -763,15 +764,15 @@ resources
 | where type in~ ({TYPE_LIST})
 | where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
 | summarize Impaired = dcount(id)
-""" + issue_rows([("Resources with a health incident", "Impaired", "Overview, below", "Degraded")])
+""" + issue_rows([("Health incidents", "Impaired", "Overview, below", "Degraded")])
     issues_patch_q = """
 patchassessmentresources
 | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
 | summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),
     Reboot = countif(tobool(properties.rebootPending))
 """ + issue_rows([
-        ("Machines missing critical patches", "Critical", "Governance", "Unavailable"),
-        ("Machines pending a reboot", "Reboot", "Governance", "Degraded"),
+        ("Critical patches due", "Critical", "Governance", "Unavailable"),
+        ("Reboot pending", "Reboot", "Governance", "Degraded"),
     ])
     issues_retirement_q = """
 advisorresources
@@ -779,22 +780,22 @@ advisorresources
 | where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'
 | extend retires = todatetime(properties.extendedProperties.retirementDate)
 | summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)
-""" + issue_rows([("Retirements within 90 days", "Soon", "Governance", "Degraded")])
+""" + issue_rows([("Retiring in 90 days", "Soon", "Governance", "Degraded")])
     issues_exemptions_q = """
 policyresources
 | where type =~ 'microsoft.authorization/policyexemptions'
 | extend expires = todatetime(properties.expiresOn)
 | summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)
 """ + issue_rows([
-        ("Policy exemptions expired", "Expired", "Governance", "Degraded"),
-        ("Policy exemptions expiring in 30 days", "Expiring", "Governance", "Degraded"),
+        ("Exemptions expired", "Expired", "Governance", "Degraded"),
+        ("Exemptions expiring", "Expiring", "Governance", "Degraded"),
     ])
     issues_defender_q = """
 securityresources
 | where type =~ 'microsoft.security/pricings'
 | where not(tobool(properties.deprecated))
 | summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')
-""" + issue_rows([("Subscriptions with a Defender plan off", "PlansOff", "Security", "Degraded")])
+""" + issue_rows([("Defender plans off", "PlansOff", "Security", "Degraded")])
     issues_access_q = """
 authorizationresources
 | where type =~ 'microsoft.authorization/roleassignments'
@@ -803,7 +804,7 @@ authorizationresources
 | where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3
 | summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)
 | summarize DirectOwners = countif(principalType =~ 'User')
-""" + issue_rows([("Owners assigned directly to users", "DirectOwners", "Security", "Degraded")])
+""" + issue_rows([("Owners set on users", "DirectOwners", "Security", "Degraded")])
     # Log checks. A leg whose table is missing from the workspace is skipped, so its tile is simply absent.
     issues_logs_q = f"""
 union isfuzzy=true
@@ -811,15 +812,15 @@ union isfuzzy=true
     (NWConnectionMonitorTestResult | where TimeGenerated {{TimeRange}}
         | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName
         | summarize Count = countif(TestResult == 'Fail')
-        | extend Check = 'Connectivity tests failing', Tab = 'Connectivity', Severity = 'Unavailable'),
+        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),
     (WVDAgentHealthStatus | where TimeGenerated {{TimeRange}}
         | summarize arg_max(TimeGenerated, Status) by SessionHostName
         | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))
-        | extend Check = 'AVD session hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),
+        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),
     (Heartbeat | where TimeGenerated {{TimeRange}}
         | summarize lastSeen = max(TimeGenerated) by Computer
         | summarize Count = countif(lastSeen < ago(15m))
-        | extend Check = 'Machines that stopped reporting', Tab = 'Monitoring & Backup', Severity = 'Degraded'),
+        | extend Check = 'Machines not reporting', Tab = 'Monitoring & Backup', Severity = 'Degraded'),
     (AzureActivity | where TimeGenerated {{TimeRange}}
         | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')
         | extend parts = split(tolower(_ResourceId), '/')
@@ -827,11 +828,11 @@ union isfuzzy=true
             strcat(tostring(parts[6]), '/', tostring(parts[7])))
         | where type in~ ({TYPE_LIST}, 'microsoft.resources/deployments')
         | summarize Count = count()
-        | extend Check = 'Failed operations and deployments', Tab = 'Overview, below', Severity = 'Degraded'),
+        | extend Check = 'Failed operations', Tab = 'Overview, below', Severity = 'Degraded'),
     (SecurityIncident | where TimeGenerated {{TimeRange}}
         | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber
         | summarize Count = countif(Status != 'Closed' and Severity == 'High')
-        | extend Check = 'Sentinel high-severity incidents open', Tab = 'Security', Severity = 'Unavailable')
+        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')
 | project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')
 | order by Count desc
 """
@@ -847,12 +848,14 @@ union isfuzzy=true
              "and *Recent changes* further down show what happened earlier in the time range.", "info"),
         text("overview-issues-h", "### Issues"),
         text("overview-issues-note", "One tile per check, drawn from every tab. The number is how many things the check "
-             "found wrong; a green tick means none. The line under it names the tab that has the detail.", "info"),
+             "found wrong; a green tick means none. The line under it names the tab that has the detail. *Defender "
+             "plans off* counts subscriptions, *Exemptions expiring* looks 30 days ahead, and *High incidents open* "
+             "is Sentinel.", "info"),
         arg("overview-issues-resources", "", issues_resources_q, vis="tiles", tiles=issue_tiles),
         arg("overview-issues-health", "", issues_health_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
-        arg("overview-issues-patch", "", issues_patch_q, vis="tiles", tiles=issue_tiles, width=2 * GLANCE_WIDTH),
+        arg("overview-issues-patch", "", issues_patch_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
         arg("overview-issues-retirement", "", issues_retirement_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
-        arg("overview-issues-exemptions", "", issues_exemptions_q, vis="tiles", tiles=issue_tiles, width=2 * GLANCE_WIDTH),
+        arg("overview-issues-exemptions", "", issues_exemptions_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
         arg("overview-issues-defender", "", issues_defender_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
         arg("overview-issues-access", "", issues_access_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
         la("overview-issues-logs", "", issues_logs_q, vis="tiles", tiles=issue_tiles),
