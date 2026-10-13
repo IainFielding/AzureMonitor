@@ -1949,6 +1949,47 @@ securityresources
 | order by case(Severity =~ 'High', 0, 1) asc, Resources desc
 """
     sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
+    # Built-in roles that can grant access: Owner, User Access Administrator and Role Based Access Control
+    # Administrator. Resource Graph returns an inherited assignment once per subscription, so they are
+    # de-duplicated on scope, role and principal first.
+    privileged = """
+authorizationresources
+| where type =~ 'microsoft.authorization/roleassignments'
+| extend roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1]))
+| where roleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')
+| extend Role = case(roleId startswith '8e3af657', 'Owner', roleId startswith '18d7d88d', 'User Access Administrator',
+    'RBAC Administrator'),
+    scope = tolower(tostring(properties.scope))
+| extend parts = split(scope, '/')
+| extend ScopeLevel = case(scope == '/', 'Tenant root',
+    scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',
+    array_length(parts) == 3, 'Subscription', array_length(parts) == 5, 'Resource group', 'Resource')
+| summarize by scope, ScopeLevel, Role, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)
+"""
+    privileged_tiles_q = privileged + """| extend high = ScopeLevel in ('Tenant root', 'Management group', 'Subscription')
+| summarize Owners = countif(high and Role == 'Owner'), DirectUsers = countif(high and principalType =~ 'User'),
+    Root = countif(ScopeLevel == 'Tenant root'), Lower = countif(not(high))
+| extend rows = pack_array(
+    pack('Signal', 'Owner assignments', 'Value', Owners, 'Detail', 'at subscription scope or above', 'State', 'Unknown'),
+    pack('Signal', 'Assigned directly to users', 'Value', DirectUsers, 'Detail', 'not through a group',
+        'State', iff(DirectUsers > 0, 'Degraded', 'Available')),
+    pack('Signal', 'At tenant root', 'Value', Root, 'Detail', 'apply to every subscription',
+        'State', iff(Root > 0, 'Degraded', 'Available')),
+    pack('Signal', 'Below subscription scope', 'Value', Lower, 'Detail', 'resource groups and resources', 'State', 'Unknown'))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = toint(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)
+"""
+    privileged_q = privileged + """| where ScopeLevel in ('Tenant root', 'Management group', 'Subscription')
+| summarize Users = countif(principalType =~ 'User'), Groups = countif(principalType =~ 'Group'),
+    ServicePrincipals = countif(principalType !in~ ('User', 'Group')) by scope, ScopeLevel, Role
+| extend subscriptionId = iff(ScopeLevel == 'Subscription', tostring(split(scope, '/')[2]), '')
+""" + SUBSCRIPTION_NAMES + """
+| project ScopeLevel,
+    Scope = case(ScopeLevel == 'Subscription', coalesce(Subscription, subscriptionId),
+        ScopeLevel == 'Management group', tostring(split(scope, '/')[4]), '/'),
+    Role, Users, Groups, ServicePrincipals
+| order by case(ScopeLevel == 'Tenant root', 0, ScopeLevel == 'Management group', 1, 2) asc, Scope asc, Role asc
+"""
     return group("tab-security", [
         text("sec-defender-h", "### Microsoft Defender for Cloud"),
         arg("sec-score", "Secure score by subscription", score_q,
@@ -1956,6 +1997,17 @@ securityresources
         arg("sec-controls", "Security controls with unhealthy resources", controls_q, width=60),
         arg("sec-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
         arg("sec-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
+        text("sec-privileged-h", "### Privileged access"),
+        arg("sec-privileged-tiles", "", privileged_tiles_q, vis="tiles",
+            tiles=big_number_tiles("Signal", "State", "Value", "Detail")),
+        arg("sec-privileged", "Owner and access administrator assignments at subscription scope or above", privileged_q,
+            formatters=[low_is_good("Users", 1, 5)],
+            labels={"ScopeLevel": "Scope level", "Users": "Users (direct)", "ServicePrincipals": "Service principals"},
+            no_data="No Owner or access administrator assignments at subscription scope or above."),
+        text("sec-privileged-note", "Counts role assignments that are active now, for Owner, User Access Administrator "
+             "and Role Based Access Control Administrator. Eligible assignments in Privileged Identity Management "
+             "are not role assignments until activated, so they are not counted. Resource Graph holds principal "
+             "IDs only: it cannot name the principals or tell whether one has been deleted.", "info"),
     ], tab="security")
 
 

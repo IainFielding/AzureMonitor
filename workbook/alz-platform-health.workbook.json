@@ -12124,6 +12124,158 @@
               }
             },
             "name": "sec-recs"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Privileged access"
+            },
+            "name": "sec-privileged-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1]))\n| where roleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| extend Role = case(roleId startswith '8e3af657', 'Owner', roleId startswith '18d7d88d', 'User Access Administrator',\n    'RBAC Administrator'),\n    scope = tolower(tostring(properties.scope))\n| extend parts = split(scope, '/')\n| extend ScopeLevel = case(scope == '/', 'Tenant root',\n    scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',\n    array_length(parts) == 3, 'Subscription', array_length(parts) == 5, 'Resource group', 'Resource')\n| summarize by scope, ScopeLevel, Role, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n| extend high = ScopeLevel in ('Tenant root', 'Management group', 'Subscription')\n| summarize Owners = countif(high and Role == 'Owner'), DirectUsers = countif(high and principalType =~ 'User'),\n    Root = countif(ScopeLevel == 'Tenant root'), Lower = countif(not(high))\n| extend rows = pack_array(\n    pack('Signal', 'Owner assignments', 'Value', Owners, 'Detail', 'at subscription scope or above', 'State', 'Unknown'),\n    pack('Signal', 'Assigned directly to users', 'Value', DirectUsers, 'Detail', 'not through a group',\n        'State', iff(DirectUsers > 0, 'Degraded', 'Available')),\n    pack('Signal', 'At tenant root', 'Value', Root, 'Detail', 'apply to every subscription',\n        'State', iff(Root > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Below subscription scope', 'Value', Lower, 'Detail', 'resource groups and resources', 'State', 'Unknown'))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toint(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "sec-privileged-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1]))\n| where roleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| extend Role = case(roleId startswith '8e3af657', 'Owner', roleId startswith '18d7d88d', 'User Access Administrator',\n    'RBAC Administrator'),\n    scope = tolower(tostring(properties.scope))\n| extend parts = split(scope, '/')\n| extend ScopeLevel = case(scope == '/', 'Tenant root',\n    scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',\n    array_length(parts) == 3, 'Subscription', array_length(parts) == 5, 'Resource group', 'Resource')\n| summarize by scope, ScopeLevel, Role, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n| where ScopeLevel in ('Tenant root', 'Management group', 'Subscription')\n| summarize Users = countif(principalType =~ 'User'), Groups = countif(principalType =~ 'Group'),\n    ServicePrincipals = countif(principalType !in~ ('User', 'Group')) by scope, ScopeLevel, Role\n| extend subscriptionId = iff(ScopeLevel == 'Subscription', tostring(split(scope, '/')[2]), '')\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project ScopeLevel,\n    Scope = case(ScopeLevel == 'Subscription', coalesce(Subscription, subscriptionId),\n        ScopeLevel == 'Management group', tostring(split(scope, '/')[4]), '/'),\n    Role, Users, Groups, ServicePrincipals\n| order by case(ScopeLevel == 'Tenant root', 0, ScopeLevel == 'Management group', 1, 2) asc, Scope asc, Role asc",
+              "size": 0,
+              "title": "Owner and access administrator assignments at subscription scope or above",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Owner or access administrator assignments at subscription scope or above.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Users",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "5",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ScopeLevel",
+                    "label": "Scope level"
+                  },
+                  {
+                    "columnId": "Users",
+                    "label": "Users (direct)"
+                  },
+                  {
+                    "columnId": "ServicePrincipals",
+                    "label": "Service principals"
+                  }
+                ]
+              }
+            },
+            "name": "sec-privileged"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Counts role assignments that are active now, for Owner, User Access Administrator and Role Based Access Control Administrator. Eligible assignments in Privileged Identity Management are not role assignments until activated, so they are not counted. Resource Graph holds principal IDs only: it cannot name the principals or tell whether one has been deleted.",
+              "style": "info"
+            },
+            "name": "sec-privileged-note"
           }
         ]
       },
