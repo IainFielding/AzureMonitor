@@ -112,8 +112,8 @@ FULL_HEIGHT = {
     "vwan-wans", "vwan-hubs", "vwan-kpis", "firewall-inventory", "firewall-kpis",
     "er-circuits", "er-circuit-kpis", "er-gateways", "er-connections", "er-gw-kpis",
     "vpn-sites", "vpn-connections", "shared-bastions", "shared-bastion-kpis", "shared-ddos-plans",
-    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "identity-kpis",
-    "gov-score", "mgmt-vaults",
+    "shared-dns-resolvers", "conn-monitors", "avs-inventory", "avs-kpis", "agents-inventory", "agents-kpis", "agw-inventory", "agw-kpis", "afd-inventory", "afd-kpis", "identity-kpis",
+    "sec-score", "mgmt-vaults",
 }
 
 
@@ -162,15 +162,22 @@ def arg(name, title, query, **kw):
                   resources=["{Subscription}"], **kw)
 
 
-def arm(name, title, path, api_version, columns, *, sort_desc=None, no_data=None, width=None):
-    """GET against Azure Resource Manager. columns: list of (column, JSONPath, type-or-None) read from `$.value`."""
+def arm(name, title, path, api_version, columns, *, sort_desc=None, no_data=None, width=None,
+        body=None, table="$.value", formatters=None, labels=None):
+    """Call Azure Resource Manager: GET, or POST when a body is given.
+
+    columns: list of (column, JSONPath, type-or-None), each path relative to a row of `table`.
+    """
     request = {
-        "version": "ARMEndpoint/1.0", "data": None, "headers": [], "method": "GET", "path": path,
+        "version": "ARMEndpoint/1.0", "data": json.dumps(body) if body else None, "headers": [],
+        "method": "POST" if body else "GET", "path": path,
         "urlParams": [{"key": "api-version", "value": api_version}], "batchDisabled": False,
-        "transformers": [{"type": "jsonpath", "settings": {"tablePath": "$.value", "columns": [
+        "transformers": [{"type": "jsonpath", "settings": {"tablePath": table, "columns": [
             {"path": jp, "columnid": col, **({"columnType": kind} if kind else {})} for col, jp, kind in columns]}}],
     }
-    grid = {"filter": True}
+    grid = {"formatters": formatters or [], "filter": True}
+    if labels:
+        grid["labelSettings"] = [{"columnId": k, "label": v} for k, v in labels.items()]
     if sort_desc:
         grid["sortBy"] = [{"itemKey": sort_desc, "sortOrder": 2}]
     content = {"version": "KqlItem/1.0", "query": json.dumps(request), "size": 0, "title": title, "queryType": 12,
@@ -231,7 +238,7 @@ def metrics(name, title, resource_type, param, specs, *, grid=False, formatters=
         }
     if tiles:
         # One tile per resource and metric; the rows carry Metric, Value, Timeline and Name (the resource).
-        content.update({"chartType": -1, "gridFormatType": 1, "tileSettings": tiles, "size": 4})
+        content.update({"chartType": -1, "gridFormatType": 1, "tileSettings": tiles, "size": 3})
     item = {"type": 10, "content": content, "name": name}
     if width:
         item["customWidth"] = str(width)
@@ -308,6 +315,9 @@ Q_AGENT_VMSS = ("resources\n| where type =~ 'microsoft.compute/virtualmachinesca
                 "\n| where name matches regex @'{BuildAgentPattern}'")
 Q_DC_VMS = ("resources\n| where type =~ 'microsoft.compute/virtualmachines'"
             "\n| where name matches regex @'{DcPattern}'")
+Q_APP_GATEWAYS = "resources\n| where type =~ 'microsoft.network/applicationgateways'"
+Q_FRONT_DOORS = ("resources\n| where type =~ 'microsoft.cdn/profiles'"
+                 "\n| where tostring(sku.name) contains 'AzureFrontDoor'")
 Q_BASTIONS = "resources\n| where type =~ 'microsoft.network/bastionhosts'"
 Q_PUBLIC_IPS = "resources\n| where type =~ 'microsoft.network/publicipaddresses'"
 Q_KEYVAULTS = "resources\n| where type =~ 'microsoft.keyvault/vaults'"
@@ -496,13 +506,15 @@ TABS = [
     ("expressroute", "ExpressRoute"),
     ("vpn", "VPN"),
     ("connectivity", "Connectivity"),
-    ("shared", "Shared Services"),
+    ("appdelivery", "App Delivery"),
+    ("shared", "Shared"),
     ("identity", "Identity"),
-    ("buildagents", "Build Agents"),
+    ("buildagents", "Agents"),
     ("avs", "AVS"),
     ("avd", "AVD"),
     ("storage", "Storage"),
     ("governance", "Governance"),
+    ("security", "Security"),
     ("management", "Monitoring & Backup"),
     ("capacity", "Capacity"),
     ("throughput", "Throughput"),
@@ -511,6 +523,8 @@ TABS = [
 
 # Width (%) of each "At a glance" tile slot; tiles are a fixed ~140px wide.
 GLANCE_WIDTH = 12
+# Each AVS metric gets one tile per private cloud, so its slot is wide enough for a few side by side.
+AVS_METRIC_WIDTH = 22
 
 
 def big_number_tiles(title_col, state_col, value_col, detail_col, unit=""):
@@ -698,6 +712,130 @@ AzureActivity
     ImpairedMinutes, LongestMinutes, LastIncident
 | order by AvailabilityPct asc
 """
+    # Issues board: one tile per check, each a count of things wrong, with the tab that has the detail.
+    # Resource Graph cannot union its tables, so there is one query per table; each packs its checks into rows.
+    def issue_rows(checks):
+        """checks: list of (label, count column, tab, state when the count is above zero)."""
+        packs = ",\n    ".join(f"pack('Check', '{label}', 'Count', {col}, 'Tab', '{tab}', 'Severity', '{state}')"
+                               for label, col, tab, state in checks)
+        return f"""| extend rows = pack_array(
+    {packs})
+| mv-expand r = rows
+| extend Count = tolong(r.Count)
+| project Check = tostring(r.Check), Count, Where = strcat('See ', tostring(r.Tab)),
+    State = iff(Count > 0, tostring(r.Severity), 'Available')
+| order by Count desc
+"""
+
+    issues_resources_q = """
+resources
+| where type in~ ('microsoft.network/privateendpoints', 'microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',
+    'microsoft.insights/activitylogalerts', 'microsoft.insights/actiongroups', 'microsoft.network/firewallpolicies',
+    'microsoft.network/virtualnetworks', 'microsoft.network/applicationgateways', 'microsoft.compute/disks',
+    'microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')
+| extend endpointState = coalesce(
+    tostring(properties.privateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status),
+    tostring(properties.manualPrivateLinkServiceConnections[0].properties.privateLinkServiceConnectionState.status))
+| summarize
+    Endpoints = countif(type =~ 'microsoft.network/privateendpoints' and endpointState !~ 'Approved'),
+    Peerings = countif(type =~ 'microsoft.network/virtualnetworks' and tostring(properties.virtualNetworkPeerings) contains 'Disconnected'),
+    Gateways = countif(type =~ 'microsoft.network/applicationgateways' and tostring(properties.operationalState) !~ 'Running'),
+    ThreatIntelOff = countif(type =~ 'microsoft.network/firewallpolicies' and tostring(properties.threatIntelMode) =~ 'Off'),
+    WafDetection = countif(type endswith 'webapplicationfirewallpolicies' and tostring(properties.policySettings.mode) =~ 'Detection'),
+    RulesDisabled = countif(type in~ ('microsoft.insights/metricalerts', 'microsoft.insights/scheduledqueryrules',
+        'microsoft.insights/activitylogalerts') and not(tobool(properties.enabled))),
+    GroupsDisabled = countif(type =~ 'microsoft.insights/actiongroups' and not(tobool(properties.enabled))),
+    Disks = countif(type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy))
+""" + issue_rows([
+        ("Private endpoints not approved", "Endpoints", "Shared", "Unavailable"),
+        ("VNets with a disconnected peering", "Peerings", "Virtual WAN", "Unavailable"),
+        ("Application gateways not running", "Gateways", "App Delivery", "Unavailable"),
+        ("Firewall policies with threat intel off", "ThreatIntelOff", "Firewall", "Degraded"),
+        ("WAF policies in detection mode", "WafDetection", "App Delivery", "Degraded"),
+        ("Alert rules disabled", "RulesDisabled", "Monitoring & Backup", "Degraded"),
+        ("Action groups disabled", "GroupsDisabled", "Monitoring & Backup", "Degraded"),
+        ("Unattached disks", "Disks", "Governance", "Degraded"),
+    ])
+    issues_health_q = health_transitions.strip() + f"""
+| where To in ('Unavailable', 'Degraded')
+| extend parts = split(id, '/')
+| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7]))
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
+| summarize Impaired = dcount(id)
+""" + issue_rows([("Resources with a health incident", "Impaired", "Overview, below", "Degraded")])
+    issues_patch_q = """
+patchassessmentresources
+| where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
+| summarize Critical = countif(toint(properties.availablePatchCountByClassification.critical) > 0),
+    Reboot = countif(tobool(properties.rebootPending))
+""" + issue_rows([
+        ("Machines missing critical patches", "Critical", "Governance", "Unavailable"),
+        ("Machines pending a reboot", "Reboot", "Governance", "Degraded"),
+    ])
+    issues_retirement_q = """
+advisorresources
+| where type =~ 'microsoft.advisor/recommendations'
+| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'
+| extend retires = todatetime(properties.extendedProperties.retirementDate)
+| summarize Soon = dcountif(tostring(properties.extendedProperties.retirementFeatureName), retires < now() + 90d)
+""" + issue_rows([("Retirements within 90 days", "Soon", "Governance", "Degraded")])
+    issues_exemptions_q = """
+policyresources
+| where type =~ 'microsoft.authorization/policyexemptions'
+| extend expires = todatetime(properties.expiresOn)
+| summarize Expired = countif(expires < now()), Expiring = countif(expires >= now() and expires < now() + 30d)
+""" + issue_rows([
+        ("Policy exemptions expired", "Expired", "Governance", "Degraded"),
+        ("Policy exemptions expiring in 30 days", "Expiring", "Governance", "Degraded"),
+    ])
+    issues_defender_q = """
+securityresources
+| where type =~ 'microsoft.security/pricings'
+| where not(tobool(properties.deprecated))
+| summarize PlansOff = dcountif(subscriptionId, tostring(properties.pricingTier) !~ 'Standard')
+""" + issue_rows([("Subscriptions with a Defender plan off", "PlansOff", "Security", "Degraded")])
+    issues_access_q = """
+authorizationresources
+| where type =~ 'microsoft.authorization/roleassignments'
+| where tolower(tostring(properties.roleDefinitionId)) endswith '8e3af657-a8ff-443c-a75c-2fe8c4bcb635'
+| extend scope = tolower(tostring(properties.scope))
+| where scope == '/' or scope startswith '/providers/microsoft.management/managementgroups/' or array_length(split(scope, '/')) == 3
+| summarize by scope, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)
+| summarize DirectOwners = countif(principalType =~ 'User')
+""" + issue_rows([("Owners assigned directly to users", "DirectOwners", "Security", "Degraded")])
+    # Log checks. A leg whose table is missing from the workspace is skipped, so its tile is simply absent.
+    issues_logs_q = f"""
+union isfuzzy=true
+    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),
+    (NWConnectionMonitorTestResult | where TimeGenerated {{TimeRange}}
+        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName
+        | summarize Count = countif(TestResult == 'Fail')
+        | extend Check = 'Connectivity tests failing', Tab = 'Connectivity', Severity = 'Unavailable'),
+    (WVDAgentHealthStatus | where TimeGenerated {{TimeRange}}
+        | summarize arg_max(TimeGenerated, Status) by SessionHostName
+        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))
+        | extend Check = 'AVD session hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),
+    (Heartbeat | where TimeGenerated {{TimeRange}}
+        | summarize lastSeen = max(TimeGenerated) by Computer
+        | summarize Count = countif(lastSeen < ago(15m))
+        | extend Check = 'Machines that stopped reporting', Tab = 'Monitoring & Backup', Severity = 'Degraded'),
+    (AzureActivity | where TimeGenerated {{TimeRange}}
+        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')
+        | extend parts = split(tolower(_ResourceId), '/')
+        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),
+            strcat(tostring(parts[6]), '/', tostring(parts[7])))
+        | where type in~ ({TYPE_LIST}, 'microsoft.resources/deployments')
+        | summarize Count = count()
+        | extend Check = 'Failed operations and deployments', Tab = 'Overview, below', Severity = 'Degraded'),
+    (SecurityIncident | where TimeGenerated {{TimeRange}}
+        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber
+        | summarize Count = countif(Status != 'Closed' and Severity == 'High')
+        | extend Check = 'Sentinel high-severity incidents open', Tab = 'Security', Severity = 'Unavailable')
+| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')
+| order by Count desc
+"""
+    issue_tiles = big_number_tiles("Check", "State", "Count", "Where")
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -707,6 +845,17 @@ AzureActivity
              "configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace "
              "ingestion) — see the *Signal* column. Each service tab adds metric-based health. *Health state changes* "
              "and *Recent changes* further down show what happened earlier in the time range.", "info"),
+        text("overview-issues-h", "### Issues"),
+        text("overview-issues-note", "One tile per check, drawn from every tab. The number is how many things the check "
+             "found wrong; a green tick means none. The line under it names the tab that has the detail.", "info"),
+        arg("overview-issues-resources", "", issues_resources_q, vis="tiles", tiles=issue_tiles),
+        arg("overview-issues-health", "", issues_health_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        arg("overview-issues-patch", "", issues_patch_q, vis="tiles", tiles=issue_tiles, width=2 * GLANCE_WIDTH),
+        arg("overview-issues-retirement", "", issues_retirement_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        arg("overview-issues-exemptions", "", issues_exemptions_q, vis="tiles", tiles=issue_tiles, width=2 * GLANCE_WIDTH),
+        arg("overview-issues-defender", "", issues_defender_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        arg("overview-issues-access", "", issues_access_q, vis="tiles", tiles=issue_tiles, width=GLANCE_WIDTH),
+        la("overview-issues-logs", "", issues_logs_q, vis="tiles", tiles=issue_tiles),
         text("overview-glance-h", "### At a glance"),
         arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=GLANCE_WIDTH),
         *[arg(f"overview-{key}", "", q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail", unit),
@@ -719,11 +868,11 @@ AzureActivity
         arg("overview-avs-clouds", "", avs_clouds_q, vis="tiles",
             tiles=big_number_tiles("Signal", "State", "Value", "Detail"), width=GLANCE_WIDTH, visible_when=avs_found),
         metrics("overview-avs-cpu", "", avs, "OvPrivateClouds", [m(avs, "EffectiveCpuAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), width=AVS_METRIC_WIDTH, visible_when=avs_found),
         metrics("overview-avs-mem", "", avs, "OvPrivateClouds", [m(avs, "UsageAverage", AVG)],
-                tiles=metric_tiles(80, 90), width=GLANCE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(80, 90), width=AVS_METRIC_WIDTH, visible_when=avs_found),
         metrics("overview-avs-vsan", "", avs, "OvPrivateClouds", [m(avs, "DiskUsedPercentage", AVG)],
-                tiles=metric_tiles(70, 75), width=GLANCE_WIDTH, visible_when=avs_found),
+                tiles=metric_tiles(70, 75), width=AVS_METRIC_WIDTH, visible_when=avs_found),
         la("overview-avd-host-tiles", "Azure Virtual Desktop session hosts", AVD_STATUS_TILES_Q, vis="tiles",
            tiles=AVD_STATUS_TILES, no_data="No AVD session host data in the selected workspace."),
         text("overview-avd-hint", "Select the **Log Analytics workspace** at the top to see AVD session host status here.",
@@ -1144,6 +1293,47 @@ NWConnectionMonitorTestResult
     loss_q = tests + "| summarize LossPct = round(100.0 * sum(ChecksFailed) / sum(ChecksTotal), 2) " + by_path
     rtt_q = tests + "| summarize AvgRttMs = avg(AvgRoundTripTimeMs) " + by_path
     result_states = dict(good=["Pass"], warn=["Warning"], bad=["Fail"], neutral=["Indeterminate"])
+    flow_log_coverage_q = """
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| project id = tolower(id), Subnets = array_length(properties.subnets), ResourceGroup = resourceGroup, Location = location
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.network/networkwatchers/flowlogs'
+    | extend isEnabled = tobool(properties.enabled),
+        analytics = tobool(properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.enabled)
+    | summarize Enabled = countif(isEnabled), WithAnalytics = countif(isEnabled and analytics),
+        RetentionDays = max(toint(properties.retentionPolicy.days))
+        by id = tolower(tostring(properties.targetResourceId))
+  ) on id
+| project id,
+    FlowLogs = case(coalesce(Enabled, 0) == 0, 'No flow log', coalesce(WithAnalytics, 0) == 0, 'No Traffic Analytics', 'Traffic Analytics'),
+    RetentionDays, Subnets, ResourceGroup, Location
+| order by case(FlowLogs == 'No flow log', 0, FlowLogs == 'No Traffic Analytics', 1, 2) asc, ResourceGroup asc
+"""
+    # The one-column datatable keeps the query valid in a workspace with no Traffic Analytics table; every
+    # other column is then read with column_ifexists so it does not have to exist.
+    flows = """
+union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (NTANetAnalytics)
+| where TimeGenerated {TimeRange}
+| where column_ifexists('SubType', '') == 'FlowLog'
+| extend FlowType = tostring(column_ifexists('FlowType', '')), FlowStatus = tostring(column_ifexists('FlowStatus', '')),
+    Source = tostring(column_ifexists('SrcIp', '')), Destination = tostring(column_ifexists('DestIp', '')),
+    SourceVm = tostring(column_ifexists('SrcVm', '')), DestinationVm = tostring(column_ifexists('DestVm', '')),
+    Port = tostring(column_ifexists('DestPort', '')), Protocol = tostring(column_ifexists('L4Protocol', '')),
+    Rule = tostring(column_ifexists('AclRule', '')),
+    Bytes = tolong(column_ifexists('BytesSrcToDest', 0)) + tolong(column_ifexists('BytesDestToSrc', 0))
+"""
+    flow_types_q = flows + "| summarize Bytes = sum(Bytes) by bin(TimeGenerated, {TimeRange:grain}), FlowType\n"
+    talkers_q = flows + """| where FlowStatus == 'Allowed'
+| summarize Bytes = sum(Bytes), Flows = count() by Source, SourceVm, Destination, DestinationVm
+| top 30 by Bytes desc
+| project Source, SourceVm, Destination, DestinationVm, GB = round(Bytes / 1073741824.0, 2), Flows
+"""
+    denied_flows_q = flows + """| where FlowStatus == 'Denied'
+| summarize Flows = count(), LastSeen = max(TimeGenerated) by Source, SourceVm, Destination, Port, Protocol, Rule
+| top 30 by Flows desc
+"""
     return group("tab-connectivity", [
         text("conn-intro",
              "End-to-end reachability from **Network Watcher Connection Monitor** tests. The other network tabs show "
@@ -1169,6 +1359,22 @@ NWConnectionMonitorTestResult
            no_data="No Connection Monitor results in the time range."),
         la("conn-loss", "Checks failed % by path", loss_q, vis="timechart", width=50),
         la("conn-rtt", "Average round-trip time (ms) by path", rtt_q, vis="timechart", width=50),
+        text("conn-traffic-h", "### Network traffic (VNet flow logs)"),
+        arg("conn-flow-coverage", "Virtual networks by flow log coverage", flow_log_coverage_q, formatters=[
+            resource_link(),
+            status_fmt("FlowLogs", good=["Traffic Analytics"], warn=["No Traffic Analytics"], bad=["No flow log"]),
+        ], labels={"id": "Virtual network", "FlowLogs": "Flow logs", "RetentionDays": "Retention (days)"},
+            no_data="No virtual networks found."),
+        la("conn-flow-types", "Traffic by flow type (bytes)", flow_types_q, vis="timechart"),
+        la("conn-talkers", "Top talkers (allowed traffic)", talkers_q, width=50,
+           labels={"SourceVm": "Source VM", "DestinationVm": "Destination VM"},
+           no_data="No flow records in the time range (or Traffic Analytics does not write to this workspace)."),
+        la("conn-denied-flows", "Top denied flows", denied_flows_q, width=50,
+           labels={"SourceVm": "Source VM", "LastSeen": "Last seen"},
+           no_data="No denied flows in the time range."),
+        text("conn-traffic-note", "Coverage counts a flow log that targets the virtual network itself; one that targets "
+             "a single subnet or network interface is not counted. The traffic panels read the Traffic Analytics "
+             "table for VNet flow logs (`NTANetAnalytics`), not the older NSG flow log table.", "info"),
     ], tab="connectivity")
 
 
@@ -1340,6 +1546,136 @@ resources
     ], tab="shared")
 
 
+def appdelivery_tab():
+    agw, afd = "microsoft.network/applicationgateways", "microsoft.cdn/profiles"
+    gateways_q = Q_APP_GATEWAYS + """
+| project id,
+    Tier = tostring(properties.sku.tier),
+    State = tostring(properties.operationalState),
+    Instances = iff(isnotnull(properties.autoscaleConfiguration),
+        strcat(tostring(properties.autoscaleConfiguration.minCapacity), ' - ', tostring(properties.autoscaleConfiguration.maxCapacity)),
+        tostring(properties.sku.capacity)),
+    Zones = strcat_array(zones, ','),
+    Listeners = array_length(properties.httpListeners),
+    BackendPools = array_length(properties.backendAddressPools),
+    WafPolicy = tostring(split(tostring(properties.firewallPolicy.id), '/')[8]),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup, Location = location
+"""
+    # Front Door Standard and Premium are CDN profiles; classic Front Door is a separate type that is being retired.
+    front_doors_q = """
+resources
+| where (type =~ 'microsoft.cdn/profiles' and tostring(sku.name) contains 'AzureFrontDoor') or type =~ 'microsoft.network/frontdoors'
+| project id,
+    Tier = iff(type =~ 'microsoft.network/frontdoors', 'Classic (being retired)', tostring(sku.name)),
+    State = coalesce(tostring(properties.resourceState), tostring(properties.enabledState)),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup
+"""
+    waf_policies_q = """
+resources
+| where type in~ ('microsoft.network/applicationgatewaywebapplicationfirewallpolicies', 'microsoft.network/frontdoorwebapplicationfirewallpolicies')
+| extend settings = properties.policySettings
+| project id,
+    Protects = iff(type =~ 'microsoft.network/frontdoorwebapplicationfirewallpolicies', 'Front Door', 'Application Gateway'),
+    Mode = tostring(settings.mode),
+    State = coalesce(tostring(settings.state), tostring(settings.enabledState)),
+    ManagedRuleSets = array_length(properties.managedRules.managedRuleSets),
+    CustomRules = coalesce(array_length(properties.customRules), array_length(properties.customRules.rules), 0),
+    AttachedTo = coalesce(array_length(properties.applicationGateways), 0) + coalesce(array_length(properties.httpListeners), 0)
+        + coalesce(array_length(properties.pathBasedRules), 0) + coalesce(array_length(properties.securityPolicyLinks), 0)
+        + coalesce(array_length(properties.frontendEndpointLinks), 0),
+    ResourceGroup = resourceGroup
+| order by case(Mode =~ 'Prevention', 1, 0) asc, Protects asc
+"""
+    # WAF hits from both products. Each leg reads its columns with column_ifexists because the names differ
+    # between the resource-specific tables and AzureDiagnostics, and a missing table is skipped.
+    waf_hits_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, Product:string, Action:string, Rule:string, Host:string, ClientIp:string)[]),
+    (AGWFirewallLogs | where TimeGenerated {TimeRange}
+        | project TimeGenerated, Product = 'Application Gateway', Action = tostring(column_ifexists('Action', '')),
+            Rule = strcat(tostring(column_ifexists('RuleId', '')), ' ', tostring(column_ifexists('Message', ''))),
+            Host = tostring(column_ifexists('Hostname', '')), ClientIp = tostring(column_ifexists('ClientIp', ''))),
+    (AzureDiagnostics | where TimeGenerated {TimeRange}
+        | where Category in ('ApplicationGatewayFirewallLog', 'FrontDoorWebApplicationFirewallLog', 'FrontdoorWebApplicationFirewallLog')
+        | project TimeGenerated, Product = iff(Category == 'ApplicationGatewayFirewallLog', 'Application Gateway', 'Front Door'),
+            Action = tostring(column_ifexists('action_s', '')),
+            Rule = coalesce(tostring(column_ifexists('ruleName_s', '')),
+                strcat(tostring(column_ifexists('ruleId_s', '')), ' ', tostring(column_ifexists('Message', '')))),
+            Host = coalesce(tostring(column_ifexists('host_s', '')), tostring(column_ifexists('hostname_s', ''))),
+            ClientIp = coalesce(tostring(column_ifexists('clientIP_s', '')), tostring(column_ifexists('clientIp_s', ''))))
+| where Action in~ ('Blocked', 'Block', 'Detected', 'Log', 'Matched')
+| summarize Hits = count(), Clients = dcount(ClientIp), LastSeen = max(TimeGenerated) by Product, Action, Rule = substring(Rule, 0, 160), Host
+| top 50 by Hits desc
+"""
+    return group("tab-appdelivery", [
+        params("appdelivery-params", [
+            resource_param("AppGateways", "Application gateways", Q_APP_GATEWAYS),
+            resource_param("FrontDoors", "Front Door profiles", Q_FRONT_DOORS),
+        ]),
+        text("agw-h", "### Application Gateway"),
+        arg("agw-inventory", "Application gateways", gateways_q, formatters=[
+            resource_link(), PROVISIONING, status_fmt("State", good=["Running"], warn=["Starting", "Stopping"], bad=["Stopped"]),
+        ], labels={"id": "Application gateway", "BackendPools": "Backend pools", "WafPolicy": "WAF policy"},
+            no_data="No application gateways found."),
+        metric_grid("agw-kpis", "Key metrics (over time range)", agw, "AppGateways", [
+            ("UnhealthyHostCount", MAX, "Unhealthy backends (max)", ("low", 1, 1)),
+            ("HealthyHostCount", MIN, "Healthy backends (min)", None),
+            ("FailedRequests", SUM, "Failed requests", None),
+            ("TotalRequests", SUM, "Total requests", None),
+            ("ApplicationGatewayTotalTime", AVG, "Total time (ms)", ("low", 1000, 3000)),
+            ("CapacityUnits", MAX, "Capacity units (max)", None),
+        ]),
+        metrics("agw-hosts", "Unhealthy backends by pool", agw, "AppGateways",
+                [m(agw, "UnhealthyHostCount", MAX, split="BackendSettingsPool")], width=50),
+        metrics("agw-status", "Responses by status group", agw, "AppGateways",
+                [m(agw, "ResponseStatus", SUM, split="HttpStatusGroup")], width=50),
+        metrics("agw-time", "Total time and backend response time (ms)", agw, "AppGateways",
+                [m(agw, "ApplicationGatewayTotalTime", AVG), m(agw, "BackendLastByteResponseTime", AVG)], width=50),
+        metrics("agw-capacity", "Capacity units and throughput", agw, "AppGateways",
+                [m(agw, "CapacityUnits", MAX), m(agw, "Throughput", AVG)], width=50),
+        text("afd-h", "### Azure Front Door"),
+        arg("afd-inventory", "Front Door profiles", front_doors_q, formatters=[
+            resource_link(), PROVISIONING,
+            status_fmt("State", good=["Active", "Enabled"], warn=["Creating", "Migrating", "Migrated"], bad=["Disabled", "Deleting"]),
+            status_fmt("Tier", warn=["Classic (being retired)"]),
+        ], labels={"id": "Profile"}, no_data="No Front Door profiles found."),
+        metric_grid("afd-kpis", "Key metrics (over time range)", afd, "FrontDoors", [
+            ("OriginHealthPercentage", AVG, "Origin health %", ("high", 99, 90)),
+            ("Percentage5XX", AVG, "5xx %", ("low", 1, 5)),
+            ("Percentage4XX", AVG, "4xx %", None),
+            ("RequestCount", SUM, "Requests", None),
+            ("TotalLatency", AVG, "Total latency (ms)", ("low", 500, 2000)),
+            ("OriginLatency", AVG, "Origin latency (ms)", None),
+        ]),
+        metrics("afd-origin-health", "Origin health % by origin", afd, "FrontDoors",
+                [m(afd, "OriginHealthPercentage", AVG, split="Origin")], width=50),
+        metrics("afd-errors", "4xx and 5xx %", afd, "FrontDoors",
+                [m(afd, "Percentage4XX", AVG), m(afd, "Percentage5XX", AVG)], width=50),
+        metrics("afd-latency", "Total and origin latency (ms)", afd, "FrontDoors",
+                [m(afd, "TotalLatency", AVG), m(afd, "OriginLatency", AVG)], width=50),
+        metrics("afd-waf", "WAF requests by action", afd, "FrontDoors",
+                [m(afd, "WebApplicationFirewallRequestCount", SUM, split="Action")], width=50),
+        text("waf-h", "### Web Application Firewall"),
+        arg("waf-policies", "WAF policies", waf_policies_q, formatters=[
+            resource_link(),
+            status_fmt("Mode", good=["Prevention"], warn=["Detection"]),
+            status_fmt("State", good=["Enabled"], bad=["Disabled"]),
+            high_is_good("AttachedTo", 1, 0),
+        ], labels={"id": "Policy", "ManagedRuleSets": "Managed rule sets", "CustomRules": "Custom rules",
+                   "AttachedTo": "Attached to"}, no_data="No WAF policies found."),
+        text("waf-logs-hint", "Select a **Log Analytics workspace** at the top to see the WAF rules that are "
+             "matching requests.", "info", visible_when=WORKSPACE_UNSET),
+        la("waf-hits", "Top WAF rule matches", waf_hits_q,
+           formatters=[status_fmt("Action", bad=["Blocked", "Block"], warn=["Detected", "Log", "Matched"])],
+           labels={"LastSeen": "Last seen"},
+           no_data="No WAF matches in the time range (or WAF logs are not sent to this workspace)."),
+        text("waf-note", "A policy in *Detection* mode logs matches but lets the request through. TLS certificates "
+             "for both products are held in Key Vault or managed by Azure, so their expiry is not shown here.", "info"),
+    ], tab="appdelivery")
+
+
 def identity_tab():
     vm = "microsoft.compute/virtualmachines"
     domain_services_q = """
@@ -1405,7 +1741,105 @@ SecurityEvent
 | extend Event = case(EventID == 4740, 'Account locked out', EventID == 4771, 'Kerberos pre-authentication failed', 'Logon failed')
 | summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), Event
 """
+    signins = "SigninLogs\n| where TimeGenerated {TimeRange}\n"
+    entra_tiles_q = signins + """| summarize SignIns = count(), Users = dcount(UserPrincipalName),
+    Failed = countif(ResultType != '0'), FailedUsers = dcountif(UserPrincipalName, ResultType != '0'),
+    Blocked = countif(ConditionalAccessStatus =~ 'failure'),
+    Risky = countif(RiskLevelDuringSignIn in~ ('medium', 'high')),
+    Mfa = countif(AuthenticationRequirement =~ 'multiFactorAuthentication')
+| extend rows = pack_array(
+    pack('Signal', 'Interactive sign-ins', 'Value', SignIns, 'Detail', strcat(Users, ' users')),
+    pack('Signal', 'Not successful', 'Value', Failed,
+        'Detail', strcat(round(100.0 * Failed / SignIns, 1), '% of sign-ins · ', FailedUsers, ' users')),
+    pack('Signal', 'Blocked by Conditional Access', 'Value', Blocked, 'Detail', 'policy result: failure'),
+    pack('Signal', 'Risky sign-ins', 'Value', Risky, 'Detail', 'medium or high risk'),
+    pack('Signal', 'Multifactor sign-ins', 'Value', Mfa, 'Detail', strcat(round(100.0 * Mfa / SignIns, 0), '% of sign-ins')))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = tolong(r.Value), Detail = tostring(r.Detail)
+"""
+    signin_results_q = signins + """| summarize SignIns = count()
+    by bin(TimeGenerated, {TimeRange:grain}), Result = iff(ResultType == '0', 'Success', 'Not successful')
+"""
+    signin_failures_q = signins + """| where ResultType != '0'
+| summarize SignIns = count(), Users = dcount(UserPrincipalName), LastSeen = max(TimeGenerated)
+    by ResultType, Reason = ResultDescription
+| top 25 by SignIns desc
+"""
+    ca_policies_q = signins + """| mv-expand policy = todynamic(tostring(ConditionalAccessPolicies))
+| where tostring(policy.result) =~ 'failure'
+| summarize Blocked = count(), Users = dcount(UserPrincipalName), LastSeen = max(TimeGenerated)
+    by Policy = tostring(policy.displayName)
+| top 25 by Blocked desc
+"""
+    # The empty datatable keeps these two queries valid in a workspace that does not receive the table.
+    sp_failures_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, ResultType:string, ResultDescription:string, ServicePrincipalName:string, AppId:string)[]),
+    (AADServicePrincipalSignInLogs)
+| where TimeGenerated {TimeRange}
+| where ResultType != '0'
+| summarize Failures = count(), LastSeen = max(TimeGenerated), Error = take_any(substring(ResultDescription, 0, 200))
+    by ServicePrincipal = ServicePrincipalName, AppId, ResultType
+| extend Cause = case(ResultType == '7000222', 'Client secret expired', ResultType == '7000215', 'Invalid client secret', '')
+| project ServicePrincipal, Failures, Cause, ResultType, Error, LastSeen, AppId
+| top 25 by Failures desc
+"""
+    risky_users_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, UserPrincipalName:string, RiskLevel:string, RiskState:string, RiskDetail:string)[]),
+    (AADRiskyUsers)
+| where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, RiskLevel, RiskState, RiskDetail) by UserPrincipalName
+| where RiskState in~ ('atRisk', 'confirmedCompromised')
+| project User = UserPrincipalName, RiskLevel, RiskState, RiskDetail, Updated = TimeGenerated
+| order by case(RiskLevel =~ 'high', 0, RiskLevel =~ 'medium', 1, 2) asc, Updated desc
+"""
+    directory_changes_q = """
+AuditLogs
+| where TimeGenerated {TimeRange}
+| where Category in ('RoleManagement', 'Policy')
+    or OperationName has_any ('certificates and secrets', 'consent', 'owner')
+| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))
+| summarize Changes = count(), Actors = dcount(Actor), (LastSeen, LastActor) = arg_max(TimeGenerated, Actor)
+    by Category, Operation = OperationName, Result
+| project Category, Operation, Result, Changes, Actors, LastActor, LastSeen
+| top 40 by Changes desc
+"""
+    entra_tiles = {
+        "titleContent": {"columnMatch": "Signal", "formatter": 1},
+        "rightContent": {"columnMatch": "Value", "formatter": 12, "formatOptions": {"palette": "none"}},
+        "secondaryContent": {"columnMatch": "Detail", "formatter": 1},
+        "showBorder": True,
+    }
     return group("tab-identity", [
+        text("identity-entra-h", "### Microsoft Entra ID"),
+        text("identity-entra-hint", "Select the **Log Analytics workspace** that receives the Entra ID diagnostic "
+             "logs to see sign-ins, Conditional Access results, risky users and directory changes.", "info",
+             visible_when=WORKSPACE_UNSET),
+        la("identity-entra-tiles", "", entra_tiles_q, vis="tiles", tiles=entra_tiles,
+           no_data="No interactive sign-ins in the time range (or Entra ID sign-in logs are not sent to this workspace)."),
+        la("identity-signins", "Interactive sign-ins by result", signin_results_q, vis="timechart", width=50),
+        la("identity-signin-failures", "Top reasons a sign-in did not succeed", signin_failures_q, width=50,
+           labels={"ResultType": "Code", "SignIns": "Sign-ins", "LastSeen": "Last seen"},
+           no_data="Every sign-in in the time range succeeded."),
+        la("identity-ca-policies", "Conditional Access policies blocking sign-ins", ca_policies_q, width=50,
+           labels={"LastSeen": "Last seen"}, no_data="No sign-ins were blocked by Conditional Access."),
+        la("identity-sp-failures", "Service principals failing to sign in", sp_failures_q, width=50,
+           formatters=[status_fmt("Cause", bad=["Client secret expired", "Invalid client secret"])],
+           labels={"ServicePrincipal": "Service principal", "ResultType": "Code", "LastSeen": "Last seen", "AppId": "App ID"},
+           no_data="No failed service principal sign-ins (or those logs are not sent to this workspace)."),
+        la("identity-risky-users", "Users at risk (risk changed in time range)", risky_users_q, width=50,
+           formatters=[status_fmt("RiskLevel", warn=["medium"], bad=["high"], neutral=["low", "none", "hidden"])],
+           labels={"RiskLevel": "Risk level", "RiskState": "Risk state", "RiskDetail": "Risk detail"},
+           no_data="No users at risk (or risky user logs are not sent to this workspace)."),
+        la("identity-directory-changes", "Role, policy, credential and consent changes", directory_changes_q, width=50,
+           formatters=[status_fmt("Result", good=["success"], bad=["failure"])],
+           labels={"LastActor": "Last changed by", "LastSeen": "Last seen"},
+           no_data="No role, policy, credential or consent changes in the time range."),
+        text("identity-entra-note", "These panels read the Entra ID diagnostic logs: `SigninLogs`, `AuditLogs`, "
+             "`AADServicePrincipalSignInLogs` and `AADRiskyUsers`. A sign-in that is *not successful* includes "
+             "interrupted ones, such as a prompt for multifactor authentication, as well as real failures; the "
+             "reasons table tells them apart. Non-interactive sign-ins are not counted.", "info", visible_when=WORKSPACE_SET),
         text("identity-intro",
              "Domain controller virtual machines are found by **name** using the *Domain controller name pattern* "
              "parameter at the top. A managed domain in Microsoft Entra Domain Services is listed without it.", "info"),
@@ -1784,9 +2218,9 @@ resources
     return group("tab-capacity", [
         text("cap-intro",
              "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the "
-             "services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Azure Firewall), "
-             "circuit utilisation (ExpressRoute), Private DNS zone limits (Shared Services), vSAN (Azure VMware "
-             "Solution) and Azure Files share quota (Storage).", "info"),
+             "services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Firewall), "
+             "circuit utilisation (ExpressRoute), Private DNS zone limits (Shared), vSAN (AVS) and Azure Files "
+             "share quota (Storage).", "info"),
         text("cap-compute-h", "### Compute quotas"),
         arg("cap-compute-quota", "vCPU and compute quotas in use, by subscription and region", compute_quota_q,
             formatters=[low_is_good("UsedPct", 70, 90, digits=1)], labels={"UsedPct": "Used %"},
@@ -1799,6 +2233,26 @@ resources
             "{QuotaSubscription}/providers/Microsoft.Network/locations/{QuotaRegion}/usages", "2023-09-01",
             [("Quota", "$.name.localizedValue", None), ("Used", "$.currentValue", "long"), ("Limit", "$.limit", "long")],
             sort_desc="Used", no_data="No network usage returned for this subscription and region."),
+        text("cap-cost-h", "### Cost"),
+        text("cap-cost-note", "Month-to-date spend for the subscription selected under *Network quotas*, read from "
+             "Cost Management. It covers everything in that subscription, so it is platform cost only when the "
+             "subscription holds only platform resources.", "info"),
+        arm("cap-cost-services", "Cost by service, month to date",
+            "{QuotaSubscription}/providers/Microsoft.CostManagement/query", "2023-11-01",
+            [("Service", "$[1]", None), ("Cost", "$[0]", None), ("Currency", "$[2]", None)],
+            table="$.properties.rows", sort_desc="Cost", width=50,
+            body={"type": "ActualCost", "timeframe": "MonthToDate", "dataset": {
+                "granularity": "None",
+                "aggregation": {"totalCost": {"name": "Cost", "function": "Sum"}},
+                "grouping": [{"type": "Dimension", "name": "ServiceName"}]}},
+            formatters=[{"columnMatch": "Cost", "formatter": 0,
+                         "numberFormat": {"unit": 0, "options": {"style": "decimal", "maximumFractionDigits": 2}}}],
+            no_data="Cost Management returned no cost for this subscription this month."),
+        arm("cap-budgets", "Budgets", "{QuotaSubscription}/providers/Microsoft.Consumption/budgets", "2023-05-01",
+            [("Budget", "$.name", None), ("Amount", "$.properties.amount", None),
+             ("Spent", "$.properties.currentSpend.amount", None), ("Forecast", "$.properties.forecastSpend.amount", None),
+             ("Currency", "$.properties.currentSpend.unit", None), ("Period", "$.properties.timeGrain", None)],
+            width=50, no_data="No budgets are defined on this subscription."),
         text("cap-subnets-h", "### Subnet address space"),
         text("cap-subnets-note", "*Used* counts the IP configurations attached to each subnet (NICs, private "
              "endpoints, load balancer front ends). Application Gateway instances and delegated services such as "
@@ -1808,6 +2262,209 @@ resources
             formatters=[resource_link(), low_is_good("UsedPct", 70, 90, digits=1)],
             labels={"id": "Virtual network", "UsedPct": "Used %"}, no_data="No virtual network subnets found."),
     ], tab="capacity")
+
+
+def security_tab():
+    score_q = """
+securityresources
+| where type =~ 'microsoft.security/securescores'
+| project subscriptionId, ScorePct = round(100 * toreal(properties.score.percentage), 0),
+    Current = toreal(properties.score.current), Max = toreal(properties.score.max)
+""" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), ScorePct, Current, Max
+| order by ScorePct asc
+"""
+    controls_q = """
+securityresources
+| where type =~ 'microsoft.security/securescores/securescorecontrols'
+| extend Unhealthy = toint(properties.unhealthyResourceCount)
+| where Unhealthy > 0
+| summarize Unhealthy = sum(Unhealthy), AvgScorePct = round(100 * avg(toreal(properties.score.percentage)), 0)
+    by Control = tostring(properties.displayName)
+| order by Unhealthy desc
+"""
+    alerts_q = """
+securityresources
+| where type =~ 'microsoft.security/locations/alerts'
+| where tostring(properties.Status) =~ 'Active'
+| project Severity = tostring(properties.Severity), Alert = tostring(properties.AlertDisplayName),
+    Entity = tostring(properties.CompromisedEntity), Started = todatetime(properties.StartTimeUtc),
+    Tactics = strcat_array(properties.Intent, ', ')
+| order by case(Severity =~ 'High', 0, Severity =~ 'Medium', 1, 2) asc, Started desc
+"""
+    recs_q = """
+securityresources
+| where type =~ 'microsoft.security/assessments'
+| where tostring(properties.status.code) =~ 'Unhealthy'
+| extend Severity = tostring(properties.metadata.severity)
+| where Severity in~ ('High', 'Medium')
+| summarize Resources = count() by Recommendation = tostring(properties.displayName), Severity
+| order by case(Severity =~ 'High', 0, 1) asc, Resources desc
+"""
+    sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
+    # Built-in roles that can grant access: Owner, User Access Administrator and Role Based Access Control
+    # Administrator. Resource Graph returns an inherited assignment once per subscription, so they are
+    # de-duplicated on scope, role and principal first.
+    privileged = """
+authorizationresources
+| where type =~ 'microsoft.authorization/roleassignments'
+| extend roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1]))
+| where roleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')
+| extend Role = case(roleId startswith '8e3af657', 'Owner', roleId startswith '18d7d88d', 'User Access Administrator',
+    'RBAC Administrator'),
+    scope = tolower(tostring(properties.scope))
+| extend parts = split(scope, '/')
+| extend ScopeLevel = case(scope == '/', 'Tenant root',
+    scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',
+    array_length(parts) == 3, 'Subscription', array_length(parts) == 5, 'Resource group', 'Resource')
+| summarize by scope, ScopeLevel, Role, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)
+"""
+    privileged_tiles_q = privileged + """| extend high = ScopeLevel in ('Tenant root', 'Management group', 'Subscription')
+| summarize Owners = countif(high and Role == 'Owner'), DirectUsers = countif(high and principalType =~ 'User'),
+    Root = countif(ScopeLevel == 'Tenant root'), Lower = countif(not(high))
+| extend rows = pack_array(
+    pack('Signal', 'Owner assignments', 'Value', Owners, 'Detail', 'at subscription scope or above', 'State', 'Unknown'),
+    pack('Signal', 'Assigned directly to users', 'Value', DirectUsers, 'Detail', 'not through a group',
+        'State', iff(DirectUsers > 0, 'Degraded', 'Available')),
+    pack('Signal', 'At tenant root', 'Value', Root, 'Detail', 'apply to every subscription',
+        'State', iff(Root > 0, 'Degraded', 'Available')),
+    pack('Signal', 'Below subscription scope', 'Value', Lower, 'Detail', 'resource groups and resources', 'State', 'Unknown'))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = toint(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)
+"""
+    privileged_q = privileged + """| where ScopeLevel in ('Tenant root', 'Management group', 'Subscription')
+| summarize Users = countif(principalType =~ 'User'), Groups = countif(principalType =~ 'Group'),
+    ServicePrincipals = countif(principalType !in~ ('User', 'Group')) by scope, ScopeLevel, Role
+| extend subscriptionId = iff(ScopeLevel == 'Subscription', tostring(split(scope, '/')[2]), '')
+""" + SUBSCRIPTION_NAMES + """
+| project ScopeLevel,
+    Scope = case(ScopeLevel == 'Subscription', coalesce(Subscription, subscriptionId),
+        ScopeLevel == 'Management group', tostring(split(scope, '/')[4]), '/'),
+    Role, Users, Groups, ServicePrincipals
+| order by case(ScopeLevel == 'Tenant root', 0, ScopeLevel == 'Management group', 1, 2) asc, Scope asc, Role asc
+"""
+    defender_plans = """
+securityresources
+| where type =~ 'microsoft.security/pricings'
+| where not(tobool(properties.deprecated))
+| extend isOn = tostring(properties.pricingTier) =~ 'Standard'
+"""
+    plan_coverage_q = defender_plans + "| summarize PlansOn = countif(isOn), PlansOff = countif(not(isOn)) by subscriptionId" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), PlansOn, PlansOff,
+    CoveragePct = round(100.0 * PlansOn / (PlansOn + PlansOff), 0)
+| order by CoveragePct asc
+"""
+    plans_off_q = defender_plans + "| where not(isOn)" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), Plan = name
+| order by Subscription asc, Plan asc
+"""
+    sentinel_workspaces_q = """
+resources
+| where type =~ 'microsoft.operationsmanagement/solutions'
+| where name startswith 'SecurityInsights('
+| project id = tolower(tostring(properties.workspaceResourceId)),
+    Provisioning = tostring(properties.provisioningState), ResourceGroup = resourceGroup, Location = location
+"""
+    # SecurityIncident gets a new row on every change, so the latest row per incident is its current state.
+    # The empty datatable keeps the queries valid in a workspace that is not a Sentinel workspace.
+    incidents = """
+let incidents = union isfuzzy=true
+    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,
+        CreatedTime:datetime, ClosedTime:datetime, Classification:string, ProviderName:string, IncidentUrl:string)[]),
+    (SecurityIncident)
+| where TimeGenerated {TimeRange}
+| summarize arg_max(TimeGenerated, *) by IncidentNumber;
+"""
+    open_by_severity_q = incidents + """incidents
+| where Status != 'Closed'
+| summarize Incidents = count() by Severity
+| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc
+"""
+    open_incidents_q = incidents + """incidents
+| where Status != 'Closed'
+| extend Owner = tostring(Owner.assignedTo)
+| project Incident = IncidentNumber, Title, Severity, Status,
+    Owner = iff(isempty(Owner), 'Unassigned', Owner), Created = CreatedTime,
+    AgeHours = datetime_diff('hour', now(), CreatedTime), Provider = ProviderName, IncidentUrl
+| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc, Created asc
+"""
+    incident_flow_q = incidents + """union
+    (incidents | summarize Incidents = count() by Day = bin(CreatedTime, 1d), Series = 'Created'),
+    (incidents | where Status == 'Closed' | summarize Incidents = count() by Day = bin(ClosedTime, 1d), Series = 'Closed')
+| where Day >= todatetime('{TimeRange:startISO}')
+"""
+    incident_closure_q = incidents + """incidents
+| where Status == 'Closed'
+| extend Hours = datetime_diff('minute', ClosedTime, CreatedTime) / 60.0
+| summarize Closed = count(), MedianHoursToClose = round(percentile(Hours, 50), 1), P95HoursToClose = round(percentile(Hours, 95), 1),
+    TruePositive = countif(Classification == 'TruePositive'), BenignPositive = countif(Classification == 'BenignPositive'),
+    FalsePositive = countif(Classification == 'FalsePositive') by Severity
+| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc
+"""
+    sentinel_health_q = """
+union isfuzzy=true
+    (datatable(TimeGenerated:datetime, SentinelResourceName:string, SentinelResourceType:string, Status:string, Description:string)[]),
+    (SentinelHealth)
+| where TimeGenerated {TimeRange}
+| where Status !~ 'Success'
+| summarize Failures = count(), LastSeen = max(TimeGenerated), Detail = take_any(substring(Description, 0, 250))
+    by Type = SentinelResourceType, Resource = SentinelResourceName, Status
+| top 50 by Failures desc
+"""
+    severity_states = dict(bad=["High"], warn=["Medium"], neutral=["Low", "Informational"])
+    return group("tab-security", [
+        text("sec-defender-h", "### Microsoft Defender for Cloud"),
+        arg("sec-score", "Secure score by subscription", score_q,
+            formatters=[high_is_good("ScorePct", 80, 50, digits=0)], labels={"ScorePct": "Score %"}, width=40),
+        arg("sec-controls", "Security controls with unhealthy resources", controls_q, width=60),
+        arg("sec-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
+        arg("sec-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
+        arg("sec-plan-coverage", "Defender plans by subscription", plan_coverage_q,
+            formatters=[high_is_good("CoveragePct", 100, 50, digits=0)],
+            labels={"PlansOn": "Plans on", "PlansOff": "Plans off", "CoveragePct": "Plans on %"}, width=40),
+        arg("sec-plans-off", "Defender plans switched off", plans_off_q, group_by="Subscription",
+            no_data="Every Defender plan is on in every selected subscription.", width=60),
+        text("sec-privileged-h", "### Privileged access"),
+        arg("sec-privileged-tiles", "", privileged_tiles_q, vis="tiles",
+            tiles=big_number_tiles("Signal", "State", "Value", "Detail")),
+        arg("sec-privileged", "Owner and access administrator assignments at subscription scope or above", privileged_q,
+            formatters=[low_is_good("Users", 1, 5)],
+            labels={"ScopeLevel": "Scope level", "Users": "Users (direct)", "ServicePrincipals": "Service principals"},
+            no_data="No Owner or access administrator assignments at subscription scope or above."),
+        text("sec-privileged-note", "Counts role assignments that are active now, for Owner, User Access Administrator "
+             "and Role Based Access Control Administrator. Eligible assignments in Privileged Identity Management "
+             "are not role assignments until activated, so they are not counted. Resource Graph holds principal "
+             "IDs only: it cannot name the principals or tell whether one has been deleted.", "info"),
+        text("sec-sentinel-h", "### Microsoft Sentinel"),
+        arg("sec-sentinel-workspaces", "Workspaces with Sentinel enabled", sentinel_workspaces_q,
+            formatters=[resource_link(), PROVISIONING], labels={"id": "Workspace"},
+            no_data="No workspace with the Sentinel solution found in the selected subscriptions."),
+        text("sec-sentinel-hint", "Select the **Sentinel workspace** as the Log Analytics workspace at the top to see "
+             "incidents and Sentinel health.", "info", visible_when=WORKSPACE_UNSET),
+        la("sec-sentinel-open-tiles", "Open incidents by severity", open_by_severity_q, vis="tiles", tiles={
+            "titleContent": {"columnMatch": "Severity", "formatter": 1},
+            "leftContent": status_fmt("Severity", **severity_states, text=ICON_ONLY),
+            "rightContent": {"columnMatch": "Incidents", "formatter": 12, "formatOptions": {"palette": "none"}},
+            "showBorder": True,
+        }, no_data="No open incidents that changed in the time range."),
+        la("sec-sentinel-open", "Open incidents", open_incidents_q, formatters=[
+            status_fmt("Severity", **severity_states), status_fmt("Owner", warn=["Unassigned"]),
+            {"columnMatch": "IncidentUrl", "formatter": 7, "formatOptions": {"linkTarget": "Url", "linkLabel": "Open"}},
+        ], labels={"AgeHours": "Age (hours)", "IncidentUrl": "Link"},
+           no_data="No open incidents that changed in the time range."),
+        la("sec-sentinel-flow", "Incidents created and closed per day", incident_flow_q, vis="barchart", width=50),
+        la("sec-sentinel-closure", "Closed incidents: time to close and classification", incident_closure_q, width=50,
+           labels={"MedianHoursToClose": "Median hours to close", "P95HoursToClose": "P95 hours to close",
+                   "TruePositive": "True positive", "BenignPositive": "Benign positive", "FalsePositive": "False positive"},
+           no_data="No incidents were closed in the time range."),
+        la("sec-sentinel-health", "Data connectors, analytics rules and automation that are failing", sentinel_health_q,
+           formatters=[status_fmt("Status", warn=["Partial success", "Warning"], bad=["Failure"])],
+           labels={"LastSeen": "Last seen"},
+           no_data="No failures recorded (or Sentinel health monitoring is not turned on for this workspace)."),
+        text("sec-sentinel-note", "Incidents are read from the selected workspace for the time range, so an incident "
+             "that has not changed within it is not listed: use a longer range to see old open incidents.", "info",
+             visible_when=WORKSPACE_SET),
+    ], tab="security")
 
 
 def governance_tab():
@@ -1847,42 +2504,6 @@ policyresources
 | summarize Resources = max(Resources), Assignments = make_set(Assignment) by Policy
 | project Policy, Resources, Assignments = strcat_array(Assignments, ', ')
 | top 100 by Resources desc
-"""
-    score_q = """
-securityresources
-| where type =~ 'microsoft.security/securescores'
-| project subscriptionId, ScorePct = round(100 * toreal(properties.score.percentage), 0),
-    Current = toreal(properties.score.current), Max = toreal(properties.score.max)
-""" + SUBSCRIPTION_NAMES + """
-| project Subscription = coalesce(Subscription, subscriptionId), ScorePct, Current, Max
-| order by ScorePct asc
-"""
-    controls_q = """
-securityresources
-| where type =~ 'microsoft.security/securescores/securescorecontrols'
-| extend Unhealthy = toint(properties.unhealthyResourceCount)
-| where Unhealthy > 0
-| summarize Unhealthy = sum(Unhealthy), AvgScorePct = round(100 * avg(toreal(properties.score.percentage)), 0)
-    by Control = tostring(properties.displayName)
-| order by Unhealthy desc
-"""
-    alerts_q = """
-securityresources
-| where type =~ 'microsoft.security/locations/alerts'
-| where tostring(properties.Status) =~ 'Active'
-| project Severity = tostring(properties.Severity), Alert = tostring(properties.AlertDisplayName),
-    Entity = tostring(properties.CompromisedEntity), Started = todatetime(properties.StartTimeUtc),
-    Tactics = strcat_array(properties.Intent, ', ')
-| order by case(Severity =~ 'High', 0, Severity =~ 'Medium', 1, 2) asc, Started desc
-"""
-    recs_q = """
-securityresources
-| where type =~ 'microsoft.security/assessments'
-| where tostring(properties.status.code) =~ 'Unhealthy'
-| extend Severity = tostring(properties.metadata.severity)
-| where Severity in~ ('High', 'Medium')
-| summarize Resources = count() by Recommendation = tostring(properties.displayName), Severity
-| order by case(Severity =~ 'High', 0, 1) asc, Resources desc
 """
     advisor_q = """
 advisorresources
@@ -1977,7 +2598,84 @@ resources
     patch_q = patch_base + """| project id, OS, Assessment, Assessed, Critical, Security, Other, RebootPending, PatchMode, ResourceGroup
 | order by Critical desc, Security desc, case(Assessment == 'Succeeded', 1, 0) asc
 """
-    sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
+    exemptions_q = """
+policyresources
+| where type =~ 'microsoft.authorization/policyexemptions'
+| extend Expires = todatetime(properties.expiresOn),
+    scope = tostring(split(tolower(id), '/providers/microsoft.authorization/policyexemptions/')[0])
+| project Exemption = coalesce(tostring(properties.displayName), name),
+    Status = case(isnull(Expires), 'No expiry', Expires < now(), 'Expired', Expires < now() + 30d, 'Expiring', 'Active'),
+    Expires,
+    Category = tostring(properties.exemptionCategory),
+    Assignment = tostring(split(tostring(properties.policyAssignmentId), '/')[-1]),
+    Scope = scope
+| order by case(Status == 'Expired', 0, Status == 'Expiring', 1, Status == 'No expiry', 2, 3) asc, Expires asc
+"""
+    # A subscription whose only ancestor is the tenant root group was never placed in the landing zone hierarchy.
+    placement_q = """
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions'
+| extend chain = properties.managementGroupAncestorsChain
+| project Subscription = name,
+    Placement = iff(array_length(chain) <= 1, 'Under tenant root', 'In hierarchy'),
+    ManagementGroup = tostring(chain[0].displayName),
+    Depth = array_length(chain),
+    State = tostring(properties.state)
+| order by case(Placement == 'Under tenant root', 0, 1) asc, ManagementGroup asc, Subscription asc
+"""
+    # A lock on the resource, its resource group or its subscription all protect it, so each resource is
+    # matched at those three scopes, as for alert coverage.
+    locks_q = f"""
+resources
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| extend gatewayType = tostring(properties.gatewayType)
+{SERVICE_CASE}
+| extend rid = tolower(id), sub = tolower(strcat('/subscriptions/', subscriptionId))
+| extend scopeKey = pack_array(rid, strcat(sub, '/resourcegroups/', tolower(resourceGroup)), sub)
+| mv-expand scopeKey
+| extend scopeKey = tostring(scopeKey)
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.authorization/locks'
+    | project scopeKey = tostring(split(tolower(id), '/providers/microsoft.authorization/locks/')[0]), lockId = tolower(id)
+  ) on scopeKey
+| summarize Locks = dcountif(lockId, isnotempty(lockId)) by rid, Service
+| summarize Resources = count(), Locked = countif(Locks > 0) by Service
+| project Service, Resources, Locked, NotLocked = Resources - Locked, LockedPct = round(100.0 * Locked / Resources, 0)
+| order by LockedPct asc, Service asc
+"""
+    orphans_q = """
+resources
+| where type in~ ('microsoft.compute/disks', 'microsoft.network/publicipaddresses', 'microsoft.network/networkinterfaces')
+| extend Kind = case(
+    type =~ 'microsoft.compute/disks' and tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy), 'Unattached disk',
+    type =~ 'microsoft.network/publicipaddresses' and isempty(tostring(properties.ipConfiguration.id))
+        and isempty(tostring(properties.natGateway.id)), 'Unused public IP',
+    type =~ 'microsoft.network/networkinterfaces' and isempty(tostring(properties.virtualMachine.id))
+        and isempty(tostring(properties.privateEndpoint.id)) and isempty(tostring(properties.privateLinkService.id)),
+        'Unattached network interface',
+    '')
+| where isnotempty(Kind)
+| project id, Kind,
+    Detail = case(type =~ 'microsoft.compute/disks', strcat(tostring(properties.diskSizeGB), ' GB ', tostring(sku.name)),
+        type =~ 'microsoft.network/publicipaddresses', strcat(tostring(sku.name), ' ', tostring(properties.publicIPAllocationMethod)), ''),
+    ResourceGroup = resourceGroup, Location = location
+| order by Kind asc, ResourceGroup asc
+"""
+    empty_rgs_q = """
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions/resourcegroups'
+| project id, subscriptionId, resourceGroup, Location = location
+| join kind=leftouter (
+    resources
+    | summarize Resources = count() by subscriptionId, resourceGroup
+  ) on subscriptionId, resourceGroup
+| where isnull(Resources)
+""" + SUBSCRIPTION_NAMES + """
+| project id, Subscription = coalesce(Subscription, subscriptionId), Location
+| order by Subscription asc
+"""
     return group("tab-governance", [
         text("gov-deadlines-h", "### Expiry & retirement"),
         arg("gov-retirements", "Service retirements affecting your resources (Azure Advisor)", retirements_q, formatters=[
@@ -1996,17 +2694,33 @@ resources
            formatters=[status_fmt("State", warn=["Near expiry"], bad=["Expired"])], labels={"LastSeen": "Reported"},
            no_data="No expiry events in the time range. Key Vault reports near-expiry once, about 30 days ahead, "
                    "so use a 30-day time range; vaults must send audit logs to this workspace."),
+        arg("gov-exemptions", "Policy exemptions", exemptions_q, formatters=[
+            status_fmt("Status", good=["Active"], warn=["Expiring", "No expiry"], bad=["Expired"]),
+        ], no_data="No policy exemptions in the selected subscriptions."),
+        text("gov-exemptions-note", "An expired exemption no longer applies, so the resources it covered count as "
+             "non-compliant again. One with no expiry hides them from the compliance figure for good. *Waiver* means "
+             "the non-compliance is accepted; *Mitigated* means the intent is met another way.", "info"),
         text("gov-policy-h", "### Azure Policy"),
         arg("gov-compliance", "Compliance by subscription", compliance_q,
             formatters=[high_is_good("CompliancePct", 90, 70, digits=1)], labels={"CompliancePct": "Compliant %"}, width=40),
         arg("gov-noncompliant", "Top non-compliant policies", noncompliant_q, width=60,
             no_data="No non-compliant resources."),
-        text("gov-defender-h", "### Microsoft Defender for Cloud"),
-        arg("gov-score", "Secure score by subscription", score_q,
-            formatters=[high_is_good("ScorePct", 80, 50, digits=0)], labels={"ScorePct": "Score %"}, width=40),
-        arg("gov-controls", "Security controls with unhealthy resources", controls_q, width=60),
-        arg("gov-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
-        arg("gov-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
+        text("gov-hygiene-h", "### Landing zone hygiene"),
+        arg("gov-placement", "Subscriptions by management group", placement_q, formatters=[
+            status_fmt("Placement", good=["In hierarchy"], warn=["Under tenant root"]),
+            status_fmt("State", good=["Enabled"], warn=["Warned", "PastDue"], bad=["Disabled", "Deleted"]),
+        ], labels={"ManagementGroup": "Management group"}, width=50),
+        arg("gov-locks", "Platform resources protected by a lock, by service", locks_q,
+            formatters=[high_is_good("LockedPct", 100, 50, digits=0)],
+            labels={"NotLocked": "Not locked", "LockedPct": "Locked %"}, width=50),
+        arg("gov-orphans", "Orphaned resources", orphans_q, group_by="Kind", formatters=[resource_link()],
+            labels={"id": "Resource"}, no_data="No unattached disks, unused public IPs or unattached network interfaces.",
+            width=60),
+        arg("gov-empty-rgs", "Empty resource groups", empty_rgs_q, formatters=[resource_link()],
+            labels={"id": "Resource group"}, no_data="No empty resource groups.", width=40),
+        text("gov-hygiene-note", "A lock at the resource, its resource group or its subscription counts. A resource "
+             "group is *empty* when Resource Graph sees no resources in it; a few resource types are not indexed, "
+             "so check before deleting one.", "info"),
         text("gov-patch-h", "### Patch compliance (Azure Update Manager)"),
         text("gov-patch-note", "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD "
              "session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not "
@@ -2308,6 +3022,27 @@ resourcecontainers
     ServiceHealth, ResourceHealth
 | order by case(Status == 'Both', 1, 0) asc, Subscription asc
 """
+    # Protected items only list what is enrolled, so a machine that was never added to a vault is found by
+    # starting from the machines instead.
+    vm_protection_q = """
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+| project id = tolower(id),
+    OS = tostring(properties.storageProfile.osDisk.osType),
+    Power = tostring(properties.extended.instanceView.powerState.displayStatus),
+    ResourceGroup = resourceGroup, Location = location
+| join kind=leftouter (
+    recoveryservicesresources
+    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'
+    | where tostring(properties.backupManagementType) =~ 'AzureIaasVM'
+    | project vmId = tolower(coalesce(tostring(properties.sourceResourceId), tostring(properties.virtualMachineId))),
+        vault = tostring(split(id, '/')[8]), lastBackup = todatetime(properties.lastBackupTime)
+    | where isnotempty(vmId)
+    | summarize Vault = max(vault), LastBackup = max(lastBackup) by id = vmId
+  ) on id
+| project id, Protection = iff(isempty(Vault), 'Not protected', 'Protected'), Vault, LastBackup, OS, Power, ResourceGroup, Location
+| order by case(Protection == 'Not protected', 0, 1) asc, ResourceGroup asc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -2396,6 +3131,12 @@ resourcecontainers
             status_fmt("Health", good=["Passed"], warn=["ActionSuggested"], bad=["ActionRequired"]),
             status_fmt("LastBackup", good=["Healthy"], bad=["Failed", "IRPending"]),
         ], no_data="No protected items.", width=50),
+        arg("mgmt-vm-protection", "Virtual machines by backup protection", vm_protection_q, formatters=[
+            resource_link(), status_fmt("Protection", good=["Protected"], bad=["Not protected"]),
+        ], labels={"id": "Virtual machine", "LastBackup": "Last backup"},
+            no_data="No virtual machines found."),
+        text("mgmt-vm-protection-note", "Pooled AVD session hosts and scale set build agents are normally rebuilt "
+             "from an image, so *Not protected* is expected for them.", "info"),
         arg("mgmt-asr", "Site Recovery replicated items", asr_q,
             formatters=[status_fmt("Health", good=["Normal"], warn=["Warning"], bad=["Critical"])],
             no_data="No Site Recovery replicated items."),
@@ -2549,8 +3290,8 @@ def workbook():
         "items": [
             text("header", "# Enterprise Scale Platform Health\n"
                  "Health, capacity and throughput of the shared platform: Virtual WAN connectivity (Firewall, "
-                 "ExpressRoute, VPN, end-to-end connectivity tests), shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
-                 "build agents, governance, monitoring and backup."),
+                 "ExpressRoute, VPN, end-to-end connectivity tests), application delivery, shared services, identity, Azure VMware Solution, Azure Virtual Desktop, storage, "
+                 "build agents, governance, security, monitoring and backup."),
             global_params(),
             tabs(),
             overview_tab(),
@@ -2559,6 +3300,7 @@ def workbook():
             expressroute_tab(),
             vpn_tab(),
             connectivity_tab(),
+            appdelivery_tab(),
             shared_tab(),
             identity_tab(),
             buildagents_tab(),
@@ -2566,6 +3308,7 @@ def workbook():
             avd_tab(),
             storage_tab(),
             governance_tab(),
+            security_tab(),
             management_tab(),
             capacity_tab(),
             throughput_tab(),
