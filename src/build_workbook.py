@@ -345,8 +345,20 @@ PLATFORM_TYPES = [
     "microsoft.recoveryservices/vaults",
     "microsoft.cdn/profiles",          # Front Door Standard and Premium (other CDN profiles are filtered out)
     "microsoft.network/frontdoors",    # Front Door classic
+    "microsoft.apimanagement/service",
+    "microsoft.cognitiveservices/accounts",           # AI Foundry resources and Azure OpenAI (other kinds filtered out)
+    "microsoft.machinelearningservices/workspaces",   # AI Foundry hubs and projects (other kinds filtered out)
 ]
 TYPE_LIST = ", ".join(f"'{t}'" for t in PLATFORM_TYPES)
+
+# Some platform types are shared with resources that are not platform services: only scale sets that match the
+# build agent pattern count, only CDN profiles with a Front Door SKU, and only the AI Foundry kinds of Cognitive
+# Services account and Machine Learning workspace. Queries on the resources table apply this after TYPE_LIST;
+# the change and health queries see only the resource type, so they cannot.
+PLATFORM_FILTER = """| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{BuildAgentPattern}'
+| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'
+| where type !~ 'microsoft.cognitiveservices/accounts' or kind in~ ('AIServices', 'OpenAI')
+| where type !~ 'microsoft.machinelearningservices/workspaces' or kind in~ ('Hub', 'Project')"""
 
 # Maps a resource `type` (and `gatewayType`, for virtual network gateways) to the Service shown on the Overview.
 SERVICE_CASE = """| extend Service = case(
@@ -365,6 +377,8 @@ SERVICE_CASE = """| extend Service = case(
     type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',
     type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',
     type in~ ('microsoft.cdn/profiles', 'microsoft.network/frontdoors'), 'Front Door',
+    type =~ 'microsoft.apimanagement/service', 'API Management',
+    type in~ ('microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces'), 'AI Foundry',
     'Build Agents')"""
 
 # Every platform resource we care about, tagged with a Service, joined to Resource Health.
@@ -372,8 +386,7 @@ SERVICE_CASE = """| extend Service = case(
 Q_INVENTORY_HEALTH = f"""
 resources
 | where type in~ ({TYPE_LIST})
-| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
-| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'
+{PLATFORM_FILTER}
 | extend gatewayType = tostring(properties.gatewayType)
 {SERVICE_CASE}
 | extend provisioning = tostring(properties.provisioningState),
@@ -2645,8 +2658,7 @@ resourcecontainers
     locks_q = f"""
 resources
 | where type in~ ({TYPE_LIST})
-| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
-| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'
+{PLATFORM_FILTER}
 | extend gatewayType = tostring(properties.gatewayType)
 {SERVICE_CASE}
 | extend rid = tolower(id), sub = tolower(strcat('/subscriptions/', subscriptionId))
@@ -2851,8 +2863,7 @@ recoveryservicesresources
     coverage_q = f"""
 resources
 | where type in~ ({TYPE_LIST})
-| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
-| where type !~ 'microsoft.cdn/profiles' or tostring(sku.name) contains 'AzureFrontDoor'
+{PLATFORM_FILTER}
 | extend gatewayType = tostring(properties.gatewayType)
 {SERVICE_CASE}
 | extend rid = tolower(id), rtype = tolower(type), sub = tolower(strcat('/subscriptions/', subscriptionId))
