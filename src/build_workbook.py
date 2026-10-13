@@ -573,6 +573,25 @@ resourcechanges
 | order by Time desc
 | take 500
 """
+    # Resource Health transitions. The change record targets <resource>/providers/Microsoft.ResourceHealth/...,
+    # so the resource type is read back out of the id.
+    health_history_q = f"""
+healthresourcechanges
+| where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'
+| extend Time = todatetime(properties.changeAttributes.timestamp)
+| where Time >= todatetime('{{TimeRange:startISO}}')
+| extend state = properties.changes['properties.availabilityState']
+| where isnotempty(tostring(state.newValue))
+| extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])
+| extend parts = split(id, '/')
+| extend type = strcat(tostring(parts[6]), '/', tostring(parts[7])), gatewayType = ''
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(parts[8]) matches regex @'{{BuildAgentPattern}}'
+{SERVICE_CASE}
+| project Time, id, Service, Previous = tostring(state.previousValue), Health = tostring(state.newValue)
+| order by Time desc
+| take 500
+"""
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -580,7 +599,8 @@ resourcechanges
         text("overview-intro",
              "Status comes from **Azure Resource Health** where available; otherwise from the resource's "
              "configuration state (provisioning, hub routing state, circuit/provider state, DNS limits, workspace "
-             "ingestion) — see the *Signal* column. Each service tab adds metric-based health.", "info"),
+             "ingestion) — see the *Signal* column. Each service tab adds metric-based health. *Health state changes* "
+             "and *Recent changes* further down show what happened earlier in the time range.", "info"),
         text("overview-glance-h", "### At a glance"),
         arg("overview-servicehealth-tile", "", service_health_tile_q, vis="tiles", tiles=service_tiles, width=GLANCE_WIDTH),
         *[arg(f"overview-{key}", "", q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail", unit),
@@ -599,6 +619,10 @@ resourcechanges
         arg("overview-servicehealth", "Active Azure Service Health events", service_health_q,
             formatters=[status_fmt("EventType", warn=["PlannedMaintenance", "HealthAdvisory"], bad=["ServiceIssue"])],
             no_data="No active Service Health events."),
+        arg("overview-health-history", "Health state changes (time range, up to 14 days)", health_history_q,
+            formatters=[resource_link(), health_fmt("Previous"), health_fmt()],
+            labels={"id": "Resource", "Previous": "From", "Health": "To"},
+            no_data="No Resource Health state changes on platform resources in the time range."),
         arg("overview-changes", "Recent changes to platform resources (time range, up to 14 days)", changes_q,
             formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
             labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},

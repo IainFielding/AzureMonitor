@@ -15,7 +15,7 @@ Built for a **Virtual WAN** based landing zone.
 
 | Tab | Data source | What it shows |
 |---|---|---|
-| Overview | Resource Graph | Service Health event summary, per-service health tiles, Policy / Defender / Advisor / Backup tiles, unhealthy resources, fired alerts, active Service Health events, recent changes (who changed what), full inventory |
+| Overview | Resource Graph | Service Health event summary, per-service health tiles, Policy / Defender / Advisor / Backup tiles, unhealthy resources, fired alerts, active Service Health events, health state changes over the time range, recent changes (who changed what), full inventory |
 | Virtual WAN | Resource Graph, Metrics | WANs and hubs (routing state, routing units), hub BGP peers, spoke VM utilisation, routes, spoke peering state |
 | Azure Firewall | Metrics, Logs* | Health %, SNAT, throughput, observed capacity, latency, rule hits, denied flows*, threat intel & IDPS* |
 | ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
@@ -46,6 +46,10 @@ Overview status uses Azure Resource Health where Resource Graph has a record for
 it falls back to configuration state (provisioning state, hub routing state, ExpressRoute circuit/provider
 state, DNS resolver state, Private DNS limits/links, workspace ingestion status, storage primary status).
 The *Signal* column shows which was used.
+
+Those are current states. *Health state changes* lists the Resource Health transitions during the time
+range, so an outage that has already recovered still shows. It covers only resource types that report
+to Resource Health, and Resource Graph keeps 14 days.
 
 ## Editing
 
