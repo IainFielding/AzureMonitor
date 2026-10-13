@@ -308,14 +308,8 @@ PLATFORM_TYPES = [
 ]
 TYPE_LIST = ", ".join(f"'{t}'" for t in PLATFORM_TYPES)
 
-# Every platform resource we care about, tagged with a Service, joined to Resource Health.
-# Resource Health in ARG only covers some types, so a config-derived status is used as fallback.
-Q_INVENTORY_HEALTH = f"""
-resources
-| where type in~ ({TYPE_LIST})
-| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
-| extend gatewayType = tostring(properties.gatewayType)
-| extend Service = case(
+# Maps a resource `type` (and `gatewayType`, for virtual network gateways) to the Service shown on the Overview.
+SERVICE_CASE = """| extend Service = case(
     type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs'), 'Virtual WAN',
     type =~ 'microsoft.network/azurefirewalls', 'Azure Firewall',
     type in~ ('microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways'), 'ExpressRoute',
@@ -330,7 +324,16 @@ resources
     type =~ 'microsoft.storage/storageaccounts', 'Storage',
     type =~ 'microsoft.operationalinsights/workspaces', 'Log Analytics',
     type =~ 'microsoft.recoveryservices/vaults', 'Backup & DR',
-    'Build Agents')
+    'Build Agents')"""
+
+# Every platform resource we care about, tagged with a Service, joined to Resource Health.
+# Resource Health in ARG only covers some types, so a config-derived status is used as fallback.
+Q_INVENTORY_HEALTH = f"""
+resources
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or name matches regex @'{{BuildAgentPattern}}'
+| extend gatewayType = tostring(properties.gatewayType)
+{SERVICE_CASE}
 | extend provisioning = tostring(properties.provisioningState),
     routingState = tostring(properties.routingState),
     ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),
@@ -552,6 +555,24 @@ servicehealthresources
 | summarize Subscriptions = dcount(SubscriptionId) by Title, EventType, Level, TrackingId, ImpactStart
 | order by ImpactStart desc
 """
+    # Change Analysis keeps 14 days, so longer time ranges show at most that.
+    changes_q = f"""
+resourcechanges
+| extend Time = todatetime(properties.changeAttributes.timestamp)
+| where Time >= todatetime('{{TimeRange:startISO}}')
+| extend id = tolower(tostring(properties.targetResourceId)),
+    type = tolower(tostring(properties.targetResourceType)), gatewayType = ''
+| where type in~ ({TYPE_LIST})
+| where type !~ 'microsoft.compute/virtualmachinescalesets' or tostring(split(id, '/')[8]) matches regex @'{{BuildAgentPattern}}'
+{SERVICE_CASE}
+| project Time, id, Service, ChangeType = tostring(properties.changeType),
+    Properties = strcat_array(bag_keys(properties.changes), ', '),
+    ChangedBy = tostring(properties.changeAttributes.changedBy),
+    Client = tostring(properties.changeAttributes.clientType),
+    Operation = tostring(properties.changeAttributes.operation)
+| order by Time desc
+| take 500
+"""
     sev = {"columnMatch": "Severity", "formatter": 18, "formatOptions": _icons(
         [_t("==", f"Sev{i}", f"Sev{i}") for i in range(5)] + [_t("Default", None, "Blank")])}
     service_tiles = big_number_tiles("Service", "Status", "Total", "Summary")
@@ -578,6 +599,10 @@ servicehealthresources
         arg("overview-servicehealth", "Active Azure Service Health events", service_health_q,
             formatters=[status_fmt("EventType", warn=["PlannedMaintenance", "HealthAdvisory"], bad=["ServiceIssue"])],
             no_data="No active Service Health events."),
+        arg("overview-changes", "Recent changes to platform resources (time range, up to 14 days)", changes_q,
+            formatters=[resource_link(), status_fmt("ChangeType", warn=["Delete"])],
+            labels={"id": "Resource", "ChangeType": "Change", "Properties": "Properties changed", "ChangedBy": "Changed by"},
+            no_data="No changes to platform resources in the time range."),
         arg("overview-all", "All platform resources", all_q, group_by="Service",
             formatters=[resource_link(), health_fmt(), hidden("Type")], labels={"id": "Resource"}),
     ], tab="overview")
