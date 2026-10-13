@@ -1951,6 +1951,23 @@ resources
 | project id, Kind, Associations = coalesce(Associations, 0), DataFlows, Workspace, Workspaces, Provisioning, ResourceGroup
 | order by Associations asc
 """
+    # Alerts on platform resources fired in the time range. The alerts table keeps 30 days.
+    alert_history = f"""
+alertsmanagementresources
+| where type =~ 'microsoft.alertsmanagement/alerts'
+| extend e = properties.essentials
+| extend Fired = todatetime(e.startDateTime)
+| where Fired >= todatetime('{{TimeRange:startISO}}')
+| where tolower(tostring(e.targetResourceType)) in~ ({TYPE_LIST})
+"""
+    alerts_per_day_q = alert_history + "| summarize Alerts = count() by bin(Fired, 1d), Severity = tostring(e.severity)\n| order by Fired asc"
+    noisy_rules_q = alert_history + """| extend Resolved = todatetime(e.monitorConditionResolvedDateTime), isOpen = tostring(e.monitorCondition) =~ 'Fired'
+| summarize Alerts = count(), OpenNow = countif(isOpen), Resources = dcount(tolower(tostring(e.targetResource))),
+    AvgMinutesOpen = round(avgif(datetime_diff('minute', Resolved, Fired), isnotnull(Resolved)), 0),
+    LastFired = max(Fired)
+    by Rule = name, Severity = tostring(e.severity)
+| top 50 by Alerts desc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -2009,6 +2026,12 @@ resources
             formatters=[resource_link(), status_fmt("Problem", warn=["Disabled", "No action group", "Disabled, no action group"])],
             labels={"id": "Alert rule"},
             no_data="Every alert rule is enabled and has an action group.", width=45),
+        arg("mgmt-alerts-per-day", "Alerts fired per day by severity (time range, up to 30 days)", alerts_per_day_q,
+            vis="barchart", no_data="No alerts fired on platform resources in the time range.", width=40),
+        arg("mgmt-alert-noise", "Alert rules that fire most", noisy_rules_q, formatters=[
+            low_is_good("OpenNow", 1, 1),
+        ], labels={"OpenNow": "Open now", "AvgMinutesOpen": "Avg minutes open", "LastFired": "Last fired"},
+            no_data="No alerts fired on platform resources in the time range.", width=60),
         text("mgmt-backup-h", "### Backup & Site Recovery"),
         arg("mgmt-vaults", "Recovery Services vaults", vaults_q, formatters=[
             resource_link(), PROVISIONING,

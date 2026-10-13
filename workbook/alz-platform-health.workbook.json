@@ -10988,6 +10988,89 @@
             "customWidth": "45"
           },
           {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "alertsmanagementresources\n| where type =~ 'microsoft.alertsmanagement/alerts'\n| extend e = properties.essentials\n| extend Fired = todatetime(e.startDateTime)\n| where Fired >= todatetime('{TimeRange:startISO}')\n| where tolower(tostring(e.targetResourceType)) in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| summarize Alerts = count() by bin(Fired, 1d), Severity = tostring(e.severity)\n| order by Fired asc",
+              "size": 0,
+              "title": "Alerts fired per day by severity (time range, up to 30 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "barchart",
+              "noDataMessage": "No alerts fired on platform resources in the time range."
+            },
+            "name": "mgmt-alerts-per-day",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "alertsmanagementresources\n| where type =~ 'microsoft.alertsmanagement/alerts'\n| extend e = properties.essentials\n| extend Fired = todatetime(e.startDateTime)\n| where Fired >= todatetime('{TimeRange:startISO}')\n| where tolower(tostring(e.targetResourceType)) in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults')\n| extend Resolved = todatetime(e.monitorConditionResolvedDateTime), isOpen = tostring(e.monitorCondition) =~ 'Fired'\n| summarize Alerts = count(), OpenNow = countif(isOpen), Resources = dcount(tolower(tostring(e.targetResource))),\n    AvgMinutesOpen = round(avgif(datetime_diff('minute', Resolved, Fired), isnotnull(Resolved)), 0),\n    LastFired = max(Fired)\n    by Rule = name, Severity = tostring(e.severity)\n| top 50 by Alerts desc",
+              "size": 0,
+              "title": "Alert rules that fire most",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No alerts fired on platform resources in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "OpenNow",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "OpenNow",
+                    "label": "Open now"
+                  },
+                  {
+                    "columnId": "AvgMinutesOpen",
+                    "label": "Avg minutes open"
+                  },
+                  {
+                    "columnId": "LastFired",
+                    "label": "Last fired"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-alert-noise",
+            "customWidth": "60"
+          },
+          {
             "type": 1,
             "content": {
               "json": "### Backup & Site Recovery"
