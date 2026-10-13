@@ -10437,6 +10437,207 @@
           {
             "type": 1,
             "content": {
+              "json": "### Agents and data collection"
+            },
+            "name": "mgmt-agents-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines', 'microsoft.compute/virtualmachinescalesets')\n| extend Kind = case(type =~ 'microsoft.compute/virtualmachines', 'VM', type =~ 'microsoft.hybridcompute/machines', 'Arc server', 'Scale set'),\n    modelAgent = tostring(properties.virtualMachineProfile.extensionProfile.extensions) contains 'AzureMonitor'\n| project id = tolower(id), Kind, modelAgent,\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType),\n        tostring(properties.virtualMachineProfile.storageProfile.osDisk.osType)),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions')\n    | where tostring(properties.type) in~ ('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent')\n    | project id = tostring(split(tolower(id), '/extensions/')[0]),\n        agentState = tostring(properties.provisioningState), AgentVersion = tostring(properties.typeHandlerVersion)\n  ) on id\n| join kind=leftouter (\n    insightsresources\n    | where type =~ 'microsoft.insights/datacollectionruleassociations'\n    | extend ruleId = tolower(tostring(properties.dataCollectionRuleId))\n    | where isnotempty(ruleId)\n    | extend id = tostring(split(tolower(id), '/providers/microsoft.insights/')[0])\n    | summarize Rules = dcount(ruleId), RuleNames = strcat_array(make_set(tostring(split(ruleId, '/')[8])), ', ') by id\n  ) on id\n| extend Rules = coalesce(Rules, 0),\n    Agent = case(Kind == 'Scale set', iff(modelAgent, 'In scale set model', 'Not installed'),\n        isempty(agentState), 'Not installed', agentState)\n| extend Status = case(Agent == 'Not installed', 'No agent', Agent =~ 'Failed', 'Agent failed',\n    Rules == 0, 'No data collection rule', 'OK')\n| project id, Status, Kind, OS, Agent, AgentVersion, Rules, RuleNames, ResourceGroup\n| order by case(Status == 'OK', 1, 0) asc, Status asc, Kind asc",
+              "size": 0,
+              "title": "Azure Monitor Agent and data collection rules by machine",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines, scale sets or Arc-enabled servers found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "OK",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No data collection rule",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No agent",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Agent failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Machine"
+                  },
+                  {
+                    "columnId": "AgentVersion",
+                    "label": "Agent version"
+                  },
+                  {
+                    "columnId": "Rules",
+                    "label": "Data collection rules"
+                  },
+                  {
+                    "columnId": "RuleNames",
+                    "label": "Rule names"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-agents",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.insights/datacollectionrules'\n| project id = tolower(id), Kind = kind,\n    DataFlows = array_length(properties.dataFlows),\n    Workspace = tostring(split(tostring(properties.destinations.logAnalytics[0].workspaceResourceId), '/')[8]),\n    Workspaces = array_length(properties.destinations.logAnalytics),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    insightsresources\n    | where type =~ 'microsoft.insights/datacollectionruleassociations'\n    | extend ruleId = tolower(tostring(properties.dataCollectionRuleId))\n    | where isnotempty(ruleId)\n    | summarize Associations = count() by id = ruleId\n  ) on id\n| project id, Kind, Associations = coalesce(Associations, 0), DataFlows, Workspace, Workspaces, Provisioning, ResourceGroup\n| order by Associations asc",
+              "size": 0,
+              "title": "Data collection rules",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No data collection rules found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Rule"
+                  },
+                  {
+                    "columnId": "DataFlows",
+                    "label": "Data flows"
+                  },
+                  {
+                    "columnId": "Workspace",
+                    "label": "First workspace"
+                  }
+                ]
+              }
+            },
+            "name": "mgmt-dcrs",
+            "customWidth": "40"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Scale sets show whether the agent is in the scale set model; their instances are not listed individually. A rule with no associations collects nothing, which is expected only for workspace transformation and direct-ingestion rules.",
+              "style": "info"
+            },
+            "name": "mgmt-agents-note"
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "### Log sources"
             },
             "name": "mgmt-sources-h"

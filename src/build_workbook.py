@@ -1901,6 +1901,56 @@ union withsource=SourceTable *
     P95DelayMin = round(percentile(DelayMin, 95), 1), LastRecord = max(TimeGenerated) by SourceTable
 | top 30 by P95DelayMin desc
 """
+    dcr_associations = """
+    insightsresources
+    | where type =~ 'microsoft.insights/datacollectionruleassociations'
+    | extend ruleId = tolower(tostring(properties.dataCollectionRuleId))
+    | where isnotempty(ruleId)"""
+    # A machine needs both the agent and at least one data collection rule before it sends anything; the
+    # heartbeat table above can only list machines that already do.
+    agents_q = """
+resources
+| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines', 'microsoft.compute/virtualmachinescalesets')
+| extend Kind = case(type =~ 'microsoft.compute/virtualmachines', 'VM', type =~ 'microsoft.hybridcompute/machines', 'Arc server', 'Scale set'),
+    modelAgent = tostring(properties.virtualMachineProfile.extensionProfile.extensions) contains 'AzureMonitor'
+| project id = tolower(id), Kind, modelAgent,
+    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType),
+        tostring(properties.virtualMachineProfile.storageProfile.osDisk.osType)),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (
+    resources
+    | where type in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions')
+    | where tostring(properties.type) in~ ('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent')
+    | project id = tostring(split(tolower(id), '/extensions/')[0]),
+        agentState = tostring(properties.provisioningState), AgentVersion = tostring(properties.typeHandlerVersion)
+  ) on id
+| join kind=leftouter (""" + dcr_associations + """
+    | extend id = tostring(split(tolower(id), '/providers/microsoft.insights/')[0])
+    | summarize Rules = dcount(ruleId), RuleNames = strcat_array(make_set(tostring(split(ruleId, '/')[8])), ', ') by id
+  ) on id
+| extend Rules = coalesce(Rules, 0),
+    Agent = case(Kind == 'Scale set', iff(modelAgent, 'In scale set model', 'Not installed'),
+        isempty(agentState), 'Not installed', agentState)
+| extend Status = case(Agent == 'Not installed', 'No agent', Agent =~ 'Failed', 'Agent failed',
+    Rules == 0, 'No data collection rule', 'OK')
+| project id, Status, Kind, OS, Agent, AgentVersion, Rules, RuleNames, ResourceGroup
+| order by case(Status == 'OK', 1, 0) asc, Status asc, Kind asc
+"""
+    dcrs_q = """
+resources
+| where type =~ 'microsoft.insights/datacollectionrules'
+| project id = tolower(id), Kind = kind,
+    DataFlows = array_length(properties.dataFlows),
+    Workspace = tostring(split(tostring(properties.destinations.logAnalytics[0].workspaceResourceId), '/')[8]),
+    Workspaces = array_length(properties.destinations.logAnalytics),
+    Provisioning = tostring(properties.provisioningState),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (""" + dcr_associations + """
+    | summarize Associations = count() by id = ruleId
+  ) on id
+| project id, Kind, Associations = coalesce(Associations, 0), DataFlows, Workspace, Workspaces, Provisioning, ResourceGroup
+| order by Associations asc
+"""
     return group("tab-management", [
         text("mgmt-la-h", "### Log Analytics"),
         arg("mgmt-workspaces", "Workspaces", workspaces_q, formatters=[
@@ -1916,6 +1966,19 @@ union withsource=SourceTable *
            no_data="No workspace warnings or errors.", width=50),
         la("mgmt-heartbeat", "Agent heartbeats", silent_q, width=50,
            formatters=[status_fmt("Status", good=["Reporting"], bad=["Silent"]), resource_link("ResourceId")]),
+        text("mgmt-agents-h", "### Agents and data collection"),
+        arg("mgmt-agents", "Azure Monitor Agent and data collection rules by machine", agents_q, formatters=[
+            resource_link(),
+            status_fmt("Status", good=["OK"], warn=["No data collection rule"], bad=["No agent", "Agent failed"]),
+        ], labels={"id": "Machine", "AgentVersion": "Agent version", "Rules": "Data collection rules",
+                   "RuleNames": "Rule names"},
+            no_data="No virtual machines, scale sets or Arc-enabled servers found.", width=60),
+        arg("mgmt-dcrs", "Data collection rules", dcrs_q, formatters=[resource_link(), PROVISIONING],
+            labels={"id": "Rule", "DataFlows": "Data flows", "Workspace": "First workspace"},
+            no_data="No data collection rules found.", width=40),
+        text("mgmt-agents-note", "Scale sets show whether the agent is in the scale set model; their instances are "
+             "not listed individually. A rule with no associations collects nothing, which is expected only for "
+             "workspace transformation and direct-ingestion rules.", "info"),
         text("mgmt-sources-h", "### Log sources"),
         text("mgmt-sources-note",
              "Shows whether each platform resource is actually writing to the selected workspace. *No logs* means "
