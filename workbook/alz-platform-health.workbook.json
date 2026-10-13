@@ -9031,6 +9031,265 @@
           {
             "type": 1,
             "content": {
+              "json": "### Patch compliance (Azure Update Manager)"
+            },
+            "name": "gov-patch-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not assess Uniform scale set instances. Machines show as *Not assessed* until periodic assessment is turned on.",
+              "style": "info"
+            },
+            "name": "gov-patch-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n| project id = tolower(id),\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),\n    PatchMode = coalesce(tostring(properties.osProfile.windowsConfiguration.patchSettings.patchMode),\n        tostring(properties.osProfile.linuxConfiguration.patchSettings.patchMode)),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    patchassessmentresources\n    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        Assessment = tostring(properties.status),\n        Assessed = todatetime(properties.lastModifiedDateTime),\n        RebootPending = tostring(properties.rebootPending),\n        Critical = coalesce(toint(c.critical), 0), Security = coalesce(toint(c.security), 0),\n        Other = coalesce(toint(c.updateRollup), 0) + coalesce(toint(c.featurePack), 0) + coalesce(toint(c.servicePack), 0)\n            + coalesce(toint(c.definition), 0) + coalesce(toint(c.tools), 0) + coalesce(toint(c.updates), 0)\n            + coalesce(toint(c.other), 0)\n  ) on id\n| project-away id1\n| extend Assessment = case(isempty(Assessment), 'Not assessed', Assessed < ago(7d), 'Stale', Assessment)\n| summarize Machines = count(), Pending = countif(Critical > 0 or Security > 0),\n    Reboot = countif(RebootPending =~ 'true'), Unknown = countif(Assessment in ('Not assessed', 'Stale'))\n| extend rows = pack_array(\n    pack('Signal', 'Critical or security patches pending', 'Value', Pending, 'State', iff(Pending > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Reboot pending', 'Value', Reboot, 'State', iff(Reboot > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Not assessed in the last 7 days', 'Value', Unknown, 'State', iff(Unknown > 0, 'Unknown', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),\n    Detail = strcat('of ', Machines, ' machines')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "gov-patch-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n| project id = tolower(id),\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),\n    PatchMode = coalesce(tostring(properties.osProfile.windowsConfiguration.patchSettings.patchMode),\n        tostring(properties.osProfile.linuxConfiguration.patchSettings.patchMode)),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    patchassessmentresources\n    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n    | extend c = properties.availablePatchCountByClassification\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        Assessment = tostring(properties.status),\n        Assessed = todatetime(properties.lastModifiedDateTime),\n        RebootPending = tostring(properties.rebootPending),\n        Critical = coalesce(toint(c.critical), 0), Security = coalesce(toint(c.security), 0),\n        Other = coalesce(toint(c.updateRollup), 0) + coalesce(toint(c.featurePack), 0) + coalesce(toint(c.servicePack), 0)\n            + coalesce(toint(c.definition), 0) + coalesce(toint(c.tools), 0) + coalesce(toint(c.updates), 0)\n            + coalesce(toint(c.other), 0)\n  ) on id\n| project-away id1\n| extend Assessment = case(isempty(Assessment), 'Not assessed', Assessed < ago(7d), 'Stale', Assessment)\n| project id, OS, Assessment, Assessed, Critical, Security, Other, RebootPending, PatchMode, ResourceGroup\n| order by Critical desc, Security desc, case(Assessment == 'Succeeded', 1, 0) asc",
+              "size": 0,
+              "title": "Pending patches by machine",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines or Arc-enabled servers found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Critical",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Security",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Assessment",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stale",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "CompletedWithWarnings",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not assessed",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "InProgress",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "RebootPending",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Machine"
+                  },
+                  {
+                    "columnId": "RebootPending",
+                    "label": "Reboot pending"
+                  },
+                  {
+                    "columnId": "PatchMode",
+                    "label": "Patch mode"
+                  }
+                ]
+              }
+            },
+            "name": "gov-patch"
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "### Azure Advisor"
             },
             "name": "gov-advisor-h"

@@ -1552,6 +1552,44 @@ union isfuzzy=true
 | summarize LastSeen = max(TimeGenerated) by Vault, Kind, Object, State
 | order by State asc, LastSeen desc
 """
+    # Every VM and Arc machine, with its latest Update Manager assessment if it has one.
+    patch_base = """
+resources
+| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')
+| project id = tolower(id),
+    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),
+    PatchMode = coalesce(tostring(properties.osProfile.windowsConfiguration.patchSettings.patchMode),
+        tostring(properties.osProfile.linuxConfiguration.patchSettings.patchMode)),
+    ResourceGroup = resourceGroup
+| join kind=leftouter (
+    patchassessmentresources
+    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')
+    | extend c = properties.availablePatchCountByClassification
+    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),
+        Assessment = tostring(properties.status),
+        Assessed = todatetime(properties.lastModifiedDateTime),
+        RebootPending = tostring(properties.rebootPending),
+        Critical = coalesce(toint(c.critical), 0), Security = coalesce(toint(c.security), 0),
+        Other = coalesce(toint(c.updateRollup), 0) + coalesce(toint(c.featurePack), 0) + coalesce(toint(c.servicePack), 0)
+            + coalesce(toint(c.definition), 0) + coalesce(toint(c.tools), 0) + coalesce(toint(c.updates), 0)
+            + coalesce(toint(c.other), 0)
+  ) on id
+| project-away id1
+| extend Assessment = case(isempty(Assessment), 'Not assessed', Assessed < ago(7d), 'Stale', Assessment)
+"""
+    patch_tiles_q = patch_base + """| summarize Machines = count(), Pending = countif(Critical > 0 or Security > 0),
+    Reboot = countif(RebootPending =~ 'true'), Unknown = countif(Assessment in ('Not assessed', 'Stale'))
+| extend rows = pack_array(
+    pack('Signal', 'Critical or security patches pending', 'Value', Pending, 'State', iff(Pending > 0, 'Degraded', 'Available')),
+    pack('Signal', 'Reboot pending', 'Value', Reboot, 'State', iff(Reboot > 0, 'Degraded', 'Available')),
+    pack('Signal', 'Not assessed in the last 7 days', 'Value', Unknown, 'State', iff(Unknown > 0, 'Unknown', 'Available')))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),
+    Detail = strcat('of ', Machines, ' machines')
+"""
+    patch_q = patch_base + """| project id, OS, Assessment, Assessed, Critical, Security, Other, RebootPending, PatchMode, ResourceGroup
+| order by Critical desc, Security desc, case(Assessment == 'Succeeded', 1, 0) asc
+"""
     sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
     return group("tab-governance", [
         text("gov-deadlines-h", "### Expiry & retirement"),
@@ -1582,6 +1620,19 @@ union isfuzzy=true
         arg("gov-controls", "Security controls with unhealthy resources", controls_q, width=60),
         arg("gov-alerts", "Active security alerts", alerts_q, formatters=[sev_fmt], no_data="No active security alerts."),
         arg("gov-recs", "Unhealthy recommendations (high & medium)", recs_q, formatters=[sev_fmt]),
+        text("gov-patch-h", "### Patch compliance (Azure Update Manager)"),
+        text("gov-patch-note", "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD "
+             "session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not "
+             "assess Uniform scale set instances. Machines show as *Not assessed* until periodic assessment is "
+             "turned on.", "info"),
+        arg("gov-patch-tiles", "", patch_tiles_q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail")),
+        arg("gov-patch", "Pending patches by machine", patch_q, formatters=[
+            resource_link(), low_is_good("Critical", 1, 1), low_is_good("Security", 1, 10),
+            status_fmt("Assessment", good=["Succeeded"], warn=["Stale", "CompletedWithWarnings"], bad=["Failed"],
+                       neutral=["Not assessed", "InProgress"]),
+            status_fmt("RebootPending", warn=["true"]),
+        ], labels={"id": "Machine", "RebootPending": "Reboot pending", "PatchMode": "Patch mode"},
+            no_data="No virtual machines or Arc-enabled servers found."),
         text("gov-advisor-h", "### Azure Advisor"),
         arg("gov-advisor", "High & medium impact recommendations", advisor_q, group_by="Category",
             formatters=[resource_link("Resource"), status_fmt("Impact", warn=["Medium"], bad=["High"])]),
