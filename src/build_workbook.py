@@ -1508,8 +1508,69 @@ advisorresources
     Updated = todatetime(properties.lastUpdated)
 | order by case(Impact =~ 'High', 0, 1) asc, Category asc
 """
+    retirements_q = """
+advisorresources
+| where type =~ 'microsoft.advisor/recommendations'
+| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'
+| extend RetirementDate = todatetime(properties.extendedProperties.retirementDate)
+| summarize Resources = dcount(tolower(tostring(properties.resourceMetadata.resourceId)))
+    by Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), tostring(properties.shortDescription.problem)),
+    Action = tostring(properties.shortDescription.solution), RetirementDate, Impact = tostring(properties.impact)
+| project Retiring, RetirementDate, DaysLeft = datetime_diff('day', RetirementDate, now()), Resources, Impact, Action
+| order by RetirementDate asc
+"""
+    scheduled_q = """
+servicehealthresources
+| where type =~ 'microsoft.resourcehealth/events'
+| where tostring(properties.Status) =~ 'Active'
+| extend EventType = tostring(properties.EventType), Title = tostring(properties.Title)
+| where EventType =~ 'PlannedMaintenance' or tostring(properties.EventSubType) =~ 'Retirement' or Title contains 'retir'
+| extend Kind = iff(EventType =~ 'PlannedMaintenance', 'Planned maintenance', 'Retirement'),
+    Starts = todatetime(tolong(properties.ImpactStartTime)), Ends = todatetime(tolong(properties.ImpactMitigationTime))
+| summarize Subscriptions = dcount(subscriptionId) by Kind, Title, TrackingId = tostring(properties.TrackingId), Starts, Ends
+| order by Starts asc
+"""
+    # A host pool without a valid token is normal; it only matters when session hosts are about to be added.
+    avd_tokens_q = """
+resources
+| where type =~ 'microsoft.desktopvirtualization/hostpools'
+| extend Expires = todatetime(properties.registrationInfo.expirationTime)
+| project id, Token = case(isnull(Expires), 'None', Expires < now(), 'Expired', Expires < now() + 7d, 'Expiring', 'Valid'),
+    Expires, ResourceGroup = resourceGroup, Location = location
+| order by Expires asc
+"""
+    kv_expiry_q = """
+union isfuzzy=true
+    (AzureDiagnostics | where TimeGenerated {TimeRange} | where ResourceProvider =~ 'MICROSOFT.KEYVAULT'
+        | project TimeGenerated, OperationName, Vault = tolower(Resource), Object = column_ifexists('id_s', '')),
+    (AZKVAuditLogs | where TimeGenerated {TimeRange}
+        | project TimeGenerated, OperationName, Vault = tolower(tostring(split(_ResourceId, '/')[8])), Object = column_ifexists('Id', ''))
+| where OperationName contains 'NearExpiry' or OperationName contains 'Expired'
+| extend Kind = case(OperationName startswith 'Certificate', 'Certificate', OperationName startswith 'Secret', 'Secret',
+        OperationName startswith 'Key', 'Key', 'Other'),
+    State = iff(OperationName contains 'NearExpiry', 'Near expiry', 'Expired')
+| summarize LastSeen = max(TimeGenerated) by Vault, Kind, Object, State
+| order by State asc, LastSeen desc
+"""
     sev_fmt = status_fmt("Severity", warn=["Medium"], bad=["High"], neutral=["Low", "Informational"])
     return group("tab-governance", [
+        text("gov-deadlines-h", "### Expiry & retirement"),
+        arg("gov-retirements", "Service retirements affecting your resources (Azure Advisor)", retirements_q, formatters=[
+            high_is_good("DaysLeft", 180, 60), status_fmt("Impact", warn=["Medium"], bad=["High"]),
+        ], labels={"RetirementDate": "Retirement date", "DaysLeft": "Days left"},
+            no_data="Advisor reports no service retirements for the selected subscriptions."),
+        arg("gov-scheduled", "Planned maintenance and retirement notices (Azure Service Health)", scheduled_q,
+            formatters=[status_fmt("Kind", warn=["Planned maintenance", "Retirement"])],
+            labels={"TrackingId": "Tracking ID"}, no_data="No active planned maintenance or retirement notices.", width=60),
+        arg("gov-avd-tokens", "AVD host pool registration tokens", avd_tokens_q, formatters=[
+            resource_link(), status_fmt("Token", good=["Valid"], warn=["Expiring"], neutral=["Expired", "None"]),
+        ], labels={"id": "Host pool"}, no_data="No AVD host pools found.", width=40),
+        text("gov-kv-expiry-hint", "Select a **Log Analytics workspace** at the top to see Key Vault certificates, "
+             "secrets and keys that are near expiry or expired.", "info", visible_when=WORKSPACE_UNSET),
+        la("gov-kv-expiry", "Key Vault certificates, secrets and keys near expiry or expired", kv_expiry_q,
+           formatters=[status_fmt("State", warn=["Near expiry"], bad=["Expired"])], labels={"LastSeen": "Reported"},
+           no_data="No expiry events in the time range. Key Vault reports near-expiry once, about 30 days ahead, "
+                   "so use a 30-day time range; vaults must send audit logs to this workspace."),
         text("gov-policy-h", "### Azure Policy"),
         arg("gov-compliance", "Compliance by subscription", compliance_q,
             formatters=[high_is_good("CompliancePct", 90, 70, digits=1)], labels={"CompliancePct": "Compliant %"}, width=40),

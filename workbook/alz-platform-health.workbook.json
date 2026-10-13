@@ -8417,6 +8417,312 @@
           {
             "type": 1,
             "content": {
+              "json": "### Expiry & retirement"
+            },
+            "name": "gov-deadlines-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend RetirementDate = todatetime(properties.extendedProperties.retirementDate)\n| summarize Resources = dcount(tolower(tostring(properties.resourceMetadata.resourceId)))\n    by Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), tostring(properties.shortDescription.problem)),\n    Action = tostring(properties.shortDescription.solution), RetirementDate, Impact = tostring(properties.impact)\n| project Retiring, RetirementDate, DaysLeft = datetime_diff('day', RetirementDate, now()), Resources, Impact, Action\n| order by RetirementDate asc",
+              "size": 0,
+              "title": "Service retirements affecting your resources (Azure Advisor)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor reports no service retirements for the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "180",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Impact",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RetirementDate",
+                    "label": "Retirement date"
+                  },
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  }
+                ]
+              }
+            },
+            "name": "gov-retirements"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| extend EventType = tostring(properties.EventType), Title = tostring(properties.Title)\n| where EventType =~ 'PlannedMaintenance' or tostring(properties.EventSubType) =~ 'Retirement' or Title contains 'retir'\n| extend Kind = iff(EventType =~ 'PlannedMaintenance', 'Planned maintenance', 'Retirement'),\n    Starts = todatetime(tolong(properties.ImpactStartTime)), Ends = todatetime(tolong(properties.ImpactMitigationTime))\n| summarize Subscriptions = dcount(subscriptionId) by Kind, Title, TrackingId = tostring(properties.TrackingId), Starts, Ends\n| order by Starts asc",
+              "size": 0,
+              "title": "Planned maintenance and retirement notices (Azure Service Health)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No active planned maintenance or retirement notices.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Kind",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Planned maintenance",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Retirement",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TrackingId",
+                    "label": "Tracking ID"
+                  }
+                ]
+              }
+            },
+            "name": "gov-scheduled",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| extend Expires = todatetime(properties.registrationInfo.expirationTime)\n| project id, Token = case(isnull(Expires), 'None', Expires < now(), 'Expired', Expires < now() + 7d, 'Expiring', 'Valid'),\n    Expires, ResourceGroup = resourceGroup, Location = location\n| order by Expires asc",
+              "size": 0,
+              "title": "AVD host pool registration tokens",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No AVD host pools found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Token",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Valid",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expiring",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "None",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Host pool"
+                  }
+                ]
+              }
+            },
+            "name": "gov-avd-tokens",
+            "customWidth": "40"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to see Key Vault certificates, secrets and keys that are near expiry or expired.",
+              "style": "info"
+            },
+            "name": "gov-kv-expiry-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (AzureDiagnostics | where TimeGenerated {TimeRange} | where ResourceProvider =~ 'MICROSOFT.KEYVAULT'\n        | project TimeGenerated, OperationName, Vault = tolower(Resource), Object = column_ifexists('id_s', '')),\n    (AZKVAuditLogs | where TimeGenerated {TimeRange}\n        | project TimeGenerated, OperationName, Vault = tolower(tostring(split(_ResourceId, '/')[8])), Object = column_ifexists('Id', ''))\n| where OperationName contains 'NearExpiry' or OperationName contains 'Expired'\n| extend Kind = case(OperationName startswith 'Certificate', 'Certificate', OperationName startswith 'Secret', 'Secret',\n        OperationName startswith 'Key', 'Key', 'Other'),\n    State = iff(OperationName contains 'NearExpiry', 'Near expiry', 'Expired')\n| summarize LastSeen = max(TimeGenerated) by Vault, Kind, Object, State\n| order by State asc, LastSeen desc",
+              "size": 0,
+              "title": "Key Vault certificates, secrets and keys near expiry or expired",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No expiry events in the time range. Key Vault reports near-expiry once, about 30 days ahead, so use a 30-day time range; vaults must send audit logs to this workspace.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Near expiry",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Reported"
+                  }
+                ]
+              }
+            },
+            "name": "gov-kv-expiry",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "### Azure Policy"
             },
             "name": "gov-policy-h"

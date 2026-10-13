@@ -26,14 +26,14 @@ Built for a **Virtual WAN** based landing zone.
 | Azure VMware Solution | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
 | Azure Virtual Desktop | Logs* | Session host status, sessions/users, connection RTT, top errors |
 | Storage | Metrics | Availability, latency, transactions by response type (throttling), Azure Files (FSLogix) transactions, used capacity and quota by share |
-| Governance & Security | Resource Graph | Policy compliance, Defender secure score/controls/alerts/recommendations, Advisor recommendations |
+| Governance & Security | Resource Graph, Logs* | Service retirements, planned maintenance, AVD registration tokens, Key Vault expiry events*, Policy compliance, Defender secure score/controls/alerts/recommendations, Advisor recommendations |
 | Monitoring & Backup | Resource Graph, Logs* | Workspace caps & ingestion status, ingestion by table*, workspace errors*, agent heartbeats*, platform resources with no alert rule, disabled or silent alert rules, backup vaults/jobs/items, Site Recovery |
 | Capacity | Resource Graph, Resource Manager | vCPU and compute quotas by subscription and region, network quotas for one subscription and region, subnet address utilisation |
 | Throughput | Metrics, Logs* | Hub, firewall, ExpressRoute, VPN, P2S, storage and AVD bandwidth side by side |
 
 \* Log panels appear once a **Log Analytics workspace** is selected, and need the matching diagnostic
 settings (`AZFW*` resource-specific firewall tables, VPN `TunnelDiagnosticLog`, AVD `WVD*` tables,
-Connection Monitor `NWConnectionMonitorTestResult`,
+Connection Monitor `NWConnectionMonitorTestResult`, Key Vault audit logs,
 Azure Monitor Agent / VM insights on build agents).
 
 ## Parameters
