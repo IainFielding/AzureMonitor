@@ -248,6 +248,14 @@
             "style": "link"
           },
           {
+            "id": "480ecb97-756f-5d1a-8b22-b33ee52f98c4",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Capacity",
+            "subTarget": "capacity",
+            "style": "link"
+          },
+          {
             "id": "38b090c7-e9be-5560-82e9-a0e677c60219",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
@@ -8201,6 +8209,80 @@
             "customWidth": "50"
           },
           {
+            "type": 1,
+            "content": {
+              "json": "Azure Files capacity is reported hourly, so the two charts below need a time range of at least a few hours. A share whose used capacity is close to its quota stops FSLogix profiles from growing.",
+              "style": "info"
+            },
+            "name": "storage-files-note"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbooke2f194fd-733e-5de9-bc37-fbfb7377142f",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts/fileservices",
+                  "metric": "microsoft.storage/storageaccounts/fileservices--FileCapacity",
+                  "aggregation": 4,
+                  "splitBy": "FileShare",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Azure Files used capacity by share",
+              "showOpenInMe": true
+            },
+            "name": "storage-files-used",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook260aa072-5164-5430-b4b1-4f94f5d75acd",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.storage/storageaccounts",
+              "metricScope": 0,
+              "resourceParameter": "StorageAccounts",
+              "resourceIds": [
+                "{StorageAccounts}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.storage/storageaccounts/fileservices",
+                  "metric": "microsoft.storage/storageaccounts/fileservices--FileShareCapacityQuota",
+                  "aggregation": 4,
+                  "splitBy": "FileShare",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Azure Files share quota by share",
+              "showOpenInMe": true
+            },
+            "name": "storage-files-quota",
+            "customWidth": "50"
+          },
+          {
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
@@ -9559,6 +9641,281 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "management"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Azure Firewall), circuit utilisation (ExpressRoute), Private DNS zone limits (Shared Services), vSAN (Azure VMware Solution) and Azure Files share quota (Storage).",
+              "style": "info"
+            },
+            "name": "cap-intro"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Compute quotas"
+            },
+            "name": "cap-compute-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "quotaresources\n| where type =~ 'microsoft.compute/locations/usages'\n| mv-expand q = properties.value limit 400\n| extend Quota = tostring(q.name.localizedValue), Used = tolong(q.currentValue), Limit = tolong(q['limit'])\n| where Used > 0 and Limit > 0\n| extend UsedPct = round(100.0 * Used / Limit, 1)\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Subscription = coalesce(Subscription, subscriptionId), Region = location, Quota, Used, Limit, UsedPct\n| order by UsedPct desc",
+              "size": 0,
+              "title": "vCPU and compute quotas in use, by subscription and region",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No compute quota is in use in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "UsedPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "UsedPct",
+                    "label": "Used %"
+                  }
+                ]
+              }
+            },
+            "name": "cap-compute-quota"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Network quotas"
+            },
+            "name": "cap-network-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Network usage is not in Resource Graph, so this reads it from Azure Resource Manager for one subscription and region at a time.",
+              "style": "info"
+            },
+            "name": "cap-network-note"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "7a7a16e3-57f6-56a6-b29f-da7aaee2442e",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "QuotaSubscription",
+                  "label": "Subscription",
+                  "type": 6,
+                  "isRequired": true,
+                  "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::1"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::1",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "a9de8e35-ce37-55fd-a283-3fa42c9c482b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "QuotaRegion",
+                  "label": "Region",
+                  "type": 2,
+                  "isRequired": true,
+                  "query": "resources\n| where type in~ ('microsoft.network/virtualhubs', 'microsoft.network/virtualnetworks')\n| summarize Resources = count() by location\n| order by Resources desc\n| project value = location, label = location",
+                  "crossComponentResources": [
+                    "{QuotaSubscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::1"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::1",
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "cap-network-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{QuotaSubscription}/providers/Microsoft.Network/locations/{QuotaRegion}/usages\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-09-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name.localizedValue\", \"columnid\": \"Quota\"}, {\"path\": \"$.currentValue\", \"columnid\": \"Used\", \"columnType\": \"long\"}, {\"path\": \"$.limit\", \"columnid\": \"Limit\", \"columnType\": \"long\"}]}}]}",
+              "size": 0,
+              "title": "Network quotas (public IPs, VNets, route tables, private endpoints...)",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "Used",
+                    "sortOrder": 2
+                  }
+                ]
+              },
+              "noDataMessage": "No network usage returned for this subscription and region."
+            },
+            "name": "cap-network-quota"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Subnet address space"
+            },
+            "name": "cap-subnets-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Used* counts the IP configurations attached to each subnet (NICs, private endpoints, load balancer front ends). Application Gateway instances and delegated services such as SQL Managed Instance take addresses that are not counted, and Virtual WAN hubs do not expose their address usage at all.",
+              "style": "info"
+            },
+            "name": "cap-subnets-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand subnet = properties.subnets limit 400\n| extend Prefix = coalesce(tostring(subnet.properties.addressPrefix), tostring(subnet.properties.addressPrefixes[0]))\n| where isnotempty(Prefix) and Prefix !contains ':'\n| extend Usable = tolong(pow(2, 32 - toint(split(Prefix, '/')[1]))) - 5,\n    Used = coalesce(array_length(subnet.properties.ipConfigurations), 0)\n| where Usable > 0\n| project id, Subnet = tostring(subnet.name), Prefix, Used, Usable, UsedPct = round(100.0 * Used / Usable, 1),\n    Delegation = tostring(subnet.properties.delegations[0].properties.serviceName),\n    ResourceGroup = resourceGroup\n| order by UsedPct desc",
+              "size": 0,
+              "title": "Subnets by address utilisation",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual network subnets found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "UsedPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Virtual network"
+                  },
+                  {
+                    "columnId": "UsedPct",
+                    "label": "Used %"
+                  }
+                ]
+              }
+            },
+            "name": "cap-subnets"
+          }
+        ]
+      },
+      "name": "tab-capacity",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "capacity"
       }
     },
     {

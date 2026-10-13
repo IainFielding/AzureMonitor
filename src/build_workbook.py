@@ -162,6 +162,27 @@ def arg(name, title, query, **kw):
                   resources=["{Subscription}"], **kw)
 
 
+def arm(name, title, path, api_version, columns, *, sort_desc=None, no_data=None, width=None):
+    """GET against Azure Resource Manager. columns: list of (column, JSONPath, type-or-None) read from `$.value`."""
+    request = {
+        "version": "ARMEndpoint/1.0", "data": None, "headers": [], "method": "GET", "path": path,
+        "urlParams": [{"key": "api-version", "value": api_version}], "batchDisabled": False,
+        "transformers": [{"type": "jsonpath", "settings": {"tablePath": "$.value", "columns": [
+            {"path": jp, "columnid": col, **({"columnType": kind} if kind else {})} for col, jp, kind in columns]}}],
+    }
+    grid = {"filter": True}
+    if sort_desc:
+        grid["sortBy"] = [{"itemKey": sort_desc, "sortOrder": 2}]
+    content = {"version": "KqlItem/1.0", "query": json.dumps(request), "size": 0, "title": title, "queryType": 12,
+               "visualization": "table", "showExportToExcel": True, "gridSettings": grid}
+    if no_data:
+        content["noDataMessage"] = no_data
+    item = {"type": 3, "content": content, "name": name}
+    if width:
+        item["customWidth"] = str(width)
+    return item
+
+
 WORKSPACE_SET = {"parameterName": "Workspace", "comparison": "isNotEqualTo", "value": ""}
 WORKSPACE_UNSET = {"parameterName": "Workspace", "comparison": "isEqualTo", "value": ""}
 
@@ -475,6 +496,7 @@ TABS = [
     ("storage", "Storage"),
     ("governance", "Governance & Security"),
     ("management", "Monitoring & Backup"),
+    ("capacity", "Capacity"),
     ("throughput", "Throughput"),
 ]
 
@@ -1299,6 +1321,13 @@ def storage_tab():
                 [m(ns, "Transactions", SUM, split="ResponseType")], width=50),
         metrics("storage-files-tx", "Azure Files transactions by response type (FSLogix)", ns, "StorageAccounts",
                 [m(fns, "Transactions", SUM, split="ResponseType")], width=50),
+        text("storage-files-note", "Azure Files capacity is reported hourly, so the two charts below need a time "
+             "range of at least a few hours. A share whose used capacity is close to its quota stops FSLogix "
+             "profiles from growing.", "info"),
+        metrics("storage-files-used", "Azure Files used capacity by share", ns, "StorageAccounts",
+                [m(fns, "FileCapacity", AVG, split="FileShare")], width=50),
+        metrics("storage-files-quota", "Azure Files share quota by share", ns, "StorageAccounts",
+                [m(fns, "FileShareCapacityQuota", AVG, split="FileShare")], width=50),
         arg("storage-inventory", "Storage accounts", inventory_q, formatters=[
             resource_link(),
             status_fmt("Primary", good=["available"], bad=["unavailable"]),
@@ -1306,6 +1335,92 @@ def storage_tab():
             status_fmt("PublicNetwork", good=["Disabled"], warn=["Enabled"]),
         ], labels={"id": "Storage account"}),
     ], tab="storage")
+
+
+def capacity_tab():
+    compute_quota_q = """
+quotaresources
+| where type =~ 'microsoft.compute/locations/usages'
+| mv-expand q = properties.value limit 400
+| extend Quota = tostring(q.name.localizedValue), Used = tolong(q.currentValue), Limit = tolong(q['limit'])
+| where Used > 0 and Limit > 0
+| extend UsedPct = round(100.0 * Used / Limit, 1)
+""" + SUBSCRIPTION_NAMES + """
+| project Subscription = coalesce(Subscription, subscriptionId), Region = location, Quota, Used, Limit, UsedPct
+| order by UsedPct desc
+"""
+    # Usable = subnet size minus the 5 addresses Azure reserves. IPv6 prefixes are left out.
+    subnets_q = """
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| mv-expand subnet = properties.subnets limit 400
+| extend Prefix = coalesce(tostring(subnet.properties.addressPrefix), tostring(subnet.properties.addressPrefixes[0]))
+| where isnotempty(Prefix) and Prefix !contains ':'
+| extend Usable = tolong(pow(2, 32 - toint(split(Prefix, '/')[1]))) - 5,
+    Used = coalesce(array_length(subnet.properties.ipConfigurations), 0)
+| where Usable > 0
+| project id, Subnet = tostring(subnet.name), Prefix, Used, Usable, UsedPct = round(100.0 * Used / Usable, 1),
+    Delegation = tostring(subnet.properties.delegations[0].properties.serviceName),
+    ResourceGroup = resourceGroup
+| order by UsedPct desc
+"""
+    quota_sub = {
+        "id": gid("param-QuotaSubscription"),
+        "version": "KqlParameterItem/1.0",
+        "name": "QuotaSubscription",
+        "label": "Subscription",
+        "type": 6,
+        "isRequired": True,
+        "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+        "crossComponentResources": ["{Subscription}"],
+        "typeSettings": {"additionalResourceOptions": ["value::1"], "showDefault": False},
+        "defaultValue": "value::1",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+    }
+    quota_region = {
+        "id": gid("param-QuotaRegion"),
+        "version": "KqlParameterItem/1.0",
+        "name": "QuotaRegion",
+        "label": "Region",
+        "type": 2,
+        "isRequired": True,
+        "query": "resources\n| where type in~ ('microsoft.network/virtualhubs', 'microsoft.network/virtualnetworks')\n"
+                 "| summarize Resources = count() by location\n| order by Resources desc\n"
+                 "| project value = location, label = location",
+        "crossComponentResources": ["{QuotaSubscription}"],
+        "typeSettings": {"additionalResourceOptions": ["value::1"], "showDefault": False},
+        "defaultValue": "value::1",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+    }
+    return group("tab-capacity", [
+        text("cap-intro",
+             "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the "
+             "services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Azure Firewall), "
+             "circuit utilisation (ExpressRoute), Private DNS zone limits (Shared Services), vSAN (Azure VMware "
+             "Solution) and Azure Files share quota (Storage).", "info"),
+        text("cap-compute-h", "### Compute quotas"),
+        arg("cap-compute-quota", "vCPU and compute quotas in use, by subscription and region", compute_quota_q,
+            formatters=[low_is_good("UsedPct", 70, 90, digits=1)], labels={"UsedPct": "Used %"},
+            no_data="No compute quota is in use in the selected subscriptions."),
+        text("cap-network-h", "### Network quotas"),
+        text("cap-network-note", "Network usage is not in Resource Graph, so this reads it from Azure Resource "
+             "Manager for one subscription and region at a time.", "info"),
+        params("cap-network-params", [quota_sub, quota_region]),
+        arm("cap-network-quota", "Network quotas (public IPs, VNets, route tables, private endpoints...)",
+            "{QuotaSubscription}/providers/Microsoft.Network/locations/{QuotaRegion}/usages", "2023-09-01",
+            [("Quota", "$.name.localizedValue", None), ("Used", "$.currentValue", "long"), ("Limit", "$.limit", "long")],
+            sort_desc="Used", no_data="No network usage returned for this subscription and region."),
+        text("cap-subnets-h", "### Subnet address space"),
+        text("cap-subnets-note", "*Used* counts the IP configurations attached to each subnet (NICs, private "
+             "endpoints, load balancer front ends). Application Gateway instances and delegated services such as "
+             "SQL Managed Instance take addresses that are not counted, and Virtual WAN hubs do not expose their "
+             "address usage at all.", "info"),
+        arg("cap-subnets", "Subnets by address utilisation", subnets_q,
+            formatters=[resource_link(), low_is_good("UsedPct", 70, 90, digits=1)],
+            labels={"id": "Virtual network", "UsedPct": "Used %"}, no_data="No virtual network subnets found."),
+    ], tab="capacity")
 
 
 def governance_tab():
@@ -1747,6 +1862,7 @@ def workbook():
             storage_tab(),
             governance_tab(),
             management_tab(),
+            capacity_tab(),
             throughput_tab(),
         ],
         "fallbackResourceIds": ["Azure Monitor"],
