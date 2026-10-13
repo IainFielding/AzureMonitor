@@ -6657,6 +6657,294 @@
           {
             "type": 1,
             "content": {
+              "json": "### Private endpoints"
+            },
+            "name": "shared-pe-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/privateendpoints'\n| extend conns = iff(array_length(properties.privateLinkServiceConnections) > 0,\n    properties.privateLinkServiceConnections, properties.manualPrivateLinkServiceConnections)\n| mv-expand c = conns\n| extend Connection = tostring(c.properties.privateLinkServiceConnectionState.status),\n    Target = tostring(c.properties.privateLinkServiceId),\n    SubResource = tostring(c.properties.groupIds[0]),\n    Provisioning = tostring(properties.provisioningState),\n    Dns = iff(array_length(properties.customDnsConfigs) > 0, 'No zone group', 'Zone group')\n| summarize Total = count(), NotApproved = countif(Connection !~ 'Approved'),\n    Failed = countif(Provisioning =~ 'Failed'), NoZoneGroup = countif(Dns == 'No zone group')\n| extend rows = pack_array(\n    pack('Signal', 'Connection not approved', 'Value', NotApproved, 'State', iff(NotApproved > 0, 'Unavailable', 'Available')),\n    pack('Signal', 'Provisioning failed', 'Value', Failed, 'State', iff(Failed > 0, 'Unavailable', 'Available')),\n    pack('Signal', 'No private DNS zone group', 'Value', NoZoneGroup, 'State', iff(NoZoneGroup > 0, 'Degraded', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),\n    Detail = strcat('of ', Total, ' private endpoints')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "shared-pe-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/privateendpoints'\n| extend conns = iff(array_length(properties.privateLinkServiceConnections) > 0,\n    properties.privateLinkServiceConnections, properties.manualPrivateLinkServiceConnections)\n| mv-expand c = conns\n| extend Connection = tostring(c.properties.privateLinkServiceConnectionState.status),\n    Target = tostring(c.properties.privateLinkServiceId),\n    SubResource = tostring(c.properties.groupIds[0]),\n    Provisioning = tostring(properties.provisioningState),\n    Dns = iff(array_length(properties.customDnsConfigs) > 0, 'No zone group', 'Zone group')\n| where Connection !~ 'Approved' or Provisioning !~ 'Succeeded' or Dns == 'No zone group'\n| project id, Connection, Dns, Provisioning, Target, SubResource, ResourceGroup = resourceGroup\n| order by case(Connection =~ 'Approved', 1, 0) asc, case(Provisioning =~ 'Succeeded', 1, 0) asc",
+              "size": 0,
+              "title": "Private endpoints needing attention",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every private endpoint is approved, provisioned and has a private DNS zone group.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Target",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Connection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Approved",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Pending",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Rejected",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disconnected",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Dns",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone group",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No zone group",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Private endpoint"
+                  },
+                  {
+                    "columnId": "Dns",
+                    "label": "DNS"
+                  },
+                  {
+                    "columnId": "SubResource",
+                    "label": "Sub-resource"
+                  }
+                ]
+              }
+            },
+            "name": "shared-pe-issues",
+            "customWidth": "65"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/privatednszones'\n| where name startswith 'privatelink.'\n| summarize Copies = count(), Subscriptions = dcount(subscriptionId),\n    ResourceGroups = strcat_array(make_set(resourceGroup), ', ') by Zone = name\n| where Copies > 1\n| order by Copies desc",
+              "size": 0,
+              "title": "Private Link DNS zones that exist more than once",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Each privatelink zone exists once.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ResourceGroups",
+                    "label": "Resource groups"
+                  }
+                ]
+              }
+            },
+            "name": "shared-pe-duplicate-zones",
+            "customWidth": "35"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "An endpoint with no private DNS zone group has no record registered for it in the central zones, so its name resolves to the public address unless a record is kept by hand. A privatelink zone that exists twice splits resolution: a VNet linked to the extra copy cannot see the records in the central one.",
+              "style": "info"
+            },
+            "name": "shared-pe-note"
+          },
+          {
+            "type": 1,
+            "content": {
               "json": "### Key Vault"
             },
             "name": "shared-kv-h"

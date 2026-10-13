@@ -1195,6 +1195,43 @@ resources
     PrivateEndpoints = array_length(properties.privateEndpointConnections),
     ResourceGroup = resourceGroup, Location = location
 """
+    # An endpoint holds its connection under one of two properties depending on whether it was auto-approved.
+    # customDnsConfigs is filled in only when the endpoint has no private DNS zone group, so it stands in for that.
+    private_endpoints = """
+resources
+| where type =~ 'microsoft.network/privateendpoints'
+| extend conns = iff(array_length(properties.privateLinkServiceConnections) > 0,
+    properties.privateLinkServiceConnections, properties.manualPrivateLinkServiceConnections)
+| mv-expand c = conns
+| extend Connection = tostring(c.properties.privateLinkServiceConnectionState.status),
+    Target = tostring(c.properties.privateLinkServiceId),
+    SubResource = tostring(c.properties.groupIds[0]),
+    Provisioning = tostring(properties.provisioningState),
+    Dns = iff(array_length(properties.customDnsConfigs) > 0, 'No zone group', 'Zone group')
+"""
+    pe_tiles_q = private_endpoints + """| summarize Total = count(), NotApproved = countif(Connection !~ 'Approved'),
+    Failed = countif(Provisioning =~ 'Failed'), NoZoneGroup = countif(Dns == 'No zone group')
+| extend rows = pack_array(
+    pack('Signal', 'Connection not approved', 'Value', NotApproved, 'State', iff(NotApproved > 0, 'Unavailable', 'Available')),
+    pack('Signal', 'Provisioning failed', 'Value', Failed, 'State', iff(Failed > 0, 'Unavailable', 'Available')),
+    pack('Signal', 'No private DNS zone group', 'Value', NoZoneGroup, 'State', iff(NoZoneGroup > 0, 'Degraded', 'Available')))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),
+    Detail = strcat('of ', Total, ' private endpoints')
+"""
+    pe_issues_q = private_endpoints + """| where Connection !~ 'Approved' or Provisioning !~ 'Succeeded' or Dns == 'No zone group'
+| project id, Connection, Dns, Provisioning, Target, SubResource, ResourceGroup = resourceGroup
+| order by case(Connection =~ 'Approved', 1, 0) asc, case(Provisioning =~ 'Succeeded', 1, 0) asc
+"""
+    duplicate_zones_q = """
+resources
+| where type =~ 'microsoft.network/privatednszones'
+| where name startswith 'privatelink.'
+| summarize Copies = count(), Subscriptions = dcount(subscriptionId),
+    ResourceGroups = strcat_array(make_set(resourceGroup), ', ') by Zone = name
+| where Copies > 1
+| order by Copies desc
+"""
     yes_good = lambda col: status_fmt(col, good=["true"], warn=["false", ""])
     return group("tab-shared", [
         params("shared-params", [
@@ -1229,6 +1266,21 @@ resources
             high_is_good("Links", 1, 1),
         ], labels={"id": "Zone", "RecordSetPct": "Record sets % of limit", "LinkPct": "VNet links % of limit"},
             no_data="No Private DNS zones found."),
+        text("shared-pe-h", "### Private endpoints"),
+        arg("shared-pe-tiles", "", pe_tiles_q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail")),
+        arg("shared-pe-issues", "Private endpoints needing attention", pe_issues_q, formatters=[
+            resource_link(), resource_link("Target"), PROVISIONING,
+            status_fmt("Connection", good=["Approved"], warn=["Pending"], bad=["Rejected", "Disconnected"]),
+            status_fmt("Dns", good=["Zone group"], warn=["No zone group"]),
+        ], labels={"id": "Private endpoint", "Dns": "DNS", "SubResource": "Sub-resource"},
+            no_data="Every private endpoint is approved, provisioned and has a private DNS zone group.", width=65),
+        arg("shared-pe-duplicate-zones", "Private Link DNS zones that exist more than once", duplicate_zones_q,
+            labels={"ResourceGroups": "Resource groups"},
+            no_data="Each privatelink zone exists once.", width=35),
+        text("shared-pe-note", "An endpoint with no private DNS zone group has no record registered for it in the "
+             "central zones, so its name resolves to the public address unless a record is kept by hand. A "
+             "privatelink zone that exists twice splits resolution: a VNet linked to the extra copy cannot see "
+             "the records in the central one.", "info"),
         text("shared-kv-h", "### Key Vault"),
         metric_grid("shared-kv-kpis", "Key Vault metrics (over time range)", kns, "KeyVaults", [
             ("Availability", AVG, "Availability %", ("high", 99.9, 99)),

@@ -21,7 +21,7 @@ Built for a **Virtual WAN** based landing zone.
 | ExpressRoute | Metrics | Circuit/provider state, BGP & ARP availability, bandwidth utilisation, vWAN ER gateway CPU/throughput/routes, connections |
 | VPN | Metrics, Logs* | vWAN S2S & P2S gateways, VPN sites, connections, tunnel bandwidth, BGP status, drops, tunnel events* |
 | Connectivity | Resource Graph, Logs* | Network Watcher connection monitors, latest result per test*, packet loss and round-trip time by path* |
-| Shared Services | Resource Graph, Metrics | Bastion, DDoS coverage & attacks, DNS Private Resolver, Private DNS zone limits/links, Key Vault health |
+| Shared Services | Resource Graph, Metrics | Bastion, DDoS coverage & attacks, DNS Private Resolver, Private DNS zone limits/links, private endpoint connection and DNS state, duplicate Private Link zones, Key Vault health |
 | Build Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
 | AVS (Azure VMware Solution) | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
 | AVD (Azure Virtual Desktop) | Logs* | Session host status, sessions/users, connection RTT, top errors |
