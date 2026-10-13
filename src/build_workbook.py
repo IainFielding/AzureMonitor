@@ -1147,6 +1147,47 @@ NWConnectionMonitorTestResult
     loss_q = tests + "| summarize LossPct = round(100.0 * sum(ChecksFailed) / sum(ChecksTotal), 2) " + by_path
     rtt_q = tests + "| summarize AvgRttMs = avg(AvgRoundTripTimeMs) " + by_path
     result_states = dict(good=["Pass"], warn=["Warning"], bad=["Fail"], neutral=["Indeterminate"])
+    flow_log_coverage_q = """
+resources
+| where type =~ 'microsoft.network/virtualnetworks'
+| project id = tolower(id), Subnets = array_length(properties.subnets), ResourceGroup = resourceGroup, Location = location
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.network/networkwatchers/flowlogs'
+    | extend isEnabled = tobool(properties.enabled),
+        analytics = tobool(properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.enabled)
+    | summarize Enabled = countif(isEnabled), WithAnalytics = countif(isEnabled and analytics),
+        RetentionDays = max(toint(properties.retentionPolicy.days))
+        by id = tolower(tostring(properties.targetResourceId))
+  ) on id
+| project id,
+    FlowLogs = case(coalesce(Enabled, 0) == 0, 'No flow log', coalesce(WithAnalytics, 0) == 0, 'No Traffic Analytics', 'Traffic Analytics'),
+    RetentionDays, Subnets, ResourceGroup, Location
+| order by case(FlowLogs == 'No flow log', 0, FlowLogs == 'No Traffic Analytics', 1, 2) asc, ResourceGroup asc
+"""
+    # The one-column datatable keeps the query valid in a workspace with no Traffic Analytics table; every
+    # other column is then read with column_ifexists so it does not have to exist.
+    flows = """
+union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (NTANetAnalytics)
+| where TimeGenerated {TimeRange}
+| where column_ifexists('SubType', '') == 'FlowLog'
+| extend FlowType = tostring(column_ifexists('FlowType', '')), FlowStatus = tostring(column_ifexists('FlowStatus', '')),
+    Source = tostring(column_ifexists('SrcIp', '')), Destination = tostring(column_ifexists('DestIp', '')),
+    SourceVm = tostring(column_ifexists('SrcVm', '')), DestinationVm = tostring(column_ifexists('DestVm', '')),
+    Port = tostring(column_ifexists('DestPort', '')), Protocol = tostring(column_ifexists('L4Protocol', '')),
+    Rule = tostring(column_ifexists('AclRule', '')),
+    Bytes = tolong(column_ifexists('BytesSrcToDest', 0)) + tolong(column_ifexists('BytesDestToSrc', 0))
+"""
+    flow_types_q = flows + "| summarize Bytes = sum(Bytes) by bin(TimeGenerated, {TimeRange:grain}), FlowType\n"
+    talkers_q = flows + """| where FlowStatus == 'Allowed'
+| summarize Bytes = sum(Bytes), Flows = count() by Source, SourceVm, Destination, DestinationVm
+| top 30 by Bytes desc
+| project Source, SourceVm, Destination, DestinationVm, GB = round(Bytes / 1073741824.0, 2), Flows
+"""
+    denied_flows_q = flows + """| where FlowStatus == 'Denied'
+| summarize Flows = count(), LastSeen = max(TimeGenerated) by Source, SourceVm, Destination, Port, Protocol, Rule
+| top 30 by Flows desc
+"""
     return group("tab-connectivity", [
         text("conn-intro",
              "End-to-end reachability from **Network Watcher Connection Monitor** tests. The other network tabs show "
@@ -1172,6 +1213,22 @@ NWConnectionMonitorTestResult
            no_data="No Connection Monitor results in the time range."),
         la("conn-loss", "Checks failed % by path", loss_q, vis="timechart", width=50),
         la("conn-rtt", "Average round-trip time (ms) by path", rtt_q, vis="timechart", width=50),
+        text("conn-traffic-h", "### Network traffic (VNet flow logs)"),
+        arg("conn-flow-coverage", "Virtual networks by flow log coverage", flow_log_coverage_q, formatters=[
+            resource_link(),
+            status_fmt("FlowLogs", good=["Traffic Analytics"], warn=["No Traffic Analytics"], bad=["No flow log"]),
+        ], labels={"id": "Virtual network", "FlowLogs": "Flow logs", "RetentionDays": "Retention (days)"},
+            no_data="No virtual networks found."),
+        la("conn-flow-types", "Traffic by flow type (bytes)", flow_types_q, vis="timechart"),
+        la("conn-talkers", "Top talkers (allowed traffic)", talkers_q, width=50,
+           labels={"SourceVm": "Source VM", "DestinationVm": "Destination VM"},
+           no_data="No flow records in the time range (or Traffic Analytics does not write to this workspace)."),
+        la("conn-denied-flows", "Top denied flows", denied_flows_q, width=50,
+           labels={"SourceVm": "Source VM", "LastSeen": "Last seen"},
+           no_data="No denied flows in the time range."),
+        text("conn-traffic-note", "Coverage counts a flow log that targets the virtual network itself; one that targets "
+             "a single subnet or network interface is not counted. The traffic panels read the Traffic Analytics "
+             "table for VNet flow logs (`NTANetAnalytics`), not the older NSG flow log table.", "info"),
     ], tab="connectivity")
 
 

@@ -5936,6 +5936,208 @@
               "comparison": "isNotEqualTo",
               "value": ""
             }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Network traffic (VNet flow logs)"
+            },
+            "name": "conn-traffic-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| project id = tolower(id), Subnets = array_length(properties.subnets), ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkwatchers/flowlogs'\n    | extend isEnabled = tobool(properties.enabled),\n        analytics = tobool(properties.flowAnalyticsConfiguration.networkWatcherFlowAnalyticsConfiguration.enabled)\n    | summarize Enabled = countif(isEnabled), WithAnalytics = countif(isEnabled and analytics),\n        RetentionDays = max(toint(properties.retentionPolicy.days))\n        by id = tolower(tostring(properties.targetResourceId))\n  ) on id\n| project id,\n    FlowLogs = case(coalesce(Enabled, 0) == 0, 'No flow log', coalesce(WithAnalytics, 0) == 0, 'No Traffic Analytics', 'Traffic Analytics'),\n    RetentionDays, Subnets, ResourceGroup, Location\n| order by case(FlowLogs == 'No flow log', 0, FlowLogs == 'No Traffic Analytics', 1, 2) asc, ResourceGroup asc",
+              "size": 0,
+              "title": "Virtual networks by flow log coverage",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual networks found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "FlowLogs",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Traffic Analytics",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No Traffic Analytics",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No flow log",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Virtual network"
+                  },
+                  {
+                    "columnId": "FlowLogs",
+                    "label": "Flow logs"
+                  },
+                  {
+                    "columnId": "RetentionDays",
+                    "label": "Retention (days)"
+                  }
+                ]
+              }
+            },
+            "name": "conn-flow-coverage"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (NTANetAnalytics)\n| where TimeGenerated {TimeRange}\n| where column_ifexists('SubType', '') == 'FlowLog'\n| extend FlowType = tostring(column_ifexists('FlowType', '')), FlowStatus = tostring(column_ifexists('FlowStatus', '')),\n    Source = tostring(column_ifexists('SrcIp', '')), Destination = tostring(column_ifexists('DestIp', '')),\n    SourceVm = tostring(column_ifexists('SrcVm', '')), DestinationVm = tostring(column_ifexists('DestVm', '')),\n    Port = tostring(column_ifexists('DestPort', '')), Protocol = tostring(column_ifexists('L4Protocol', '')),\n    Rule = tostring(column_ifexists('AclRule', '')),\n    Bytes = tolong(column_ifexists('BytesSrcToDest', 0)) + tolong(column_ifexists('BytesDestToSrc', 0))\n| summarize Bytes = sum(Bytes) by bin(TimeGenerated, {TimeRange:grain}), FlowType",
+              "size": 0,
+              "title": "Traffic by flow type (bytes)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "conn-flow-types",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (NTANetAnalytics)\n| where TimeGenerated {TimeRange}\n| where column_ifexists('SubType', '') == 'FlowLog'\n| extend FlowType = tostring(column_ifexists('FlowType', '')), FlowStatus = tostring(column_ifexists('FlowStatus', '')),\n    Source = tostring(column_ifexists('SrcIp', '')), Destination = tostring(column_ifexists('DestIp', '')),\n    SourceVm = tostring(column_ifexists('SrcVm', '')), DestinationVm = tostring(column_ifexists('DestVm', '')),\n    Port = tostring(column_ifexists('DestPort', '')), Protocol = tostring(column_ifexists('L4Protocol', '')),\n    Rule = tostring(column_ifexists('AclRule', '')),\n    Bytes = tolong(column_ifexists('BytesSrcToDest', 0)) + tolong(column_ifexists('BytesDestToSrc', 0))\n| where FlowStatus == 'Allowed'\n| summarize Bytes = sum(Bytes), Flows = count() by Source, SourceVm, Destination, DestinationVm\n| top 30 by Bytes desc\n| project Source, SourceVm, Destination, DestinationVm, GB = round(Bytes / 1073741824.0, 2), Flows",
+              "size": 0,
+              "title": "Top talkers (allowed traffic)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No flow records in the time range (or Traffic Analytics does not write to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SourceVm",
+                    "label": "Source VM"
+                  },
+                  {
+                    "columnId": "DestinationVm",
+                    "label": "Destination VM"
+                  }
+                ]
+              }
+            },
+            "name": "conn-talkers",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (NTANetAnalytics)\n| where TimeGenerated {TimeRange}\n| where column_ifexists('SubType', '') == 'FlowLog'\n| extend FlowType = tostring(column_ifexists('FlowType', '')), FlowStatus = tostring(column_ifexists('FlowStatus', '')),\n    Source = tostring(column_ifexists('SrcIp', '')), Destination = tostring(column_ifexists('DestIp', '')),\n    SourceVm = tostring(column_ifexists('SrcVm', '')), DestinationVm = tostring(column_ifexists('DestVm', '')),\n    Port = tostring(column_ifexists('DestPort', '')), Protocol = tostring(column_ifexists('L4Protocol', '')),\n    Rule = tostring(column_ifexists('AclRule', '')),\n    Bytes = tolong(column_ifexists('BytesSrcToDest', 0)) + tolong(column_ifexists('BytesDestToSrc', 0))\n| where FlowStatus == 'Denied'\n| summarize Flows = count(), LastSeen = max(TimeGenerated) by Source, SourceVm, Destination, Port, Protocol, Rule\n| top 30 by Flows desc",
+              "size": 0,
+              "title": "Top denied flows",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No denied flows in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SourceVm",
+                    "label": "Source VM"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "conn-denied-flows",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Coverage counts a flow log that targets the virtual network itself; one that targets a single subnet or network interface is not counted. The traffic panels read the Traffic Analytics table for VNet flow logs (`NTANetAnalytics`), not the older NSG flow log table.",
+              "style": "info"
+            },
+            "name": "conn-traffic-note"
           }
         ]
       },
