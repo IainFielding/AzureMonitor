@@ -26,6 +26,7 @@ jobs:
         run: |
           python3 src/build_workbook.py
           python3 src/build_firewall_troubleshoot.py
+          python3 src/build_backup.py
           python3 src/build_grafana.py
 
       - name: Fail if the committed files differ
@@ -36,6 +37,7 @@ jobs:
             echo "Run these and commit the result:"
             echo "    python src/build_workbook.py"
             echo "    python src/build_firewall_troubleshoot.py"
+            echo "    python src/build_backup.py"
             echo "    python src/build_grafana.py"
             exit 1
           fi

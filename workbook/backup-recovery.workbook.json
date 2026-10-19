@@ -1,0 +1,3775 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Backup & Recovery\nIs everything that should be backed up or replicated protected, is it working, and could it be restored? Azure Backup (Recovery Services and Backup vaults), Site Recovery, Azure SQL and SQL Server in VMs, and storage accounts."
+      },
+      "name": "bk-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "5c011ea2-da1f-51fb-885d-2a2813328137",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "9af9f37f-a8fd-5dc0-bbea-480f6288c4c6",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 604800000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "Applies to jobs and log panels. Resource Graph keeps recent jobs only; the workspace holds longer history."
+          },
+          {
+            "id": "f8f71506-3c15-56c2-bead-4ebf81cce6ce",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Optional. The workspace the vaults' diagnostic settings send to. Enables job history and Site Recovery RPO trends."
+          },
+          {
+            "id": "82101416-5b6b-56dc-adb7-755823545788",
+            "version": "KqlParameterItem/1.0",
+            "name": "StaleHours",
+            "label": "Backup is stale after",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"24\", \"label\": \"24 hours\"}, {\"value\": \"26\", \"label\": \"26 hours\"}, {\"value\": \"36\", \"label\": \"36 hours\"}, {\"value\": \"48\", \"label\": \"48 hours\"}, {\"value\": \"72\", \"label\": \"72 hours\"}, {\"value\": \"168\", \"label\": \"7 days\"}]",
+            "value": "26",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "A protected item whose last backup is older than this is flagged. 26 hours allows for a daily backup that runs a little late."
+          },
+          {
+            "id": "f881e25c-3015-55e0-b0a2-51cad24de8ca",
+            "version": "KqlParameterItem/1.0",
+            "name": "TestFailoverDays",
+            "label": "Test failover due after",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"90\", \"label\": \"90 days\"}, {\"value\": \"180\", \"label\": \"180 days\"}, {\"value\": \"365\", \"label\": \"365 days\"}]",
+            "value": "180",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "A replicated item or recovery plan with no successful test failover in this long is flagged."
+          },
+          {
+            "id": "477a2b67-90eb-510b-a1ac-d262ba1b0950",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "bk-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "17bb32ba-06bd-574f-865b-cdd6747131db",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "5738b11f-a25c-5bd2-8bbd-8e8995493f23",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Azure Backup",
+            "subTarget": "backup",
+            "style": "link"
+          },
+          {
+            "id": "c6d5c95b-22c3-5959-898b-3c742805b95e",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Site Recovery",
+            "subTarget": "asr",
+            "style": "link"
+          },
+          {
+            "id": "2841e2b1-1caf-5a44-9574-892e9f96ffe8",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "SQL",
+            "subTarget": "sql",
+            "style": "link"
+          },
+          {
+            "id": "4cd2c968-beb8-5dba-9095-5fee2ded10a2",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Storage",
+            "subTarget": "storage",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "bk-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type in~ ('microsoft.recoveryservices/vaults/backupjobs', 'microsoft.dataprotection/backupvaults/backupjobs')\n| extend Started = todatetime(properties.startTime)\n| where Started >= todatetime('{TimeRange:startISO}')\n| extend VaultKind = iff(type =~ 'microsoft.recoveryservices/vaults/backupjobs', 'Recovery Services', 'Backup vault'),\n    Vault = tostring(split(id, '/')[8]),\n    Item = coalesce(tostring(properties.entityFriendlyName), tostring(properties.dataSourceName)),\n    Workload = coalesce(tostring(properties.backupManagementType), tostring(properties.dataSourceType)),\n    Operation = coalesce(tostring(properties.operation), tostring(properties.operationCategory)),\n    Status = tostring(properties.status),\n    Duration = todatetime(properties.endTime) - Started,\n    Error = coalesce(tostring(properties.extendedInfo.propertyBag['Error Code']), tostring(properties.errorDetails[0].errorCode),\n        tostring(properties.extendedInfo.errorDetails[0].errorCode))\n| summarize Failed = countif(Status =~ 'Failed'), Jobs = count()\n| project Signal = 'Failed backup jobs', Value = Failed, Detail = strcat('of ', Jobs, ' jobs in the time range'),\n    State = case(Jobs == 0, 'Unknown', Failed > 0, 'Unavailable', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bk-tile-jobs",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type in~ ('microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems', 'microsoft.dataprotection/backupvaults/backupinstances', 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems')\n| extend Vault = tostring(split(id, '/')[8]), Item = tostring(properties.friendlyName),\n    LastBackup = todatetime(properties.lastBackupTime), TestFailover = todatetime(properties.lastSuccessfulTestFailoverTime)\n// Site Recovery reports \"never\" as 0001-01-01.\n| extend TestFailover = iff(TestFailover < datetime(2000-01-01), datetime(null), TestFailover)\n| extend Kind = case(\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems', 'Site Recovery',\n    type =~ 'microsoft.dataprotection/backupvaults/backupinstances', strcat('Backup vault: ', tostring(split(tostring(properties.dataSourceInfo.datasourceType), '/')[-1])),\n    strcat('Backup: ', tostring(properties.workloadType)))\n| extend Problem = case(\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems' and tostring(properties.replicationHealth) !~ 'Normal',\n        strcat('Replication ', tostring(properties.replicationHealth), ': ', tostring(properties.healthErrors[0].errorMessage)),\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems' and (isnull(TestFailover) or TestFailover < ago({TestFailoverDays}d)),\n        iff(isnull(TestFailover), 'Never test failed over', 'No test failover in {TestFailoverDays} days'),\n    type =~ 'microsoft.dataprotection/backupvaults/backupinstances' and tostring(properties.protectionStatus.status) !~ 'ProtectionConfigured',\n        strcat('Protection ', tostring(properties.protectionStatus.status), ' ', tostring(properties.protectionStatus.errorDetails.message)),\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.lastBackupStatus) =~ 'Failed', 'Last backup failed',\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.healthStatus) =~ 'ActionRequired', 'Action required',\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.protectionState) =~ 'Protected' and LastBackup < ago({StaleHours}h),\n        strcat('No backup for ', datetime_diff('hour', now(), LastBackup), ' hours'),\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.protectionState) in~ ('ProtectionStopped', 'ProtectionPaused', 'ProtectionError'),\n        strcat('Protection ', tostring(properties.protectionState)),\n    '')\n| extend Severity = case(Problem has_any ('failed', 'Critical', 'Action required', 'ProtectionError', 'No backup for', 'Never'), 'Critical',\n    isnotempty(Problem), 'Warning', '')\n| where Kind !~ 'Site Recovery'\n| summarize Critical = countif(Severity == 'Critical'), Warning = countif(Severity == 'Warning'), Total = count()\n| project Signal = 'Backup items with problems', Value = Critical + Warning,\n    Detail = strcat(Critical, ' critical, ', Warning, ' warning, of ', Total),\n    State = case(Total == 0, 'Unknown', Critical > 0, 'Unavailable', Warning > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bk-tile-attention",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| project id = tolower(id),\n    OS = tostring(properties.storageProfile.osDisk.osType),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n    | where tostring(properties.backupManagementType) =~ 'AzureIaasVM'\n    | project vmId = tolower(coalesce(tostring(properties.sourceResourceId), tostring(properties.virtualMachineId))),\n        vault = tostring(split(id, '/')[8]), lastBackup = todatetime(properties.lastBackupTime)\n    | where isnotempty(vmId)\n    | summarize Vault = max(vault), LastBackup = max(lastBackup) by id = vmId\n  ) on id\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'\n    | project vmId = tolower(coalesce(tostring(properties.providerSpecificDetails.fabricObjectId),\n        tostring(properties.providerSpecificDetails.protectedManagedDisks[0].sourceManagedDiskId)))\n    | where vmId has '/virtualmachines/'\n    | summarize Replicated = count() by id = vmId\n  ) on id\n| project id, Protection = iff(isempty(Vault), 'Not protected', 'Protected'), Vault, LastBackup,\n    Replication = iff(Replicated > 0, 'Replicated', ''), OS, Power, ResourceGroup, Location\n| summarize Unprotected = countif(Protection == 'Not protected'), Total = count()\n| project Signal = 'VMs with no backup', Value = Unprotected, Detail = strcat('of ', Total, ' virtual machines'),\n    State = case(Total == 0, 'Unknown', Unprotected > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bk-tile-vms",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type in~ ('microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems', 'microsoft.dataprotection/backupvaults/backupinstances', 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems')\n| extend Vault = tostring(split(id, '/')[8]), Item = tostring(properties.friendlyName),\n    LastBackup = todatetime(properties.lastBackupTime), TestFailover = todatetime(properties.lastSuccessfulTestFailoverTime)\n// Site Recovery reports \"never\" as 0001-01-01.\n| extend TestFailover = iff(TestFailover < datetime(2000-01-01), datetime(null), TestFailover)\n| extend Kind = case(\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems', 'Site Recovery',\n    type =~ 'microsoft.dataprotection/backupvaults/backupinstances', strcat('Backup vault: ', tostring(split(tostring(properties.dataSourceInfo.datasourceType), '/')[-1])),\n    strcat('Backup: ', tostring(properties.workloadType)))\n| extend Problem = case(\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems' and tostring(properties.replicationHealth) !~ 'Normal',\n        strcat('Replication ', tostring(properties.replicationHealth), ': ', tostring(properties.healthErrors[0].errorMessage)),\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems' and (isnull(TestFailover) or TestFailover < ago({TestFailoverDays}d)),\n        iff(isnull(TestFailover), 'Never test failed over', 'No test failover in {TestFailoverDays} days'),\n    type =~ 'microsoft.dataprotection/backupvaults/backupinstances' and tostring(properties.protectionStatus.status) !~ 'ProtectionConfigured',\n        strcat('Protection ', tostring(properties.protectionStatus.status), ' ', tostring(properties.protectionStatus.errorDetails.message)),\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.lastBackupStatus) =~ 'Failed', 'Last backup failed',\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.healthStatus) =~ 'ActionRequired', 'Action required',\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.protectionState) =~ 'Protected' and LastBackup < ago({StaleHours}h),\n        strcat('No backup for ', datetime_diff('hour', now(), LastBackup), ' hours'),\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.protectionState) in~ ('ProtectionStopped', 'ProtectionPaused', 'ProtectionError'),\n        strcat('Protection ', tostring(properties.protectionState)),\n    '')\n| extend Severity = case(Problem has_any ('failed', 'Critical', 'Action required', 'ProtectionError', 'No backup for', 'Never'), 'Critical',\n    isnotempty(Problem), 'Warning', '')\n| where Kind == 'Site Recovery'\n| summarize Unhealthy = countif(Problem startswith 'Replication'), NoTest = countif(Problem has 'test failover' or Problem has 'test failed'),\n    Total = count()\n| project Signal = 'Replication problems', Value = Unhealthy,\n    Detail = strcat(NoTest, ' of ', Total, ' not test failed over in {TestFailoverDays} days'),\n    State = case(Total == 0, 'Unknown', Unhealthy > 0, 'Unavailable', NoTest > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bk-tile-asr",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.recoveryservices/vaults', 'microsoft.dataprotection/backupvaults')\n| extend SoftDelete = coalesce(tostring(properties.securitySettings.softDeleteSettings.softDeleteState),\n        tostring(properties.securitySettings.softDeleteSettings.state)),\n    Immutability = tostring(properties.securitySettings.immutabilitySettings.state)\n| summarize Weak = countif(SoftDelete !in~ ('AlwaysON', 'Enabled', 'On') or Immutability !in~ ('Locked', 'Unlocked')), Total = count()\n| project Signal = 'Vaults without soft delete or immutability', Value = Weak, Detail = strcat('of ', Total, ' vaults'),\n    State = case(Total == 0, 'Unknown', Weak > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bk-tile-vaults",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.sql/servers/databases', 'microsoft.sql/managedinstances')\n| where name !~ 'master'\n| extend Redundancy = coalesce(tostring(properties.currentBackupStorageRedundancy), tostring(properties.requestedBackupStorageRedundancy))\n| summarize Local = countif(Redundancy =~ 'Local'), Total = count()\n| project Signal = 'SQL with local-only backups', Value = Local, Detail = strcat('of ', Total, ' databases and managed instances'),\n    State = case(Total == 0, 'Unknown', Local > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bk-tile-sql",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Thresholds: a backup is *stale* when the last one is older than **{StaleHours} hours**, and a replicated item is\ndue a test failover after **{TestFailoverDays} days**. Change them at the top. *Local-only* SQL backups (LRS)\ncannot be restored if the region is lost.",
+              "style": "info"
+            },
+            "name": "bk-tile-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type in~ ('microsoft.recoveryservices/vaults/backupjobs', 'microsoft.dataprotection/backupvaults/backupjobs')\n| extend Started = todatetime(properties.startTime)\n| where Started >= todatetime('{TimeRange:startISO}')\n| extend VaultKind = iff(type =~ 'microsoft.recoveryservices/vaults/backupjobs', 'Recovery Services', 'Backup vault'),\n    Vault = tostring(split(id, '/')[8]),\n    Item = coalesce(tostring(properties.entityFriendlyName), tostring(properties.dataSourceName)),\n    Workload = coalesce(tostring(properties.backupManagementType), tostring(properties.dataSourceType)),\n    Operation = coalesce(tostring(properties.operation), tostring(properties.operationCategory)),\n    Status = tostring(properties.status),\n    Duration = todatetime(properties.endTime) - Started,\n    Error = coalesce(tostring(properties.extendedInfo.propertyBag['Error Code']), tostring(properties.errorDetails[0].errorCode),\n        tostring(properties.extendedInfo.errorDetails[0].errorCode))\n| summarize Jobs = count() by Day = bin(Started, 1d), Status\n| order by Day asc",
+              "size": 0,
+              "title": "Backup jobs per day by status (time range)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "barchart",
+              "noDataMessage": "No backup jobs in the time range."
+            },
+            "name": "bk-jobs-day",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type in~ ('microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems', 'microsoft.dataprotection/backupvaults/backupinstances')\n| extend Workload = iff(type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems', tostring(properties.workloadType),\n    tostring(split(tostring(properties.dataSourceInfo.datasourceType), '/')[-1]))\n| extend Healthy = iff(type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems',\n    tostring(properties.lastBackupStatus) !~ 'Failed' and tostring(properties.healthStatus) !~ 'ActionRequired',\n    tostring(properties.protectionStatus.status) =~ 'ProtectionConfigured')\n| summarize Items = count(), Problems = countif(not(Healthy)) by Workload\n| order by Items desc",
+              "size": 0,
+              "title": "Protected items by workload",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Nothing is protected by Azure Backup.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Problems",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "bk-workloads",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type in~ ('microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems', 'microsoft.dataprotection/backupvaults/backupinstances', 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems')\n| extend Vault = tostring(split(id, '/')[8]), Item = tostring(properties.friendlyName),\n    LastBackup = todatetime(properties.lastBackupTime), TestFailover = todatetime(properties.lastSuccessfulTestFailoverTime)\n// Site Recovery reports \"never\" as 0001-01-01.\n| extend TestFailover = iff(TestFailover < datetime(2000-01-01), datetime(null), TestFailover)\n| extend Kind = case(\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems', 'Site Recovery',\n    type =~ 'microsoft.dataprotection/backupvaults/backupinstances', strcat('Backup vault: ', tostring(split(tostring(properties.dataSourceInfo.datasourceType), '/')[-1])),\n    strcat('Backup: ', tostring(properties.workloadType)))\n| extend Problem = case(\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems' and tostring(properties.replicationHealth) !~ 'Normal',\n        strcat('Replication ', tostring(properties.replicationHealth), ': ', tostring(properties.healthErrors[0].errorMessage)),\n    type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems' and (isnull(TestFailover) or TestFailover < ago({TestFailoverDays}d)),\n        iff(isnull(TestFailover), 'Never test failed over', 'No test failover in {TestFailoverDays} days'),\n    type =~ 'microsoft.dataprotection/backupvaults/backupinstances' and tostring(properties.protectionStatus.status) !~ 'ProtectionConfigured',\n        strcat('Protection ', tostring(properties.protectionStatus.status), ' ', tostring(properties.protectionStatus.errorDetails.message)),\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.lastBackupStatus) =~ 'Failed', 'Last backup failed',\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.healthStatus) =~ 'ActionRequired', 'Action required',\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.protectionState) =~ 'Protected' and LastBackup < ago({StaleHours}h),\n        strcat('No backup for ', datetime_diff('hour', now(), LastBackup), ' hours'),\n    type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems' and tostring(properties.protectionState) in~ ('ProtectionStopped', 'ProtectionPaused', 'ProtectionError'),\n        strcat('Protection ', tostring(properties.protectionState)),\n    '')\n| extend Severity = case(Problem has_any ('failed', 'Critical', 'Action required', 'ProtectionError', 'No backup for', 'Never'), 'Critical',\n    isnotempty(Problem), 'Warning', '')\n| where isnotempty(Problem)\n| project Severity, Kind, Vault, Item, Problem, LastBackup, TestFailover\n| order by case(Severity == 'Critical', 0, 1) asc, Kind asc\n| take 500",
+              "size": 0,
+              "title": "Items needing attention (backup and replication)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every protected and replicated item is healthy.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Critical",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastBackup",
+                    "label": "Last backup"
+                  },
+                  {
+                    "columnId": "TestFailover",
+                    "label": "Last test failover"
+                  }
+                ]
+              }
+            },
+            "name": "bk-attention"
+          }
+        ]
+      },
+      "name": "bk-tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Vaults"
+            },
+            "name": "bk-vaults-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.recoveryservices/vaults'\n| project id,\n    Redundancy = tostring(properties.redundancySettings.standardTierStorageRedundancy),\n    CrossRegionRestore = tostring(properties.redundancySettings.crossRegionRestore),\n    SoftDelete = tostring(properties.securitySettings.softDeleteSettings.softDeleteState),\n    SoftDeleteDays = toint(properties.securitySettings.softDeleteSettings.softDeleteRetentionPeriodInDays),\n    Immutability = tostring(properties.securitySettings.immutabilitySettings.state),\n    MultiUserAuth = tostring(properties.securitySettings.multiUserAuthorization),\n    JobFailureAlerts = tostring(properties.monitoringSettings.azureMonitorAlertSettings.alertsForAllJobFailures),\n    PublicNetwork = tostring(properties.publicNetworkAccess),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Recovery Services vaults",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Recovery Services vaults.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Redundancy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "GeoRedundant",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "GeoRedundantStorage",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ZoneRedundant",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ZoneRedundantStorage",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "LocallyRedundant",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "LocallyRedundantStorage",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "CrossRegionRestore",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "SoftDelete",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "AlwaysON",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Immutability",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Locked",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unlocked",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "MultiUserAuth",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "JobFailureAlerts",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Vault"
+                  },
+                  {
+                    "columnId": "CrossRegionRestore",
+                    "label": "Cross-region restore"
+                  },
+                  {
+                    "columnId": "SoftDelete",
+                    "label": "Soft delete"
+                  },
+                  {
+                    "columnId": "SoftDeleteDays",
+                    "label": "Soft delete days"
+                  },
+                  {
+                    "columnId": "MultiUserAuth",
+                    "label": "Multi-user authorisation"
+                  },
+                  {
+                    "columnId": "JobFailureAlerts",
+                    "label": "Job failure alerts"
+                  },
+                  {
+                    "columnId": "PublicNetwork",
+                    "label": "Public network"
+                  }
+                ]
+              }
+            },
+            "name": "bk-rsv"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.dataprotection/backupvaults'\n| project id,\n    Redundancy = tostring(properties.storageSettings[0].type),\n    CrossRegionRestore = tostring(properties.featureSettings.crossRegionRestoreSettings.state),\n    SoftDelete = tostring(properties.securitySettings.softDeleteSettings.state),\n    SoftDeleteDays = toint(properties.securitySettings.softDeleteSettings.retentionDurationInDays),\n    Immutability = tostring(properties.securitySettings.immutabilitySettings.state),\n    JobFailureAlerts = tostring(properties.monitoringSettings.azureMonitorAlertSettings.alertsForAllJobFailures),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "size": 0,
+              "title": "Backup vaults (disks, blobs, AKS, PostgreSQL)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Backup vaults.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Redundancy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "GeoRedundant",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "GeoRedundantStorage",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ZoneRedundant",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ZoneRedundantStorage",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "LocallyRedundant",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "LocallyRedundantStorage",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "CrossRegionRestore",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "SoftDelete",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "AlwaysON",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "On",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Immutability",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Locked",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unlocked",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "MultiUserAuth",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "JobFailureAlerts",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Vault"
+                  },
+                  {
+                    "columnId": "CrossRegionRestore",
+                    "label": "Cross-region restore"
+                  },
+                  {
+                    "columnId": "SoftDelete",
+                    "label": "Soft delete"
+                  },
+                  {
+                    "columnId": "SoftDeleteDays",
+                    "label": "Soft delete days"
+                  },
+                  {
+                    "columnId": "MultiUserAuth",
+                    "label": "Multi-user authorisation"
+                  },
+                  {
+                    "columnId": "JobFailureAlerts",
+                    "label": "Job failure alerts"
+                  },
+                  {
+                    "columnId": "PublicNetwork",
+                    "label": "Public network"
+                  }
+                ]
+              }
+            },
+            "name": "bk-bv"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Soft delete keeps deleted backups recoverable; *AlwaysON* cannot be turned off. Immutability stops recovery points being deleted before they expire; *Locked* cannot be undone. Multi-user authorisation needs a Resource Guard approval for destructive operations. Locally redundant vaults cannot restore if the region is lost.",
+              "style": "info"
+            },
+            "name": "bk-vaults-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Protected items"
+            },
+            "name": "bk-items-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n| project Vault = tostring(split(id, '/')[8]),\n    Item = tostring(properties.friendlyName),\n    Workload = tostring(properties.workloadType),\n    Health = tostring(properties.healthStatus),\n    LastBackup = tostring(properties.lastBackupStatus),\n    LastBackupTime = todatetime(properties.lastBackupTime),\n    Protection = tostring(properties.protectionState),\n    Policy = tostring(properties.policyName),\n    Archive = tostring(properties.isArchiveEnabled),\n    Source = tostring(properties.sourceResourceId)\n| extend AgeHours = datetime_diff('hour', now(), LastBackupTime)\n| extend Age = case(Protection !~ 'Protected', '', AgeHours > {StaleHours}, 'Stale', 'OK')\n| project-reorder Vault, Item, Workload, Health, LastBackup, LastBackupTime, AgeHours, Age\n| order by case(LastBackup =~ 'Failed', 0, Health =~ 'ActionRequired', 1, Age == 'Stale', 2, 3) asc, LastBackupTime asc",
+              "size": 0,
+              "title": "Recovery Services protected items",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Recovery Services protected items.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "LastBackup",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Healthy",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Completed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "IRPending",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Passed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Normal",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionSuggested",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionRequired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Critical",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Protection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Protected",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionStopped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionPaused",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "IRPending",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionError",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Age",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "OK",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stale",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Source",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastBackup",
+                    "label": "Last backup"
+                  },
+                  {
+                    "columnId": "LastBackupTime",
+                    "label": "Last backup time"
+                  },
+                  {
+                    "columnId": "AgeHours",
+                    "label": "Hours since backup"
+                  },
+                  {
+                    "columnId": "Age",
+                    "label": "Within {StaleHours} h"
+                  },
+                  {
+                    "columnId": "Archive",
+                    "label": "Archive tier"
+                  }
+                ]
+              }
+            },
+            "name": "bk-items"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.dataprotection/backupvaults/backupinstances'\n| project Vault = tostring(split(id, '/')[8]),\n    Instance = tostring(properties.friendlyName),\n    Datasource = tostring(split(tostring(properties.dataSourceInfo.datasourceType), '/')[-1]),\n    Status = tostring(properties.protectionStatus.status),\n    State = tostring(properties.currentProtectionState),\n    Error = tostring(properties.protectionStatus.errorDetails.message),\n    Policy = tostring(split(tostring(properties.policyInfo.policyId), '/')[-1]),\n    Source = tostring(properties.dataSourceInfo.resourceID)\n| order by case(Status =~ 'ProtectionConfigured', 1, 0) asc, Vault asc",
+              "size": 0,
+              "title": "Backup vault instances",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Backup vault instances.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionConfigured",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionStopped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionError",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ConfiguringProtectionFailed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Source",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "bk-instances"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Jobs"
+            },
+            "name": "bk-jobs-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type in~ ('microsoft.recoveryservices/vaults/backupjobs', 'microsoft.dataprotection/backupvaults/backupjobs')\n| extend Started = todatetime(properties.startTime)\n| where Started >= todatetime('{TimeRange:startISO}')\n| extend VaultKind = iff(type =~ 'microsoft.recoveryservices/vaults/backupjobs', 'Recovery Services', 'Backup vault'),\n    Vault = tostring(split(id, '/')[8]),\n    Item = coalesce(tostring(properties.entityFriendlyName), tostring(properties.dataSourceName)),\n    Workload = coalesce(tostring(properties.backupManagementType), tostring(properties.dataSourceType)),\n    Operation = coalesce(tostring(properties.operation), tostring(properties.operationCategory)),\n    Status = tostring(properties.status),\n    Duration = todatetime(properties.endTime) - Started,\n    Error = coalesce(tostring(properties.extendedInfo.propertyBag['Error Code']), tostring(properties.errorDetails[0].errorCode),\n        tostring(properties.extendedInfo.errorDetails[0].errorCode))\n| where Status !in~ ('Completed', 'InProgress')\n| project Started, VaultKind, Vault, Item, Workload, Operation, Status, Error, Duration\n| order by Started desc\n| take 500",
+              "size": 0,
+              "title": "Backup jobs that did not complete (time range)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every backup job in the time range completed.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Completed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "CompletedWithWarnings",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Cancelled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "InProgress",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "VaultKind",
+                    "label": "Vault type"
+                  }
+                ]
+              }
+            },
+            "name": "bk-jobs-failed"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for job history, failure codes and job duration (needs the vaults' diagnostic settings in *Resource specific* mode, `AddonAzureBackupJobs`).",
+              "style": "info"
+            },
+            "name": "bk-la-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AddonAzureBackupJobs)\n| where TimeGenerated {TimeRange}\n| extend Operation = tostring(column_ifexists('JobOperation', '')), Status = tostring(column_ifexists('JobStatus', '')),\n    FailureCode = tostring(column_ifexists('JobFailureCode', '')), Workload = tostring(column_ifexists('BackupManagementType', '')),\n    Item = tostring(column_ifexists('BackupItemUniqueId', '')), DurationMin = todouble(column_ifexists('JobDurationInSecs', 0)) / 60.0\n\n| where Operation == 'Backup'\n| summarize Jobs = count() by bin(TimeGenerated, {TimeRange:grain}), Status",
+              "size": 0,
+              "title": "Backup jobs by status",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "bk-la-trend",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AddonAzureBackupJobs)\n| where TimeGenerated {TimeRange}\n| extend Operation = tostring(column_ifexists('JobOperation', '')), Status = tostring(column_ifexists('JobStatus', '')),\n    FailureCode = tostring(column_ifexists('JobFailureCode', '')), Workload = tostring(column_ifexists('BackupManagementType', '')),\n    Item = tostring(column_ifexists('BackupItemUniqueId', '')), DurationMin = todouble(column_ifexists('JobDurationInSecs', 0)) / 60.0\n\n| where Operation == 'Backup' and Status == 'Completed'\n| summarize ['p95 minutes'] = percentile(DurationMin, 95) by bin(TimeGenerated, {TimeRange:grain}), Workload",
+              "size": 0,
+              "title": "Backup job duration, p95 (minutes)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "bk-la-duration",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AddonAzureBackupJobs)\n| where TimeGenerated {TimeRange}\n| extend Operation = tostring(column_ifexists('JobOperation', '')), Status = tostring(column_ifexists('JobStatus', '')),\n    FailureCode = tostring(column_ifexists('JobFailureCode', '')), Workload = tostring(column_ifexists('BackupManagementType', '')),\n    Item = tostring(column_ifexists('BackupItemUniqueId', '')), DurationMin = todouble(column_ifexists('JobDurationInSecs', 0)) / 60.0\n\n| where Status == 'Failed'\n| summarize Failures = count(), Items = dcount(Item), LastSeen = max(TimeGenerated) by FailureCode, Operation, Workload\n| order by Failures desc",
+              "size": 0,
+              "title": "Failures by error code",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed backup jobs (or the vault diagnostic settings are not sending AddonAzureBackupJobs).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "FailureCode",
+                    "label": "Error code"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "bk-la-codes",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Coverage"
+            },
+            "name": "bk-coverage-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| project id = tolower(id),\n    OS = tostring(properties.storageProfile.osDisk.osType),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n    | where tostring(properties.backupManagementType) =~ 'AzureIaasVM'\n    | project vmId = tolower(coalesce(tostring(properties.sourceResourceId), tostring(properties.virtualMachineId))),\n        vault = tostring(split(id, '/')[8]), lastBackup = todatetime(properties.lastBackupTime)\n    | where isnotempty(vmId)\n    | summarize Vault = max(vault), LastBackup = max(lastBackup) by id = vmId\n  ) on id\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'\n    | project vmId = tolower(coalesce(tostring(properties.providerSpecificDetails.fabricObjectId),\n        tostring(properties.providerSpecificDetails.protectedManagedDisks[0].sourceManagedDiskId)))\n    | where vmId has '/virtualmachines/'\n    | summarize Replicated = count() by id = vmId\n  ) on id\n| project id, Protection = iff(isempty(Vault), 'Not protected', 'Protected'), Vault, LastBackup,\n    Replication = iff(Replicated > 0, 'Replicated', ''), OS, Power, ResourceGroup, Location\n| order by case(Protection == 'Not protected', 0, 1) asc, ResourceGroup asc",
+              "size": 0,
+              "title": "Virtual machines by backup protection",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Protection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Protected",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not protected",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Virtual machine"
+                  },
+                  {
+                    "columnId": "LastBackup",
+                    "label": "Last backup"
+                  }
+                ]
+              }
+            },
+            "name": "bk-vm-protection"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Machines rebuilt from an image (pooled AVD hosts, scale set agents) are normally not backed up. *Replication* shows whether Site Recovery also replicates the machine.",
+              "style": "info"
+            },
+            "name": "bk-vm-note"
+          }
+        ]
+      },
+      "name": "bk-tab-backup",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "backup"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'\n| summarize Items = count(), Critical = countif(tostring(properties.replicationHealth) =~ 'Critical'),\n    Warning = countif(tostring(properties.replicationHealth) =~ 'Warning')\n    by Vault = tostring(split(id, '/')[8]), Scenario = tostring(properties.providerSpecificDetails.instanceType)\n| order by Critical desc, Warning desc",
+              "size": 0,
+              "title": "Replicated items by vault and scenario",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No replicated items.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Critical",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "bk-asr-summary",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/replicationrecoveryplans'\n| extend LastTest = todatetime(properties.lastTestFailoverTime)\n| project Vault = tostring(split(id, '/')[8]),\n    Plan = tostring(properties.friendlyName),\n    Scenario = tostring(properties.currentScenario.scenarioName),\n    Groups = array_length(properties.groups),\n    LastTest,\n    TestDue = case(isnull(LastTest) or LastTest < datetime(2000-01-01), 'Never', LastTest < ago({TestFailoverDays}d), 'Overdue', 'OK'),\n    LastPlannedFailover = todatetime(properties.lastPlannedFailoverTime),\n    LastUnplannedFailover = todatetime(properties.lastUnplannedFailoverTime)\n| order by case(TestDue == 'OK', 1, 0) asc, Vault asc",
+              "size": 0,
+              "title": "Recovery plans",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No recovery plans.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TestDue",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "OK",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Overdue",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Never",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastTest",
+                    "label": "Last test failover"
+                  },
+                  {
+                    "columnId": "TestDue",
+                    "label": "Test"
+                  },
+                  {
+                    "columnId": "LastPlannedFailover",
+                    "label": "Last planned failover"
+                  },
+                  {
+                    "columnId": "LastUnplannedFailover",
+                    "label": "Last unplanned failover"
+                  }
+                ]
+              }
+            },
+            "name": "bk-asr-plans",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/replicationfabrics/replicationprotectioncontainers/replicationprotecteditems'\n| extend TestFailover = todatetime(properties.lastSuccessfulTestFailoverTime)\n| extend TestFailover = iff(TestFailover < datetime(2000-01-01), datetime(null), TestFailover)\n| project Vault = tostring(split(id, '/')[8]),\n    Item = tostring(properties.friendlyName),\n    Health = tostring(properties.replicationHealth),\n    State = tostring(properties.protectionStateDescription),\n    Scenario = tostring(properties.providerSpecificDetails.instanceType),\n    RpoMinutes = round(todouble(properties.providerSpecificDetails.rpoInSeconds) / 60.0, 1),\n    ActiveLocation = tostring(properties.activeLocation),\n    Primary = tostring(properties.primaryFabricFriendlyName),\n    Recovery = tostring(properties.recoveryFabricFriendlyName),\n    TestFailover,\n    TestDue = case(isnull(TestFailover), 'Never', TestFailover < ago({TestFailoverDays}d), 'Overdue', 'OK'),\n    FailoverHealth = tostring(properties.failoverHealth),\n    Error = tostring(properties.healthErrors[0].errorMessage),\n    Policy = tostring(properties.policyFriendlyName)\n| order by case(Health =~ 'Critical', 0, Health =~ 'Warning', 1, TestDue != 'OK', 2, 3) asc, Vault asc",
+              "size": 0,
+              "title": "Replicated items",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No replicated items.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Passed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Normal",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionSuggested",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionRequired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Critical",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "TestDue",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "OK",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Overdue",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Never",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "FailoverHealth",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Normal",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Critical",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RpoMinutes",
+                    "label": "RPO (minutes)"
+                  },
+                  {
+                    "columnId": "ActiveLocation",
+                    "label": "Active location"
+                  },
+                  {
+                    "columnId": "TestFailover",
+                    "label": "Last test failover"
+                  },
+                  {
+                    "columnId": "TestDue",
+                    "label": "Test"
+                  },
+                  {
+                    "columnId": "FailoverHealth",
+                    "label": "Failover health"
+                  }
+                ]
+              }
+            },
+            "name": "bk-asr-items"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*RPO* is reported for Azure-to-Azure replication. A *Test* of **Never** or **Overdue** means there is no recent proof the machine would come up in the recovery region; a recovery plan test covers every machine in it.",
+              "style": "info"
+            },
+            "name": "bk-asr-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/replicationjobs'\n| extend Started = todatetime(properties.startTime)\n| where Started >= todatetime('{TimeRange:startISO}')\n| where tostring(properties.state) !in~ ('Succeeded', 'InProgress')\n| project Started, Vault = tostring(split(id, '/')[8]),\n    Job = tostring(properties.friendlyName), Target = tostring(properties.targetObjectName),\n    State = tostring(properties.state), Scenario = tostring(properties.scenarioName),\n    Error = tostring(properties.errors[0].providerErrorDetails.errorMessage)\n| order by Started desc\n| take 500",
+              "size": 0,
+              "title": "Site Recovery jobs that did not succeed (time range)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every Site Recovery job in the time range succeeded (or Resource Graph does not hold them).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Cancelled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Suspended",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "bk-asr-jobs"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for RPO over time (needs the vault's diagnostic settings in *Resource specific* mode, `AzureSiteRecoveryReplicatedItems`).",
+              "style": "info"
+            },
+            "name": "bk-asr-la-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AzureSiteRecoveryReplicatedItems)\n| where TimeGenerated {TimeRange}\n| extend Item = coalesce(tostring(column_ifexists('ReplicatedItemFriendlyName', '')), tostring(column_ifexists('ReplicatedItemName', '')),\n        tostring(column_ifexists('ReplicationProtectedItemName', '')), tostring(column_ifexists('ReplicatedItemId', ''))),\n    RpoMinutes = todouble(column_ifexists('RpoInSeconds', real(null))) / 60.0\n| where isnotnull(RpoMinutes)\n| summarize RpoMinutes = max(RpoMinutes) by bin(TimeGenerated, {TimeRange:grain}), Item\n| join kind=inner (\n    union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AzureSiteRecoveryReplicatedItems)\n    | where TimeGenerated {TimeRange}\n    | extend Item = coalesce(tostring(column_ifexists('ReplicatedItemFriendlyName', '')), tostring(column_ifexists('ReplicatedItemName', '')),\n            tostring(column_ifexists('ReplicationProtectedItemName', '')), tostring(column_ifexists('ReplicatedItemId', ''))),\n        RpoMinutes = todouble(column_ifexists('RpoInSeconds', real(null))) / 60.0\n    | summarize Worst = max(RpoMinutes) by Item\n    | top 10 by Worst desc\n  ) on Item\n| project TimeGenerated, Item, RpoMinutes",
+              "size": 0,
+              "title": "RPO over time, worst 10 items (minutes)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No RPO data (or the vault diagnostic settings are not sending AzureSiteRecoveryReplicatedItems)."
+            },
+            "name": "bk-asr-rpo",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AzureSiteRecoveryJobs)\n| where TimeGenerated {TimeRange}\n| extend Status = tostring(column_ifexists('Status', '')), Operation = tostring(column_ifexists('OperationName', '')),\n    Item = tostring(column_ifexists('AffectedResourceName', ''))\n| where Status !in~ ('Succeeded', 'InProgress', '')\n| summarize Jobs = count(), LastSeen = max(TimeGenerated) by Operation, Status, Item\n| order by LastSeen desc",
+              "size": 0,
+              "title": "Failed Site Recovery jobs (workspace)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed Site Recovery jobs.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "bk-asr-la-jobs",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "bk-tab-asr",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "asr"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Azure SQL Database"
+            },
+            "name": "bk-sql-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.sql/servers/databases'\n| where name !~ 'master'\n| extend Earliest = todatetime(properties.earliestRestoreDate)\n| project id, Server = tostring(split(id, '/')[8]),\n    Redundancy = coalesce(tostring(properties.currentBackupStorageRedundancy), tostring(properties.requestedBackupStorageRedundancy)),\n    RestoreWindowDays = round(todouble(datetime_diff('minute', now(), Earliest)) / 1440.0, 1),\n    EarliestRestore = Earliest,\n    Secondary = tostring(properties.secondaryType),\n    ZoneRedundant = tostring(properties.zoneRedundant),\n    Sku = tostring(sku.name), Status = tostring(properties.status),\n    ResourceGroup = resourceGroup, Location = location\n| order by case(Redundancy =~ 'Local', 0, 1) asc, RestoreWindowDays asc",
+              "size": 0,
+              "title": "Databases: backup redundancy and point-in-time restore window",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Azure SQL databases.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Redundancy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Geo",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "GeoZone",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Local",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "RestoreWindowDays",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Database"
+                  },
+                  {
+                    "columnId": "Redundancy",
+                    "label": "Backup redundancy"
+                  },
+                  {
+                    "columnId": "RestoreWindowDays",
+                    "label": "Restore window (days)"
+                  },
+                  {
+                    "columnId": "EarliestRestore",
+                    "label": "Earliest restore point"
+                  },
+                  {
+                    "columnId": "Secondary",
+                    "label": "Secondary type"
+                  },
+                  {
+                    "columnId": "ZoneRedundant",
+                    "label": "Zone redundant"
+                  }
+                ]
+              }
+            },
+            "name": "bk-sql-dbs"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The restore window is how far back a point-in-time restore can go today. It grows to the configured short-term retention (1 to 35 days) after a database is created. Geo-secondaries and serverless databases that are paused may show no window.",
+              "style": "info"
+            },
+            "name": "bk-sql-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.sql/servers/failovergroups'\n| project Group = name, Server = tostring(split(id, '/')[8]),\n    Role = tostring(properties.replicationRole), State = tostring(properties.replicationState),\n    Partner = tostring(split(tostring(properties.partnerServers[0].id), '/')[8]),\n    PartnerLocation = tostring(properties.partnerServers[0].location),\n    FailoverPolicy = tostring(properties.readWriteEndpoint.failoverPolicy),\n    Databases = array_length(properties.databases), ResourceGroup = resourceGroup\n| order by Group asc",
+              "size": 0,
+              "title": "Failover groups",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No failover groups.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "CATCH_UP",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "PENDING",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "SEEDING",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "SUSPENDED",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "FailoverPolicy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Automatic",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Manual",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "PartnerLocation",
+                    "label": "Partner region"
+                  },
+                  {
+                    "columnId": "FailoverPolicy",
+                    "label": "Failover policy"
+                  }
+                ]
+              }
+            },
+            "name": "bk-sql-fog"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Long-term retention backups"
+            },
+            "name": "bk-sql-ltr-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Long-term retention (weekly, monthly, yearly backups kept up to 10 years) is not in Resource Graph, so this reads the latest LTR backup of each database from Azure Resource Manager, for one subscription and region at a time. A database missing from this list has no LTR backup.",
+              "style": "info"
+            },
+            "name": "bk-sql-ltr-note"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "1fc6c822-6ad1-54db-bffb-79761c598a18",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "SqlSubscription",
+                  "label": "Subscription",
+                  "type": 6,
+                  "isRequired": false,
+                  "multiSelect": false,
+                  "query": "resources\n| where type =~ 'microsoft.sql/servers'\n| summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "showDefault": false
+                  },
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "3076b365-ca8d-51e0-ad39-a722a7f8fb95",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "SqlRegion",
+                  "label": "Region",
+                  "type": 2,
+                  "isRequired": false,
+                  "query": "resources\n| where type =~ 'microsoft.sql/servers'\n| summarize by location\n| project value = location, label = location",
+                  "crossComponentResources": [
+                    "{SqlSubscription}"
+                  ],
+                  "typeSettings": {
+                    "showDefault": false
+                  },
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "bk-sql-ltr-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{SqlSubscription}/providers/Microsoft.Sql/locations/{SqlRegion}/longTermRetentionBackups\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2021-11-01\"}, {\"key\": \"onlyLatestPerDatabase\", \"value\": \"true\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.properties.serverName\", \"columnid\": \"Server\"}, {\"path\": \"$.properties.databaseName\", \"columnid\": \"Database\"}, {\"path\": \"$.properties.backupTime\", \"columnid\": \"Latest LTR backup\", \"columnType\": \"datetime\"}, {\"path\": \"$.properties.backupExpirationTime\", \"columnid\": \"Expires\", \"columnType\": \"datetime\"}, {\"path\": \"$.properties.backupStorageRedundancy\", \"columnid\": \"Backup redundancy\"}, {\"path\": \"$.properties.databaseDeletionTime\", \"columnid\": \"Database deleted\", \"columnType\": \"datetime\"}]}}]}",
+              "size": 0,
+              "title": "Latest long-term retention backup per database",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              },
+              "noDataMessage": "No long-term retention backups in this subscription and region."
+            },
+            "name": "bk-sql-ltr",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "SqlSubscription",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              },
+              {
+                "parameterName": "SqlRegion",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### SQL Managed Instance"
+            },
+            "name": "bk-mi-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.sql/managedinstances'\n| project mi = tolower(id), Instance = name,\n    Redundancy = coalesce(tostring(properties.currentBackupStorageRedundancy), tostring(properties.requestedBackupStorageRedundancy)),\n    ZoneRedundant = tostring(properties.zoneRedundant), State = tostring(properties.state)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.sql/managedinstances/databases'\n    | extend Earliest = todatetime(properties.earliestRestorePoint)\n    | summarize Databases = count(), ShortestWindowDays = round(min(todouble(datetime_diff('minute', now(), Earliest))) / 1440.0, 1)\n        by mi = tolower(tostring(split(id, '/databases/')[0]))\n  ) on mi\n| project id = mi, Redundancy, Databases = coalesce(Databases, 0), ShortestWindowDays, ZoneRedundant, State\n| order by case(Redundancy =~ 'Local', 0, 1) asc",
+              "size": 0,
+              "title": "Managed instances: backup redundancy and restore window",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No managed instances.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Redundancy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Geo",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "GeoZone",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Local",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Ready",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Instance"
+                  },
+                  {
+                    "columnId": "Redundancy",
+                    "label": "Backup redundancy"
+                  },
+                  {
+                    "columnId": "ShortestWindowDays",
+                    "label": "Shortest restore window (days)"
+                  },
+                  {
+                    "columnId": "ZoneRedundant",
+                    "label": "Zone redundant"
+                  }
+                ]
+              }
+            },
+            "name": "bk-sql-mi"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### SQL Server in virtual machines"
+            },
+            "name": "bk-vm-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.sqlvirtualmachine/sqlvirtualmachines'\n| extend vmId = tolower(tostring(properties.virtualMachineResourceId))\n| project id, vmKey = strcat(tostring(split(vmId, '/')[4]), ';', tostring(split(vmId, '/')[8])),\n    Image = tostring(properties.sqlImageOffer), Edition = tostring(properties.sqlImageSku),\n    License = tostring(properties.sqlServerLicenseType), ResourceGroup = resourceGroup\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n    | where tostring(properties.workloadType) =~ 'SQLDataBase'\n    | extend parts = split(tolower(tostring(split(id, '/')[12])), ';')\n    | summarize Protected = count(), LastBackup = max(todatetime(properties.lastBackupTime)),\n        Failed = countif(tostring(properties.lastBackupStatus) =~ 'Failed')\n        by vmKey = strcat(tostring(parts[-2]), ';', tostring(parts[-1]))\n  ) on vmKey\n| project id, AzureBackup = iff(Protected > 0, 'Yes', 'No'), Databases = coalesce(Protected, 0), Failed = coalesce(Failed, 0),\n    LastBackup, Image, Edition, License, ResourceGroup\n| order by AzureBackup asc, Failed desc",
+              "size": 0,
+              "title": "SQL Server VMs and Azure Backup",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No SQL Server VMs registered with the SQL IaaS extension.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "AzureBackup",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Failed",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "SQL virtual machine"
+                  },
+                  {
+                    "columnId": "AzureBackup",
+                    "label": "Azure Backup"
+                  },
+                  {
+                    "columnId": "Databases",
+                    "label": "Databases protected"
+                  },
+                  {
+                    "columnId": "LastBackup",
+                    "label": "Last backup"
+                  }
+                ]
+              }
+            },
+            "name": "bk-sql-vms"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*No* means no database on the VM is protected by Azure Backup. That is fine if it uses SQL Server's own backup to URL or another product, which this workbook cannot see.",
+              "style": "info"
+            },
+            "name": "bk-sql-vms-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n| where tostring(properties.backupManagementType) =~ 'AzureWorkload'\n| extend Container = tostring(split(id, '/')[12])\n| project Vault = tostring(split(id, '/')[8]),\n    Database = tostring(properties.friendlyName),\n    Workload = tostring(properties.workloadType),\n    Server = coalesce(tostring(properties.serverName), tostring(properties.parentName)),\n    Vm = tostring(split(Container, ';')[-1]),\n    LastBackup = tostring(properties.lastBackupStatus),\n    LastBackupTime = todatetime(properties.lastBackupTime),\n    Health = tostring(properties.healthStatus),\n    Protection = tostring(properties.protectionState),\n    Policy = tostring(properties.policyName)\n| order by case(LastBackup =~ 'Failed', 0, Health =~ 'ActionRequired', 1, 2) asc, LastBackupTime asc",
+              "size": 0,
+              "title": "Databases protected by Azure Backup (SQL Server, SAP HANA, SAP ASE)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No database workloads protected by Azure Backup.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "LastBackup",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Healthy",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Completed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "IRPending",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Passed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Normal",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionSuggested",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionRequired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Critical",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Protection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Protected",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionStopped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionPaused",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "IRPending",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionError",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Vm",
+                    "label": "VM"
+                  },
+                  {
+                    "columnId": "LastBackup",
+                    "label": "Last backup"
+                  },
+                  {
+                    "columnId": "LastBackupTime",
+                    "label": "Last backup time"
+                  }
+                ]
+              }
+            },
+            "name": "bk-workload-dbs"
+          }
+        ]
+      },
+      "name": "bk-tab-sql",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "sql"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id = tolower(id), Redundancy = tostring(sku.name), Kind = kind,\n    Hns = tostring(properties.isHnsEnabled), Immutable = tostring(properties.immutableStorageWithVersioning.enabled),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n    | where tostring(properties.workloadType) =~ 'AzureFileShare'\n    | summarize Shares = count(), SharesFailed = countif(tostring(properties.lastBackupStatus) =~ 'Failed'),\n        SharesLastBackup = max(todatetime(properties.lastBackupTime))\n        by id = tolower(tostring(properties.sourceResourceId))\n  ) on id\n| join kind=leftouter (\n    recoveryservicesresources\n    | where type =~ 'microsoft.dataprotection/backupvaults/backupinstances'\n    | where tostring(properties.dataSourceInfo.datasourceType) has 'blobServices'\n    | summarize BlobStatus = max(tostring(properties.protectionStatus.status))\n        by id = tolower(tostring(properties.dataSourceInfo.resourceID))\n  ) on id\n| project id, Redundancy, BlobBackup = coalesce(BlobStatus, 'None'), FileShareBackups = coalesce(Shares, 0),\n    FileSharesFailed = coalesce(SharesFailed, 0), SharesLastBackup, Kind, Hns, Immutable, ResourceGroup, Location\n| order by FileSharesFailed desc, case(BlobBackup == 'None' and FileShareBackups == 0, 1, 0) asc, Redundancy asc",
+              "size": 0,
+              "title": "Storage accounts by backup protection",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No storage accounts.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Redundancy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard_GRS",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard_RAGRS",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard_GZRS",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard_RAGZRS",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard_ZRS",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Premium_ZRS",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard_LRS",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Premium_LRS",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "BlobBackup",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionConfigured",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionError",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ConfiguringProtectionFailed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "None",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "FileSharesFailed",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Storage account"
+                  },
+                  {
+                    "columnId": "BlobBackup",
+                    "label": "Blob backup"
+                  },
+                  {
+                    "columnId": "FileShareBackups",
+                    "label": "File shares backed up"
+                  },
+                  {
+                    "columnId": "FileSharesFailed",
+                    "label": "File share backups failing"
+                  },
+                  {
+                    "columnId": "SharesLastBackup",
+                    "label": "Last file share backup"
+                  },
+                  {
+                    "columnId": "Hns",
+                    "label": "Data Lake (HNS)"
+                  },
+                  {
+                    "columnId": "Immutable",
+                    "label": "Immutable storage"
+                  }
+                ]
+              }
+            },
+            "name": "bk-storage"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Blob backup* is Azure Backup for blobs (operational or vaulted) in a Backup vault. *File shares backed up* counts Azure Files shares in a Recovery Services vault. Many accounts hold nothing worth backing up, so an account with neither is not necessarily a problem; geo-redundant storage (GRS, GZRS) protects against losing the region, not against deletion or corruption.",
+              "style": "info"
+            },
+            "name": "bk-storage-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "recoveryservicesresources\n| where type =~ 'microsoft.recoveryservices/vaults/backupfabrics/protectioncontainers/protecteditems'\n| where tostring(properties.workloadType) =~ 'AzureFileShare'\n| project Vault = tostring(split(id, '/')[8]),\n    Share = tostring(properties.friendlyName),\n    Account = tostring(split(tostring(properties.sourceResourceId), '/')[8]),\n    LastBackup = tostring(properties.lastBackupStatus),\n    LastBackupTime = todatetime(properties.lastBackupTime),\n    Health = tostring(properties.healthStatus),\n    Protection = tostring(properties.protectionState),\n    Policy = tostring(properties.policyName)\n| order by case(LastBackup =~ 'Failed', 0, 1) asc, LastBackupTime asc",
+              "size": 0,
+              "title": "Azure Files shares in Recovery Services vaults",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Azure Files shares are backed up.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "LastBackup",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Healthy",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Completed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "IRPending",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Passed",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Normal",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionSuggested",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ActionRequired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Critical",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Protection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Protected",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionStopped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionPaused",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "IRPending",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ProtectionError",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastBackup",
+                    "label": "Last backup"
+                  },
+                  {
+                    "columnId": "LastBackupTime",
+                    "label": "Last backup time"
+                  }
+                ]
+              }
+            },
+            "name": "bk-file-shares"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Data protection settings"
+            },
+            "name": "bk-softdelete-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Soft delete, versioning and point-in-time restore are not in Resource Graph, so pick an account to read them from Azure Resource Manager.",
+              "style": "info"
+            },
+            "name": "bk-softdelete-note"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "ce5a2f56-1e98-5f4a-a957-1b7016a4649c",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "StorageAccount",
+                  "label": "Storage account",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": false,
+                  "query": "resources\n| where type =~ 'microsoft.storage/storageaccounts'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "showDefault": false
+                  },
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "bk-storage-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{StorageAccount}/blobServices\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-01-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.properties.deleteRetentionPolicy.enabled\", \"columnid\": \"Blob soft delete\"}, {\"path\": \"$.properties.deleteRetentionPolicy.days\", \"columnid\": \"Blob soft delete days\"}, {\"path\": \"$.properties.containerDeleteRetentionPolicy.enabled\", \"columnid\": \"Container soft delete\"}, {\"path\": \"$.properties.containerDeleteRetentionPolicy.days\", \"columnid\": \"Container soft delete days\"}, {\"path\": \"$.properties.isVersioningEnabled\", \"columnid\": \"Versioning\"}, {\"path\": \"$.properties.changeFeed.enabled\", \"columnid\": \"Change feed\"}, {\"path\": \"$.properties.restorePolicy.enabled\", \"columnid\": \"Point-in-time restore\"}, {\"path\": \"$.properties.restorePolicy.days\", \"columnid\": \"Restore days\"}]}}]}",
+              "size": 0,
+              "title": "Blob data protection",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              },
+              "noDataMessage": "No blob service settings returned."
+            },
+            "name": "bk-blob-settings",
+            "customWidth": "60",
+            "conditionalVisibility": {
+              "parameterName": "StorageAccount",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{StorageAccount}/fileServices\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-01-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.properties.shareDeleteRetentionPolicy.enabled\", \"columnid\": \"File share soft delete\"}, {\"path\": \"$.properties.shareDeleteRetentionPolicy.days\", \"columnid\": \"File share soft delete days\"}]}}]}",
+              "size": 0,
+              "title": "File share data protection",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              },
+              "noDataMessage": "No file service settings returned."
+            },
+            "name": "bk-file-settings",
+            "customWidth": "40",
+            "conditionalVisibility": {
+              "parameterName": "StorageAccount",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "bk-tab-storage",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "storage"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
