@@ -10,6 +10,7 @@ generated JSON. The Grafana dashboards are generated from the workbook definitio
 
 ```sh
 python src/build_workbook.py
+python src/build_firewall_troubleshoot.py
 python src/build_grafana.py
 ```
 

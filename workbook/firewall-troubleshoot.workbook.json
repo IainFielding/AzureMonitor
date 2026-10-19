@@ -1,0 +1,1814 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Firewalls: blocked connections\nIs a firewall blocking this connection, and which rule did it? Covers Azure Firewall (network, application and DNAT rules, threat intelligence and IDPS), Palo Alto, Check Point and NSGs, and shows where along the path a flow stops."
+      },
+      "name": "fwts-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "2298a80c-518f-54bd-9d66-6fc33795d920",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Where to look for workspaces to pick from."
+          },
+          {
+            "id": "f407a419-263f-51a8-864c-f7caf8db4fbe",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace (or workspaces) the firewalls log to."
+          },
+          {
+            "id": "be1b96cf-bc5a-55bf-bf89-8f3de905e594",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 14400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 1800000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "f9579a9c-01fb-5567-a731-e0e9dd75cf7e",
+            "version": "KqlParameterItem/1.0",
+            "name": "Platform",
+            "label": "Platforms",
+            "type": 2,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "jsonData": "[{\"value\": \"Azure Firewall\", \"label\": \"Azure Firewall\"}, {\"value\": \"Palo Alto\", \"label\": \"Palo Alto\"}, {\"value\": \"Check Point\", \"label\": \"Check Point\"}, {\"value\": \"NSG\", \"label\": \"NSG\"}]",
+            "value": [],
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "Leave empty for all. NSG is the network security group decision from VNet flow logs."
+          },
+          {
+            "id": "0578a752-4002-51d3-a3cd-97c05700fcf0",
+            "version": "KqlParameterItem/1.0",
+            "name": "Device",
+            "label": "Firewalls",
+            "type": 2,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "let Platforms = dynamic([{Platform}]);\nunion isfuzzy=true\n    (union isfuzzy=true AZFWNetworkRule, AZFWApplicationRule, AZFWNatRule, AZFWThreatIntel, AZFWIdpsSignature\n        | where TimeGenerated {TimeRange}\n        | summarize by Device = tostring(split(_ResourceId, '/')[-1]), Platform = 'Azure Firewall'),\n    (CommonSecurityLog\n        | where TimeGenerated {TimeRange}\n        | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n        | where isnotempty(Platform)\n        | summarize by Device = coalesce(DeviceName, Computer), Platform),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n        | where TimeGenerated {TimeRange}\n        | where column_ifexists('SubType', '') == 'FlowLog'\n        | summarize by Device = tostring(split(tostring(column_ifexists('AclGroup', '')), '/')[-1]), Platform = 'NSG')\n| where isnotempty(Device)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| order by Platform asc, Device asc\n| project value = Device, label = strcat(Device, ' (', Platform, ')'), selected = false",
+            "crossComponentResources": [
+              "{Workspace}"
+            ],
+            "timeContextFromParameter": "TimeRange",
+            "value": [],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 0,
+            "resourceType": "microsoft.operationalinsights/workspaces",
+            "description": "Firewalls that logged in the time range. Leave empty for all of them."
+          },
+          {
+            "id": "19e73a51-cb18-584c-9b72-3de0da673309",
+            "version": "KqlParameterItem/1.0",
+            "name": "SourceIp",
+            "label": "Source IP / CIDR",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. One or more IPs or CIDR ranges, separated by commas, e.g. 10.1.0.4, 10.2.0.0/16."
+          },
+          {
+            "id": "f8864d8f-dd2b-5f61-bedd-0d086b89550b",
+            "version": "KqlParameterItem/1.0",
+            "name": "Destination",
+            "label": "Destination IP / CIDR / FQDN",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. IPs, CIDR ranges or FQDNs, separated by commas. FQDNs match as whole words, so contoso.com matches www.contoso.com."
+          },
+          {
+            "id": "bb087437-4bae-584c-90f0-09201a1d6a0b",
+            "version": "KqlParameterItem/1.0",
+            "name": "Port",
+            "label": "Destination port",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. Ports and ranges separated by commas, e.g. 443, 1433, 11000-11999."
+          },
+          {
+            "id": "ffc0acd5-37fd-5dbb-8907-50fd2e90cf4f",
+            "version": "KqlParameterItem/1.0",
+            "name": "HopMatch",
+            "label": "Match hops on",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"source\", \"label\": \"Source, destination and port\"}, {\"value\": \"destination\", \"label\": \"Destination and port (source is NATed)\"}]",
+            "value": "source",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "How *Path through the firewalls* lines up one flow across firewalls. If Azure Firewall SNATs traffic before the Palo Alto or Check Point, the source changes between hops: match on destination and port only."
+          },
+          {
+            "id": "904b1319-8a39-575a-a707-da180bee5cb6",
+            "version": "KqlParameterItem/1.0",
+            "name": "Show",
+            "label": "Show",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"blocked\", \"label\": \"Blocked only\"}, {\"value\": \"allowed\", \"label\": \"Allowed only\"}, {\"value\": \"all\", \"label\": \"Blocked and allowed\"}]",
+            "value": "blocked",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "Filters the tiles, timeline, rules, top lists and events. The path, no-reply and verdict panels always use both, since they compare allowed and blocked."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "fwts-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select the **Log Analytics workspace** your firewalls log to.",
+        "style": "info"
+      },
+      "name": "fwts-workspace-hint",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Fill in whatever you know about the connection (source, destination, port) and leave the rest empty.\nEach box takes a comma-separated list (ports also take ranges, e.g. `11000-11999`), and an empty box matches\neverything, so with nothing filled in you see everything blocked in the time range. If traffic crosses more than one firewall (say a Palo Alto\nbehind an Azure Firewall), *Verdict per flow* shows what each one decided.\n\n**Azure Firewall.** Threat intelligence and IDPS are checked first and can drop traffic before any rule runs.\nThen DNAT rules, then network rules, then application rules (HTTP, HTTPS and MSSQL only). Traffic that matches no\nrule is denied, and shows as *(no rule matched: default deny)*: add an allow rule.\n\n**Palo Alto and Check Point.** The rule column is the rule that matched: Palo Alto's `interzone-default`, or\nCheck Point's cleanup rule, means nothing allowed it. Palo Alto threat logs (antivirus, vulnerability, URL\nfiltering) show as *Palo Alto threat*; Check Point blades show under their product name (IPS, Application Control).\n\n**NSG.** Network security group decisions come from VNet flow logs with Traffic Analytics\n(`NTANetAnalytics`). An NSG deny never shows in a firewall's log, so this is the last hop before the destination.\n\n**Nothing shows up?** Set *Show* to *Blocked and allowed*. If the flow is not logged at all, it never reached the\nfirewall (check the route table on the source subnet, or vWAN routing intent), or its logs are not reaching this\nworkspace: Azure Firewall needs a diagnostic setting sending the resource-specific `AZFW*` tables, and Palo Alto\nand Check Point need to send CEF (`CommonSecurityLog`), with logging turned on for the rule. Azure Firewall flow\ntrace logs (`AZFWFlowTrace`) are optional and add Azure Firewall to the out-of-state check. Plain syslog and the\nolder Azure Firewall `AzureDiagnostics` format are not read here.",
+        "style": "info"
+      },
+      "name": "fwts-howto",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nShown\n| summarize Events = count(), Sources = dcount(SourceIp), Destinations = dcount(Destination), LastSeen = max(TimeGenerated)\n    by Verdict, Source\n| extend Detail = strcat(Sources, ' sources → ', Destinations, ' destinations · last ', format_datetime(LastSeen, 'yyyy-MM-dd HH:mm'))\n| order by Verdict desc, Events desc",
+        "size": 3,
+        "title": "Events by verdict and log source",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "tiles",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No matching firewall events. Try *Blocked and allowed*, a longer time range, or fewer filters.",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Source",
+            "formatter": 1
+          },
+          "subtitleContent": {
+            "columnMatch": "Verdict",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "Verdict",
+            "formatter": 18,
+            "formatOptions": {
+              "thresholdsOptions": "icons",
+              "thresholdsGrid": [
+                {
+                  "operator": "==",
+                  "thresholdValue": "Blocked",
+                  "representation": "4",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Allowed",
+                  "representation": "success",
+                  "text": "​"
+                },
+                {
+                  "operator": "Default",
+                  "thresholdValue": null,
+                  "representation": "Blank",
+                  "text": "​"
+                }
+              ]
+            }
+          },
+          "rightContent": {
+            "columnMatch": "Events",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            }
+          },
+          "secondaryContent": {
+            "columnMatch": "Detail",
+            "formatter": 1
+          },
+          "showBorder": true
+        }
+      },
+      "name": "fwts-summary",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nlet BySource = '{HopMatch}' == 'source';\nFlows\n| extend SourceKey = iff(BySource, SourceIp, '(any source)'), DestinationKey = coalesce(DestinationIp, Destination)\n| summarize Blocked = countif(Blocked), Allowed = countif(not(Blocked)), NoReply = countif(NoReply), OutOfState = countif(NotSyn),\n    arg_max(TimeGenerated, RuleName), Devices = strcat_array(make_set(Device, 5), ', ')\n    by SourceKey, DestinationKey, DestinationPort, Platform\n| extend Hop = case(\n        Blocked > 0 and Blocked == OutOfState, 'Out of state',\n        Blocked > 0 and Allowed > 0, 'Mixed',\n        Blocked > 0, 'Blocked',\n        NoReply > 0 and NoReply == Allowed, 'No reply',\n        'Allowed'),\n    Rule = strcat(RuleName, ' (', Blocked, ' blocked, ', Allowed, ' allowed)')\n| summarize LastSeen = max(TimeGenerated),\n    AzureFirewall = take_anyif(Hop, Platform == 'Azure Firewall'), AzureFirewallRule = take_anyif(Rule, Platform == 'Azure Firewall'),\n    PaloAlto = take_anyif(Hop, Platform == 'Palo Alto'), PaloAltoRule = take_anyif(Rule, Platform == 'Palo Alto'),\n    CheckPoint = take_anyif(Hop, Platform == 'Check Point'), CheckPointRule = take_anyif(Rule, Platform == 'Check Point'),\n    Nsg = take_anyif(Hop, Platform == 'NSG'), NsgRule = take_anyif(Rule, Platform == 'NSG'),\n    Firewalls = strcat_array(make_set(Devices), ', ')\n    by SourceKey, DestinationKey, DestinationPort\n| extend AzureFirewall = coalesce(AzureFirewall, 'Not seen'), PaloAlto = coalesce(PaloAlto, 'Not seen'),\n    CheckPoint = coalesce(CheckPoint, 'Not seen'), Nsg = coalesce(Nsg, 'Not seen')\n| extend StoppedAt = case(\n    AzureFirewall == 'Blocked', 'Azure Firewall',\n    PaloAlto == 'Blocked', 'Palo Alto',\n    CheckPoint == 'Blocked', 'Check Point',\n    Nsg == 'Blocked', 'NSG',\n    PaloAlto == 'Out of state' or CheckPoint == 'Out of state', 'Asymmetric routing (out-of-state drops)',\n    AzureFirewall == 'Mixed', 'Azure Firewall (some attempts)',\n    PaloAlto == 'Mixed', 'Palo Alto (some attempts)',\n    CheckPoint == 'Mixed', 'Check Point (some attempts)',\n    Nsg == 'Mixed', 'NSG (some attempts)',\n    PaloAlto == 'No reply' or CheckPoint == 'No reply' or Nsg == 'No reply', 'No reply from the destination',\n    AzureFirewall == 'Allowed' and PaloAlto == 'Not seen' and CheckPoint == 'Not seen', 'Passed Azure Firewall, not seen at Palo Alto or Check Point',\n    AzureFirewall == 'Not seen' and (PaloAlto != 'Not seen' or CheckPoint != 'Not seen'), 'Not seen at Azure Firewall',\n    'Allowed everywhere it was logged')\n| extend Rank = case(StoppedAt in ('Azure Firewall', 'Palo Alto', 'Check Point', 'NSG'), 0,\n    StoppedAt startswith 'Asymmetric' or StoppedAt startswith 'No reply', 1, StoppedAt has 'some attempts', 2, 3)\n| order by Rank asc, LastSeen desc\n| take 250\n| project SourceKey, DestinationKey, DestinationPort, StoppedAt, AzureFirewall, AzureFirewallRule, PaloAlto, PaloAltoRule,\n    CheckPoint, CheckPointRule, Nsg, NsgRule, Firewalls, LastSeen",
+        "size": 0,
+        "title": "Path through the firewalls: where does each flow stop?",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No matching flows. Try a longer time range or fewer filters.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "AzureFirewall",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Mixed",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No reply",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Out of state",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Blocked",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not seen",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "PaloAlto",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Mixed",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No reply",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Out of state",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Blocked",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not seen",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "CheckPoint",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Mixed",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No reply",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Out of state",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Blocked",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not seen",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Nsg",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Mixed",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No reply",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Out of state",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Blocked",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not seen",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "StoppedAt",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed everywhere it was logged",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Asymmetric routing (out-of-state drops)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No reply from the destination",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Passed Azure Firewall, not seen at Palo Alto or Check Point",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not seen at Azure Firewall",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Azure Firewall (some attempts)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Palo Alto (some attempts)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Check Point (some attempts)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NSG (some attempts)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Azure Firewall",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Palo Alto",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Check Point",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NSG",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "SourceKey",
+              "label": "Source IP"
+            },
+            {
+              "columnId": "DestinationKey",
+              "label": "Destination"
+            },
+            {
+              "columnId": "DestinationPort",
+              "label": "Port"
+            },
+            {
+              "columnId": "StoppedAt",
+              "label": "Stopped at"
+            },
+            {
+              "columnId": "AzureFirewall",
+              "label": "Azure Firewall"
+            },
+            {
+              "columnId": "AzureFirewallRule",
+              "label": "Azure Firewall rule"
+            },
+            {
+              "columnId": "PaloAlto",
+              "label": "Palo Alto"
+            },
+            {
+              "columnId": "PaloAltoRule",
+              "label": "Palo Alto rule"
+            },
+            {
+              "columnId": "CheckPoint",
+              "label": "Check Point"
+            },
+            {
+              "columnId": "CheckPointRule",
+              "label": "Check Point rule"
+            },
+            {
+              "columnId": "Nsg",
+              "label": "NSG"
+            },
+            {
+              "columnId": "NsgRule",
+              "label": "NSG rule"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-path",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**Reading the path.** Each row is one flow, with what each hop did in path order: Azure Firewall, Palo Alto or\nCheck Point, then the NSG (from VNet flow logs). *Stopped at* names the first hop that blocked it.\n- **Asymmetric routing:** the Palo Alto or Check Point dropped packets that did not start a session. The request\n  went one way and the reply came back another, so this firewall saw only half of the conversation. Check the\n  route tables on both sides, including the destination subnet's route back to the source.\n- **No reply from the destination:** every hop allowed it, but no TCP session got a byte back. The reply took\n  another path, or the destination is not listening. See *Allowed but no reply* below.\n- **Passed Azure Firewall, not seen at Palo Alto or Check Point:** the next hop never logged it. Check the route\n  from the Azure Firewall subnet to the NVA, or the NVA's logging for that rule. If Azure Firewall SNATs this\n  traffic, set *Match hops on* to *Destination and port*.\n- **Not seen at Azure Firewall:** the flow reached an NVA without going through Azure Firewall (check routing), or\n  the source was translated before it got there.\n- **Allowed everywhere it was logged:** look past the network: the host firewall, the service itself, DNS or\n  authentication.\n\n*No reply* needs byte counts, which Palo Alto, Check Point and VNet flow logs carry and Azure Firewall rule logs\ndo not. Azure Firewall application rules log only the FQDN, so to follow web traffic put both the FQDN and the IP\nin *Destination*.",
+        "style": "info"
+      },
+      "name": "fwts-path-note",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nunion isfuzzy=true\n    (Flows\n    | where NoReply or NotSyn\n    | extend Symptom = iff(NotSyn, 'Out-of-state drop (asymmetric routing)', 'Allowed, nothing came back')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWFlowTrace)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Flag', '')) =~ 'INVALID'\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]),\n        SourceIp = tostring(column_ifexists('SourceIp', '')), DestinationIp = tostring(column_ifexists('DestinationIp', '')),\n        DestinationPort = toint(column_ifexists('DestinationPort', int(null))), Protocol = tostring(column_ifexists('Protocol', '')),\n        Reason = tostring(column_ifexists('ActionReason', '')), RuleName = '',\n        Symptom = 'Packet outside a known session (flow trace INVALID)'\n    | where array_length(Platforms) == 0 or 'Azure Firewall' in (Platforms)\n    | where array_length(Devices) == 0 or Device in~ (Devices)\n    | where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n    | where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true\n    | where isempty(PortText) or DestinationPort in (PortSet)\n    | extend Destination = DestinationIp)\n| summarize Events = count(), LastSeen = max(TimeGenerated), Rules = strcat_array(make_set(RuleName, 5), ', '),\n    Reasons = strcat_array(make_set(Reason, 5), ' | ')\n    by Symptom, Platform, Device, SourceIp, Destination, DestinationPort, Protocol\n| order by Events desc\n| take 200",
+        "size": 0,
+        "title": "Allowed but no reply, and out-of-state drops (return path problems)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No unanswered sessions or out-of-state drops. Azure Firewall needs flow trace logs (AZFWFlowTrace) turned on to appear here.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Symptom",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed, nothing came back",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Out-of-state drop (asymmetric routing)",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Packet outside a known session (flow trace INVALID)",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Device",
+              "label": "Firewall"
+            },
+            {
+              "columnId": "SourceIp",
+              "label": "Source IP"
+            },
+            {
+              "columnId": "DestinationPort",
+              "label": "Port"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-noreply",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nShown\n| summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), Series = strcat(Verdict, ' · ', Source)",
+        "size": 0,
+        "title": "Events over time",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        }
+      },
+      "name": "fwts-timeline",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nFlows\n| summarize arg_max(TimeGenerated, Action, Source, RuleName, Reason), Blocked = countif(Blocked), Allowed = countif(not(Blocked)),\n    FirstSeen = min(TimeGenerated) by SourceIp, Destination, DestinationPort, Protocol, Platform, Device\n| project LastSeen = TimeGenerated, SourceIp, Destination, DestinationPort, Protocol, Device, Blocked, Allowed,\n    Action, Source, RuleName, Reason, FirstSeen\n| order by Blocked desc, Allowed desc\n| take 250",
+        "size": 0,
+        "title": "Verdict per flow (latest decision by each firewall, blocked and allowed)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No matching flows.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Action",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allow",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "allow",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Accept",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DNAT",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Alert",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "alert",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Detect",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Drop",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "drop",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Reject",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Block",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Prevent",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "reset-both",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "reset-client",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "reset-server",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Blocked",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            },
+            {
+              "columnId": "SourceIp",
+              "label": "Source IP"
+            },
+            {
+              "columnId": "DestinationPort",
+              "label": "Port"
+            },
+            {
+              "columnId": "Device",
+              "label": "Firewall"
+            },
+            {
+              "columnId": "Action",
+              "label": "Last action"
+            },
+            {
+              "columnId": "Source",
+              "label": "Decided by"
+            },
+            {
+              "columnId": "RuleName",
+              "label": "Rule"
+            },
+            {
+              "columnId": "FirstSeen",
+              "label": "First seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-verdicts",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nShown\n| summarize Events = count(), Sources = dcount(SourceIp), Destinations = dcount(Destination),\n    Ports = strcat_array(make_set(DestinationPort, 10), ', '), Devices = strcat_array(make_set(Device, 5), ', '),\n    LastSeen = max(TimeGenerated)\n    by Verdict, Source, Policy, RuleCollectionGroup, RuleCollection, RuleName, Reason\n| order by Events desc\n| take 100",
+        "size": 0,
+        "title": "Rules that matched",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No matching rule hits.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Verdict",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Blocked",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Source",
+              "label": "Log"
+            },
+            {
+              "columnId": "RuleCollectionGroup",
+              "label": "Rule collection group"
+            },
+            {
+              "columnId": "RuleCollection",
+              "label": "Rule collection / layer"
+            },
+            {
+              "columnId": "RuleName",
+              "label": "Rule"
+            },
+            {
+              "columnId": "Devices",
+              "label": "Firewalls"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-rules",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nShown\n| summarize Events = count(), Destinations = dcount(Destination), LastSeen = max(TimeGenerated) by SourceIp\n| top 25 by Events desc",
+        "size": 0,
+        "title": "Top source IPs",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "SourceIp",
+              "label": "Source IP"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-top-sources",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nShown\n| summarize Events = count(), Sources = dcount(SourceIp), Ports = strcat_array(make_set(DestinationPort, 10), ', '),\n    LastSeen = max(TimeGenerated) by Destination\n| top 25 by Events desc",
+        "size": 0,
+        "title": "Top destinations",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-top-destinations",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\nlet Flows = union isfuzzy=true\n    (union isfuzzy=true\n        (AZFWNetworkRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Network rule', Reason = column_ifexists('ActionReason', '')),\n        (AZFWApplicationRule | where TimeGenerated {TimeRange}\n            | extend Source = 'Application rule',\n                Reason = strcat_delim(' · ', column_ifexists('ActionReason', ''), column_ifexists('WebCategory', ''))),\n        (AZFWNatRule | where TimeGenerated {TimeRange}\n            | extend Source = 'DNAT rule', Action = 'DNAT',\n                Reason = strcat('Translated to ', TranslatedIp, ':', TranslatedPort)),\n        (AZFWThreatIntel | where TimeGenerated {TimeRange}\n            | extend Source = 'Threat intel', Reason = ThreatDescription),\n        (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n            | extend Source = 'IDPS', Reason = strcat('Signature ', SignatureId, ' (', Category, ', severity ', Severity, '): ', Description))\n    // A table missing from the workspace drops its columns from the union; put them back empty.\n    | extend Fqdn = column_ifexists('Fqdn', ''), TargetUrl = column_ifexists('TargetUrl', ''),\n        DestinationIp = column_ifexists('DestinationIp', ''),\n        Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),\n        RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')\n    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,\n        SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,\n        Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),\n    // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;\n    // ReceivedBytes is what came back from the destination.\n    (CommonSecurityLog | where TimeGenerated {TimeRange}\n    | extend Platform = case(DeviceVendor has 'Palo Alto', 'Palo Alto', DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')\n    | where isnotempty(Platform)\n    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),\n        Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),\n        Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,\n        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),\n        DestinationPort, Protocol, TargetUrl = RequestURL,\n        Policy = case(DeviceCustomString1Label has 'policy' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'policy' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'policy' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'policy' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'policy' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'policy' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''), RuleCollectionGroup = '', RuleCollection = case(DeviceCustomString1Label has 'layer', DeviceCustomString1, DeviceCustomString2Label has 'layer', DeviceCustomString2, DeviceCustomString3Label has 'layer', DeviceCustomString3, DeviceCustomString4Label has 'layer', DeviceCustomString4, DeviceCustomString5Label has 'layer', DeviceCustomString5, DeviceCustomString6Label has 'layer', DeviceCustomString6, ''), Rule = case(DeviceCustomString1Label has 'rule' and DeviceCustomString1Label !has 'id' and DeviceCustomString1Label !has 'uid' and DeviceCustomString1Label !has 'uuid', DeviceCustomString1, DeviceCustomString2Label has 'rule' and DeviceCustomString2Label !has 'id' and DeviceCustomString2Label !has 'uid' and DeviceCustomString2Label !has 'uuid', DeviceCustomString2, DeviceCustomString3Label has 'rule' and DeviceCustomString3Label !has 'id' and DeviceCustomString3Label !has 'uid' and DeviceCustomString3Label !has 'uuid', DeviceCustomString3, DeviceCustomString4Label has 'rule' and DeviceCustomString4Label !has 'id' and DeviceCustomString4Label !has 'uid' and DeviceCustomString4Label !has 'uuid', DeviceCustomString4, DeviceCustomString5Label has 'rule' and DeviceCustomString5Label !has 'id' and DeviceCustomString5Label !has 'uid' and DeviceCustomString5Label !has 'uuid', DeviceCustomString5, DeviceCustomString6Label has 'rule' and DeviceCustomString6Label !has 'id' and DeviceCustomString6Label !has 'uid' and DeviceCustomString6Label !has 'uuid', DeviceCustomString6, ''),\n        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,\n        NotSyn = Reason has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state') or Message has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')),\n    // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)\n    | where TimeGenerated {TimeRange}\n    | where column_ifexists('SubType', '') == 'FlowLog'\n    | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),\n        Direction = tostring(column_ifexists('FlowDirection', ''))\n    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',\n        Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),\n        SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),\n        Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),\n        Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',\n        Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',\n        Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),\n        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)\n| where array_length(Platforms) == 0 or Platform in (Platforms)\n| where array_length(Devices) == 0 or Device in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)\n| where isempty(PortText) or DestinationPort in (PortSet)\n// Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.\n// NSG: Denied.\n| extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',\n    'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')\n| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,\n    SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,\n    Policy, RuleCollectionGroup, RuleCollection,\n    RuleName = case(isnotempty(Rule), Rule,\n        Source in ('Threat intel', 'IDPS'), '',\n        Platform == 'Azure Firewall' and Blocked, '(no rule matched: default deny)', '(no rule name)'),\n    Reason, ReplyBytes, NotSyn,\n    // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.\n    NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;\nlet Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;\n\nShown\n| top 500 by TimeGenerated desc\n| project TimeGenerated, Verdict, Device, Source, Action, SourceIp, SourcePort, Destination, DestinationPort, Protocol,\n    TargetUrl, Policy, RuleCollectionGroup, RuleCollection, RuleName, Reason",
+        "size": 0,
+        "title": "Events (latest 500)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No matching events.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Verdict",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Blocked",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "TimeGenerated",
+              "label": "Time"
+            },
+            {
+              "columnId": "Device",
+              "label": "Firewall"
+            },
+            {
+              "columnId": "Source",
+              "label": "Log"
+            },
+            {
+              "columnId": "SourceIp",
+              "label": "Source IP"
+            },
+            {
+              "columnId": "SourcePort",
+              "label": "Source port"
+            },
+            {
+              "columnId": "DestinationPort",
+              "label": "Port"
+            },
+            {
+              "columnId": "TargetUrl",
+              "label": "URL"
+            },
+            {
+              "columnId": "RuleCollectionGroup",
+              "label": "Rule collection group"
+            },
+            {
+              "columnId": "RuleCollection",
+              "label": "Rule collection / layer"
+            },
+            {
+              "columnId": "RuleName",
+              "label": "Rule"
+            }
+          ]
+        }
+      },
+      "name": "fwts-events",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### DNS (Azure Firewall)\nA name that does not resolve looks like a block from the client. These need DNS proxy on the firewall policy."
+      },
+      "name": "fwts-dns-h",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\n\nAZFWDnsQuery\n| where TimeGenerated {TimeRange}\n| where ResponseCode !~ 'NOERROR'\n| where array_length(Platforms) == 0 or 'Azure Firewall' in (Platforms)\n| where array_length(Devices) == 0 or tostring(split(_ResourceId, '/')[-1]) in~ (Devices)\n| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true\n| where isempty(DstText) or QueryName has_any (DstList)\n| summarize Queries = count(), Sources = dcount(SourceIp), LastSeen = max(TimeGenerated) by QueryName, QueryType, ResponseCode\n| top 50 by Queries desc",
+        "size": 0,
+        "title": "Failing DNS proxy queries",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No failing DNS queries (or DNS proxy logs are not enabled).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "QueryName",
+              "label": "Query"
+            },
+            {
+              "columnId": "QueryType",
+              "label": "Type"
+            },
+            {
+              "columnId": "ResponseCode",
+              "label": "Response"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-dns",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Clean = (s: string) { trim(@',+', replace_regex(s, @'[\\s;,]+', ',')) };\nlet SrcText = Clean(@'{SourceIp}');\nlet SrcList = split(SrcText, ',');\nlet DstText = Clean(replace_string(replace_string(@'{Destination}', '*.', ''), '*', ''));\nlet DstList = split(DstText, ',');\nlet PortText = Clean(replace_regex(@'{Port}', @'\\s*-\\s*', '-'));\nlet PortSet = toscalar(print p = split(PortText, ',')\n    | mv-expand p to typeof(string)\n    | extend lo = toint(extract(@'^(\\d+)', 1, p)), hi = toint(extract(@'^\\d+-(\\d+)$', 1, p))\n    | where isnotnull(lo)\n    | mv-expand Port = range(lo, coalesce(hi, lo), 1) to typeof(int)\n    | summarize make_set(Port, 65536));\nlet Platforms = dynamic([{Platform}]);\nlet Devices = dynamic([{Device}]);\n\nAZFWFqdnResolveFailure\n| where TimeGenerated {TimeRange}\n| where array_length(Platforms) == 0 or 'Azure Firewall' in (Platforms)\n| where array_length(Devices) == 0 or tostring(split(_ResourceId, '/')[-1]) in~ (Devices)\n| where isempty(DstText) or Fqdn has_any (DstList)\n| summarize Failures = count(), LastSeen = max(TimeGenerated) by Fqdn, ServerIp, ServerPort, Error\n| top 50 by Failures desc",
+        "size": 0,
+        "title": "FQDNs in network rules that failed to resolve",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No FQDN resolution failures.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ServerIp",
+              "label": "DNS server"
+            },
+            {
+              "columnId": "ServerPort",
+              "label": "Port"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "fwts-fqdn-fail",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "## SQL Managed Instance checks\nConfiguration that commonly breaks connectivity to a managed instance: connection type and ports, routes and NSG rules on its subnet, and what changed."
+            },
+            "name": "fwts-sqlmi-h"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "4ee3e96a-a40f-5714-8798-c34174aa207f",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "ManagedInstance",
+                  "label": "Managed instances",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.sql/managedinstances'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                },
+                {
+                  "id": "218b424b-1ce8-5d10-8169-2c4fa1904fb2",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "MiRelated",
+                  "type": 1,
+                  "query": "resources\n| where type =~ 'microsoft.sql/managedinstances'\n| where id in~ ({ManagedInstance})\n| project mi = id, Instance = name, subnetId = tolower(tostring(properties.subnetId)), properties\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 2000\n    | project subnetId = tolower(tostring(s.id)), Prefix = tostring(s.properties.addressPrefix),\n        RouteTable = tolower(tostring(s.properties.routeTable.id)), Nsg = tolower(tostring(s.properties.networkSecurityGroup.id))\n  ) on subnetId\n| extend related = pack_array(tolower(mi), tostring(split(subnetId, '/subnets/')[0]), RouteTable, Nsg)\n| mv-expand related\n| where isnotempty(tostring(related))\n| summarize ids = make_set(tostring(related))\n| project value = strcat(\"'\", strcat_array(ids, \"','\"), \"'\")",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "isHiddenWhenLocked": true,
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "fwts-sqlmi-params"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Connection type decides the ports: **Proxy** uses 1433 only. **Redirect** connects on 1433, then sends the client\nstraight to the instance's node on **11000-11999**, so every firewall and NSG on the way must allow both, to the\nwhole instance subnet rather than one IP. The public endpoint uses **3342**. To check the path above, put the\ninstance subnet in *Destination* and `1433, 11000-11999` in *Destination port*.",
+              "style": "info"
+            },
+            "name": "fwts-sqlmi-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.sql/managedinstances'\n| where id in~ ({ManagedInstance})\n| project mi = id, Instance = name, subnetId = tolower(tostring(properties.subnetId)), properties\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 2000\n    | project subnetId = tolower(tostring(s.id)), Prefix = tostring(s.properties.addressPrefix),\n        RouteTable = tolower(tostring(s.properties.routeTable.id)), Nsg = tolower(tostring(s.properties.networkSecurityGroup.id))\n  ) on subnetId\n| extend ConnectionType = tostring(properties.proxyOverride), PublicEndpoint = tostring(properties.publicDataEndpointEnabled)\n| project mi, State = tostring(properties.state), ConnectionType,\n    PortsNeeded = strcat(case(ConnectionType =~ 'Proxy', '1433', ConnectionType =~ 'Redirect', '1433, 11000-11999',\n        '1433 (and 11000-11999 if Redirect)'), iff(PublicEndpoint =~ 'true', '; 3342 for the public endpoint', '')),\n    Fqdn = tostring(properties.fullyQualifiedDomainName), Subnet = tostring(split(subnetId, '/')[10]), Prefix,\n    RouteTable = tostring(split(RouteTable, '/')[8]), Nsg = tostring(split(Nsg, '/')[8]), PublicEndpoint,\n    MinTls = tostring(properties.minimalTlsVersion)",
+              "size": 0,
+              "title": "Managed instances",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No managed instances in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "mi",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Ready",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ConnectionType",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Proxy",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Redirect",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Default",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "mi",
+                    "label": "Instance"
+                  },
+                  {
+                    "columnId": "ConnectionType",
+                    "label": "Connection type"
+                  },
+                  {
+                    "columnId": "PortsNeeded",
+                    "label": "Ports to allow"
+                  },
+                  {
+                    "columnId": "Fqdn",
+                    "label": "FQDN"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "Subnet range"
+                  },
+                  {
+                    "columnId": "RouteTable",
+                    "label": "Route table"
+                  },
+                  {
+                    "columnId": "Nsg",
+                    "label": "NSG"
+                  },
+                  {
+                    "columnId": "PublicEndpoint",
+                    "label": "Public endpoint"
+                  },
+                  {
+                    "columnId": "MinTls",
+                    "label": "Minimum TLS"
+                  }
+                ]
+              }
+            },
+            "name": "fwts-sqlmi-overview"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.sql/managedinstances'\n| where id in~ ({ManagedInstance})\n| project mi = id, Instance = name, subnetId = tolower(tostring(properties.subnetId)), properties\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 2000\n    | project subnetId = tolower(tostring(s.id)), Prefix = tostring(s.properties.addressPrefix),\n        RouteTable = tolower(tostring(s.properties.routeTable.id)), Nsg = tolower(tostring(s.properties.networkSecurityGroup.id))\n  ) on subnetId\n| join kind=inner (\n    resources\n    | where type =~ 'microsoft.network/routetables'\n    | mv-expand r = properties.routes limit 2000\n    | project RouteTable = tolower(id), Route = tostring(r.name), AddressPrefix = tostring(r.properties.addressPrefix),\n        NextHop = tostring(r.properties.nextHopType), NextHopIp = tostring(r.properties.nextHopIpAddress)\n  ) on RouteTable\n| extend Check = case(\n    Route has 'UseOnly' or Route startswith 'mi-', 'Service route (managed by SQL MI)',\n    AddressPrefix == '0.0.0.0/0' and NextHop =~ 'VirtualAppliance', 'Default route to a firewall: return traffic must come back the same way',\n    NextHop =~ 'VirtualAppliance', 'Sent to a firewall',\n    NextHop =~ 'None', 'Dropped',\n    '')\n| project Instance, RouteTable = tostring(split(RouteTable, '/')[8]), Route, AddressPrefix, NextHop, NextHopIp, Check\n| order by Instance asc, Check desc, AddressPrefix asc",
+              "size": 0,
+              "title": "Routes on the instance subnet",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No route table on the instance subnet.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Check",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Service route (managed by SQL MI)",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Default route to a firewall: return traffic must come back the same way",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sent to a firewall",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Dropped",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RouteTable",
+                    "label": "Route table"
+                  },
+                  {
+                    "columnId": "AddressPrefix",
+                    "label": "Prefix"
+                  },
+                  {
+                    "columnId": "NextHop",
+                    "label": "Next hop"
+                  },
+                  {
+                    "columnId": "NextHopIp",
+                    "label": "Next hop IP"
+                  }
+                ]
+              }
+            },
+            "name": "fwts-sqlmi-routes",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.sql/managedinstances'\n| where id in~ ({ManagedInstance})\n| project mi = id, Instance = name, subnetId = tolower(tostring(properties.subnetId)), properties\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 2000\n    | project subnetId = tolower(tostring(s.id)), Prefix = tostring(s.properties.addressPrefix),\n        RouteTable = tolower(tostring(s.properties.routeTable.id)), Nsg = tolower(tostring(s.properties.networkSecurityGroup.id))\n  ) on subnetId\n| join kind=inner (\n    resources\n    | where type =~ 'microsoft.network/networksecuritygroups'\n    | mv-expand rule = properties.securityRules limit 2000\n    | project Nsg = tolower(id), Rule = tostring(rule.name), Direction = tostring(rule.properties.direction),\n        Access = tostring(rule.properties.access), Priority = toint(rule.properties.priority),\n        Source = coalesce(tostring(rule.properties.sourceAddressPrefix), strcat_array(rule.properties.sourceAddressPrefixes, ', ')),\n        Destination = coalesce(tostring(rule.properties.destinationAddressPrefix), strcat_array(rule.properties.destinationAddressPrefixes, ', ')),\n        Ports = coalesce(tostring(rule.properties.destinationPortRange), strcat_array(rule.properties.destinationPortRanges, ','))\n  ) on Nsg\n| mv-expand p = split(Ports, ',') limit 400\n| extend p = trim(' ', tostring(p))\n| extend lo = toint(extract('^([0-9]+)', 1, p)), hi = toint(extract('-([0-9]+)$', 1, p))\n| extend hi = iff(isnull(hi), lo, hi), AnyPort = p == '*'\n| summarize Tds = sum(iff(AnyPort or (lo <= 1433 and hi >= 1433), 1, 0)),\n    Redirect = sum(iff(AnyPort or (lo <= 11999 and hi >= 11000), 1, 0)),\n    Public = sum(iff(AnyPort or (lo <= 3342 and hi >= 3342), 1, 0))\n    by Instance, Nsg, Rule, Direction, Access, Priority, Source, Destination, Ports\n| where Tds > 0 or Redirect > 0 or Public > 0\n| project Instance, Nsg = tostring(split(Nsg, '/')[8]), Direction, Priority, Rule, Access, Source, Destination, Ports,\n    Covers = trim(' ', strcat_array(pack_array(iff(Tds > 0, '1433', ''), iff(Redirect > 0, '11000-11999', ''), iff(Public > 0, '3342', '')), ' '))\n| order by Instance asc, Direction asc, Priority asc",
+              "size": 0,
+              "title": "NSG rules on the instance subnet covering SQL ports",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No custom NSG rules cover 1433, 11000-11999 or 3342: the default rules apply (virtual network traffic allowed, internet inbound denied).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Access",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Allow",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deny",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Nsg",
+                    "label": "NSG"
+                  },
+                  {
+                    "columnId": "Covers",
+                    "label": "SQL ports covered"
+                  }
+                ]
+              }
+            },
+            "name": "fwts-sqlmi-nsg",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId))\n| where id in~ ({MiRelated})\n| project Time, id, Type = tostring(split(tostring(properties.targetResourceType), '/')[1]), ChangeType = tostring(properties.changeType),\n    Properties = strcat_array(bag_keys(properties.changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy),\n    Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| order by Time desc\n| take 200",
+              "size": 0,
+              "title": "Changes to the instance, its network, route table and NSG (time range, up to 14 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No changes in the time range. Widen it (Resource Graph keeps 14 days).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "ChangeType",
+                    "label": "Change"
+                  },
+                  {
+                    "columnId": "ChangedBy",
+                    "label": "Changed by"
+                  }
+                ]
+              }
+            },
+            "name": "fwts-sqlmi-changes"
+          }
+        ],
+        "loadType": "explicit",
+        "loadButtonText": "Show SQL Managed Instance checks"
+      },
+      "name": "fwts-sqlmi"
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
