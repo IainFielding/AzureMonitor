@@ -95,20 +95,16 @@ resources
     ResourceGroup = resourceGroup, Location = location
 | join kind=leftouter (
     recoveryservicesresources
-    | where type =~ '{RSV_ITEM}'
-    | where tostring(properties.backupManagementType) =~ 'AzureIaasVM'
-    | project vmId = tolower(coalesce(tostring(properties.sourceResourceId), tostring(properties.virtualMachineId))),
-        vault = tostring(split(id, '/')[8]), lastBackup = todatetime(properties.lastBackupTime)
-    | where isnotempty(vmId)
-    | summarize Vault = max(vault), LastBackup = max(lastBackup) by id = vmId
-  ) on id
-| join kind=leftouter (
-    recoveryservicesresources
-    | where type =~ '{ASR_ITEM}'
-    | project vmId = tolower(coalesce(tostring(properties.providerSpecificDetails.fabricObjectId),
-        tostring(properties.providerSpecificDetails.protectedManagedDisks[0].sourceManagedDiskId)))
-    | where vmId has '/virtualmachines/'
-    | summarize Replicated = count() by id = vmId
+    | where type =~ '{RSV_ITEM}' and tostring(properties.backupManagementType) =~ 'AzureIaasVM' or type =~ '{ASR_ITEM}'
+    | extend isBackup = type =~ '{RSV_ITEM}'
+    | project isBackup, vmId = tolower(iff(isBackup,
+            coalesce(tostring(properties.sourceResourceId), tostring(properties.virtualMachineId)),
+            coalesce(tostring(properties.providerSpecificDetails.fabricObjectId),
+                tostring(properties.providerSpecificDetails.protectedManagedDisks[0].sourceManagedDiskId)))),
+        vault = iff(isBackup, tostring(split(id, '/')[8]), ''),
+        lastBackup = iff(isBackup, todatetime(properties.lastBackupTime), datetime(null))
+    | where isBackup and isnotempty(vmId) or vmId has '/virtualmachines/'
+    | summarize Vault = max(vault), LastBackup = max(lastBackup), Replicated = countif(not(isBackup)) by id = vmId
   ) on id
 | project id, Protection = iff(isempty(Vault), 'Not protected', 'Protected'), Vault, LastBackup,
     Replication = iff(Replicated > 0, 'Replicated', ''), OS, Power, ResourceGroup, Location"""
@@ -497,20 +493,16 @@ resources
     ResourceGroup = resourceGroup, Location = location
 | join kind=leftouter (
     recoveryservicesresources
-    | where type =~ '{RSV_ITEM}'
-    | where tostring(properties.workloadType) =~ 'AzureFileShare'
-    | summarize Shares = count(), SharesFailed = countif(tostring(properties.lastBackupStatus) =~ 'Failed'),
-        SharesLastBackup = max(todatetime(properties.lastBackupTime))
-        by id = tolower(tostring(properties.sourceResourceId))
+    | where type =~ '{RSV_ITEM}' and tostring(properties.workloadType) =~ 'AzureFileShare'
+        or type =~ '{BV_INSTANCE}' and tostring(properties.dataSourceInfo.datasourceType) has 'blobServices'
+    | extend isShare = type =~ '{RSV_ITEM}'
+    | summarize Shares = countif(isShare),
+        SharesFailed = countif(isShare and tostring(properties.lastBackupStatus) =~ 'Failed'),
+        SharesLastBackup = max(iff(isShare, todatetime(properties.lastBackupTime), datetime(null))),
+        BlobStatus = max(iff(isShare, '', tostring(properties.protectionStatus.status)))
+        by id = tolower(iff(isShare, tostring(properties.sourceResourceId), tostring(properties.dataSourceInfo.resourceID)))
   ) on id
-| join kind=leftouter (
-    recoveryservicesresources
-    | where type =~ '{BV_INSTANCE}'
-    | where tostring(properties.dataSourceInfo.datasourceType) has 'blobServices'
-    | summarize BlobStatus = max(tostring(properties.protectionStatus.status))
-        by id = tolower(tostring(properties.dataSourceInfo.resourceID))
-  ) on id
-| project id, Redundancy, BlobBackup = coalesce(BlobStatus, 'None'), FileShareBackups = coalesce(Shares, 0),
+| project id, Redundancy, BlobBackup = iff(isempty(BlobStatus), 'None', BlobStatus), FileShareBackups = coalesce(Shares, 0),
     FileSharesFailed = coalesce(SharesFailed, 0), SharesLastBackup, Kind, Hns, Immutable, ResourceGroup, Location
 | order by FileSharesFailed desc, case(BlobBackup == 'None' and FileShareBackups == 0, 1, 0) asc, Redundancy asc
 """
