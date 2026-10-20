@@ -33,6 +33,7 @@ jobs:
           python3 src/build_avd_user.py
           python3 src/build_log_cost.py
           python3 src/build_routing.py
+          python3 src/build_avs.py
           python3 src/build_grafana.py
 
       - name: Fail if the committed files differ
@@ -50,6 +51,7 @@ jobs:
             echo "    python src/build_avd_user.py"
             echo "    python src/build_log_cost.py"
             echo "    python src/build_routing.py"
+            echo "    python src/build_avs.py"
             echo "    python src/build_grafana.py"
             exit 1
           fi

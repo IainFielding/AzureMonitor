@@ -19,6 +19,7 @@ python src/build_policy_denials.py
 python src/build_avd_user.py
 python src/build_log_cost.py
 python src/build_routing.py
+python src/build_avs.py
 python src/build_grafana.py
 ```
 

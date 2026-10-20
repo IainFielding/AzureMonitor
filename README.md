@@ -5,8 +5,8 @@ Enterprise Scale (Azure Landing Zone) deployment. They are built for a **Virtual
 
 There are two kinds of workbook:
 
-- **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health* and
-  *Backup & Recovery*.
+- **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
+  *Backup & Recovery* and *Azure VMware Solution*.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -16,6 +16,7 @@ There are two kinds of workbook:
 |---|---|---|---|
 | [Platform health](workbook/alz-platform-health.workbook.json) | Dashboard | Is the platform healthy, and where are the problems? Covers health, capacity, throughput, governance, security and monitoring coverage across 19 tabs | Whole platform team; the daily check |
 | [Backup & Recovery](workbook/backup-recovery.workbook.json) | Dashboard | Is everything that should be protected backed up or replicated, and could it be restored? | Platform operations, BC/DR owners |
+| [Azure VMware Solution](workbook/avs.workbook.json) | Dashboard | Are the private clouds healthy, do they have room to grow, are they connected and monitored, and what are vCenter, ESXi and NSX reporting? | VMware / AVS team, platform operations |
 | [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
 | [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
 | [DNS and private endpoints](workbook/dns-troubleshoot.workbook.json) | Troubleshooter | Why does this name not resolve, or resolve to the wrong address? | Network team, application teams |
@@ -40,6 +41,7 @@ Start from the symptom:
 | "A user can't get onto (or is slow on) virtual desktop" | **Azure Virtual Desktop: one user** | **Platform health**: AVD and Storage (FSLogix) tabs for the host pool as a whole |
 | "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
 | "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
+| "Something is wrong in AVS" (VMs slow, vSAN full, workloads unreachable) | **Azure VMware Solution**: Overview, then Capacity or Logs | *Private cloud* tab for the hub connection, Global Reach and NSX segments; **Platform health** ExpressRoute tab for the gateway |
 
 For a connectivity ticket, work in this order: **DNS** (does the name resolve to the right address?),
 **Routing** (does the traffic go the right way, both ways, and do the NSGs allow it?), **Firewalls** (which rule
@@ -49,7 +51,7 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 
 | When | What |
 |---|---|
-| **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery: the Overview tiles |
+| **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery and Azure VMware Solution: the Overview tiles |
 | **Weekly** | What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
 | **Monthly** | Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
@@ -100,6 +102,7 @@ them) so new resources are included automatically:
 | Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity) |
 | Query audit (`LAQueryLogs`) | The workspace's own diagnostic setting, category *Audit* | Log Analytics: cost and noise (*Who reads it*) |
 | Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
+| VMware syslog (`AVSSyslog`): vCenter, ESXi, vSAN and NSX, including NSX firewall rule logging | Each AVS private cloud's diagnostic setting, category *VMware Syslog* | Azure VMware Solution |
 
 The Platform health workbook's *Monitoring* tab lists platform resources that are not logging, and the cost
 workbook shows what each of these costs once it is flowing.
@@ -244,6 +247,22 @@ route table and NSG over the time range.
 
 Two thresholds at the top: when a backup counts as stale (default 26 hours) and when a test failover is due
 (default 180 days).
+
+## Azure VMware Solution workbook
+
+**Are the private clouds healthy, do they have room to grow, are they connected and monitored, and what are
+vCenter, ESXi and NSX reporting?** [workbook/avs.workbook.json](workbook/avs.workbook.json). It goes further than
+the Platform health workbook's AVS tab. It runs without a workspace; pick one for the Logs tab.
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Resource Graph, Metrics | Private clouds and their health, clouds not connected to a hub, clouds missing CPU / memory / vSAN alert rules, active Service Health events, Advisor recommendations; CPU, memory and vSAN tiles; alert rule coverage per cloud, Service Health events for AVS, Resource Health changes |
+| Capacity | Metrics | CPU, memory and vSAN used per private cloud, CPU and memory by cluster, vSAN used % and datastore used and capacity by datastore |
+| Private cloud | Resource Graph, Resource Manager | For one private cloud: vCenter, NSX and HCX endpoints, network blocks, internet access, stretched cluster, customer-managed keys; clusters and host counts, add-ons; the ExpressRoute connections that use its circuit, Global Reach connections, NSX segments, DNS forwarder zones; run command history, diagnostic settings, changes |
+| Logs | Logs* | Which private clouds are sending logs, syslog by level, errors and warnings by source, vCenter alarms raised, most frequent error messages, NSX firewall drops (for rules with logging on), Azure operations on AVS from the activity log |
+
+\* Needs each private cloud's diagnostic setting sending *VMware Syslog* to the workspace (`AVSSyslog`), and the
+activity log (`AzureActivity`) for the last panel.
 
 ## More troubleshooting workbooks
 
@@ -412,10 +431,11 @@ python src/build_policy_denials.py
 python src/build_avd_user.py
 python src/build_log_cost.py
 python src/build_routing.py
+python src/build_avs.py
 python src/build_grafana.py
 ```
 
-Commit the scripts and every generated JSON file (nine workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (ten workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence
