@@ -6,7 +6,7 @@ Enterprise Scale (Azure Landing Zone) deployment. They are built for a **Virtual
 There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
-  *Backup & Recovery* and *Azure VMware Solution*.
+  *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations* and *Privileged access*.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -17,6 +17,8 @@ There are two kinds of workbook:
 | [Platform health](workbook/alz-platform-health.workbook.json) | Dashboard | Is the platform healthy, and where are the problems? Covers health, capacity, throughput, governance, security and monitoring coverage across 19 tabs | Whole platform team; the daily check |
 | [Backup & Recovery](workbook/backup-recovery.workbook.json) | Dashboard | Is everything that should be protected backed up or replicated, and could it be restored? | Platform operations, BC/DR owners |
 | [Azure VMware Solution](workbook/avs.workbook.json) | Dashboard | Are the private clouds healthy, do they have room to grow, are they connected and monitored, and what are vCenter, ESXi and NSX reporting? | VMware / AVS team, platform operations |
+| [Microsoft Sentinel operations](workbook/sentinel.workbook.json) | Dashboard | Is Sentinel collecting what it should, are its detections and automation running, is the incident queue being worked, what does it cost, and is Purview data arriving? | The team that runs Sentinel, SOC leads |
+| [Privileged access](workbook/privileged-access.workbook.json) | Dashboard | Who is using privileged access, were the activations properly approved, what was granted outside PIM, and do admins sign in safely? | Identity and security owners, auditors |
 | [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
 | [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
 | [DNS and private endpoints](workbook/dns-troubleshoot.workbook.json) | Troubleshooter | Why does this name not resolve, or resolve to the wrong address? | Network team, application teams |
@@ -42,6 +44,8 @@ Start from the symptom:
 | "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
 | "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
 | "Something is wrong in AVS" (VMs slow, vSAN full, workloads unreachable) | **Azure VMware Solution**: Overview, then Capacity or Logs | *Private cloud* tab for the hub connection, Global Reach and NSX segments; **Platform health** ExpressRoute tab for the gateway |
+| "Sentinel didn't alert on something it should have" | **Microsoft Sentinel operations**: Data collection (did the table go silent?) | Detections: failed runs, rules turned off, rule changes in the audit |
+| "Who gave this person admin, and was it approved?" | **Privileged access**: Activations and Approvals | Assignments, for roles granted outside PIM; **What changed?** for Azure role assignments |
 
 For a connectivity ticket, work in this order: **DNS** (does the name resolve to the right address?),
 **Routing** (does the traffic go the right way, both ways, and do the NSGs allow it?), **Firewalls** (which rule
@@ -51,8 +55,8 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 
 | When | What |
 |---|---|
-| **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery and Azure VMware Solution: the Overview tiles |
-| **Weekly** | What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
+| **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution and Sentinel operations: the Overview tiles |
+| **Weekly** | Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
 | **Monthly** | Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
 
@@ -92,17 +96,18 @@ them) so new resources are included automatically:
 
 | Logs | Sent from | Used by |
 |---|---|---|
-| Activity log (`AzureActivity`) | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health |
+| Activity log (`AzureActivity`) | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health, Sentinel operations, Privileged access |
 | Azure Firewall, resource-specific (`AZFW*`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Firewalls, DNS, Platform health |
 | Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
 | VNet flow logs with Traffic Analytics (`NTANetAnalytics`) | Network Watcher | Firewalls (NSG decisions), Platform health (Connectivity) |
 | DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints |
 | Azure Virtual Desktop (`WVD*`) | Each host pool's and AVD workspace's diagnostic setting | Azure Virtual Desktop: one user, Platform health |
 | Session host performance (`Perf` or `InsightsMetrics`) and FSLogix / User Profile Service events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user |
-| Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity) |
+| Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity), Privileged access (including `AADNonInteractiveUserSignInLogs` for break-glass accounts) |
 | Query audit (`LAQueryLogs`) | The workspace's own diagnostic setting, category *Audit* | Log Analytics: cost and noise (*Who reads it*) |
 | Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
 | VMware syslog (`AVSSyslog`): vCenter, ESXi, vSAN and NSX, including NSX firewall rule logging | Each AVS private cloud's diagnostic setting, category *VMware Syslog* | Azure VMware Solution |
+| Sentinel health and audit (`SentinelHealth`, `SentinelAudit`) | Sentinel → Settings → *Auditing and health monitoring* | Sentinel operations |
 
 The Platform health workbook's *Monitoring* tab lists platform resources that are not logging, and the cost
 workbook shows what each of these costs once it is flowing.
@@ -263,6 +268,48 @@ the Platform health workbook's AVS tab. It runs without a workspace; pick one fo
 
 \* Needs each private cloud's diagnostic setting sending *VMware Syslog* to the workspace (`AVSSyslog`), and the
 activity log (`AzureActivity`) for the last panel.
+
+## Microsoft Sentinel operations workbook
+
+**Is Sentinel collecting what it should, are its detections and automation running, is the incident queue being
+worked, what does it cost, and is Purview data arriving?** [workbook/sentinel.workbook.json](workbook/sentinel.workbook.json).
+It is for the team that runs Sentinel. The analysts working incidents have Sentinel's own workbooks (*Security
+Operations Efficiency* and others in the Content hub). Pick the Sentinel workspace at the top; the picker lists only
+workspaces with Sentinel turned on.
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Logs, Resource Graph | Tables gone silent or dropped, connectors / rules / automation failing, open high-severity incidents, incidents not triaged in time, subscriptions not sending the activity log, retention and daily cap; ingestion by table, incidents per day, everything failing now |
+| Data collection | Logs, Resource Manager | Every table's last record and last 24 hours against its 7-day average, data connector health, data connectors configured, subscriptions sending the activity log, ingestion over time |
+| Detections | Logs, Resource Manager | Analytics rules with failed runs, every analytics rule (enabled, severity, frequency), rules to tune (closed incidents that were not true positives), noisiest rules, rules that ran without alerting, changes to rules and settings |
+| Incidents | Logs | Open incidents by severity and age, incidents still New after the triage target, time to triage and close by severity, workload by owner, closed incidents by source and classification |
+| Automation | Resource Manager, Logs, Resource Graph, Metrics | Automation rules, automation rule and playbook run failures, playbooks (state, managed identity), playbook runs failed and actions throttled |
+| Cost and retention | Resource Graph, Logs, Resource Manager | Commitment tier, retention, daily cap and network access; billable GB per day against the tier; billable and free ingestion; billable GB by table; every table's plan and retention |
+| Purview | Logs | Whether each Purview-related table is receiving data, DLP / Insider Risk / Information Protection alerts, sensitivity label activity, labels removed or downgraded |
+
+Needs Sentinel's **Auditing and health monitoring** turned on (Sentinel → Settings) for `SentinelHealth` and
+`SentinelAudit`; without it the health and audit panels are empty. Two thresholds at the top: when a table counts
+as silent (default 24 hours) and the triage target (default 4 hours). Open incidents and table baselines use fixed
+windows (90 and 8 days) whatever the time range.
+
+## Privileged access workbook
+
+**Who is using privileged access, were the activations properly approved, what was granted outside PIM, and do
+admins sign in safely?** [workbook/privileged-access.workbook.json](workbook/privileged-access.workbook.json).
+It needs the workspace that receives the Entra ID audit and sign-in logs (often the Sentinel workspace).
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Logs, Resource Graph | Role activations, approval decisions (denied, rushed, self-approved), requests awaiting approval, roles assigned outside PIM, break-glass sign-ins, privileged accounts without phishing-resistant MFA, risky app permissions granted, Azure access admins assigned to users; activations and decisions per day |
+| Activations | Logs | Activations by role and by person, every activation with its justification and ticket, weak justifications flagged; Entra roles, PIM for Groups and Azure resources |
+| Approvals | Logs | Requests awaiting approval, every approval decision (approver, requester, role, minutes to decide, justification, approver's reason), decisions by approver with rushed and self-approved counts |
+| Assignments | Logs, Resource Graph | Entra role assignments made outside PIM (including to service principals), eligible and active assignments made or removed in PIM, application permissions / credentials / owners with risky permissions flagged, Owner and access administrator assignments in Azure, and who made them |
+| Sign-ins | Logs | Break-glass account sign-ins, how each privileged account signs in (weakest method), risky sign-ins by privileged accounts, legacy authentication, changes to Conditional Access, authentication methods and PIM role settings |
+
+Set **Break-glass accounts** (a regular expression of their user principal names) and, if your admins use separate
+accounts, the **Admin account pattern**. A *rushed* approval is one decided within 2 minutes of the request (change it
+at the top). Logs record changes, not standing state: a role held permanently and not touched in the time range
+does not appear, because the current members of an Entra ID role are only in Microsoft Graph.
 
 ## More troubleshooting workbooks
 
@@ -432,10 +479,12 @@ python src/build_avd_user.py
 python src/build_log_cost.py
 python src/build_routing.py
 python src/build_avs.py
+python src/build_sentinel.py
+python src/build_privileged_access.py
 python src/build_grafana.py
 ```
 
-Commit the scripts and every generated JSON file (ten workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (twelve workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence

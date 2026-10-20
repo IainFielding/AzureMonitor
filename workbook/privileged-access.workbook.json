@@ -1,0 +1,2340 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Privileged access\nWho holds and uses privileged access, and is it granted properly? PIM activations and the approvals behind them, assignments made outside PIM, risky application permissions, Azure access administrators, and how privileged and break-glass accounts sign in."
+      },
+      "name": "pa-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "335c3b86-f855-56a4-b60e-42df6d2f6860",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "4ed304f9-8f46-5e71-9ce7-2d9ba5721726",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 604800000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "08b015c8-f668-5bb4-815d-95b896ee22e7",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace that receives the Entra ID audit and sign-in logs (often the Sentinel workspace) and the activity log.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "b45e545e-d0fa-5520-af2a-a83c4bf80bd3",
+            "version": "KqlParameterItem/1.0",
+            "name": "BreakGlass",
+            "label": "Break-glass accounts",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "A regular expression matching the emergency access accounts' user principal names, for example ^(bg1|bg2)@contoso\\.com$. Any sign-in by them is flagged."
+          },
+          {
+            "id": "76cf809e-cb7d-5bb0-a5b7-9204b3da0a5a",
+            "version": "KqlParameterItem/1.0",
+            "name": "AdminPattern",
+            "label": "Admin account pattern",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. A regular expression matching separate admin accounts (for example ^adm-), so they count as privileged even with no role change in the time range."
+          },
+          {
+            "id": "61d422bb-02c7-5971-892a-8771feb2e5c6",
+            "version": "KqlParameterItem/1.0",
+            "name": "FastMinutes",
+            "label": "Rushed approval under",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"1\", \"label\": \"1 minute\"}, {\"value\": \"2\", \"label\": \"2 minutes\"}, {\"value\": \"5\", \"label\": \"5 minutes\"}, {\"value\": \"10\", \"label\": \"10 minutes\"}]",
+            "value": "2",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "An approval decided this soon after the request is flagged as rushed."
+          },
+          {
+            "id": "a1efbd0e-db9a-50e3-b0d3-1d0a64b873f4",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "pa-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select the **Log Analytics workspace** that receives the Entra ID audit and sign-in logs.",
+        "style": "warning"
+      },
+      "name": "pa-la-hint",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "f2a23bfe-5f3d-50dd-a322-335b348ce27a",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "d5de33d5-482f-551a-bb18-ebfd8f5e4320",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Activations",
+            "subTarget": "activations",
+            "style": "link"
+          },
+          {
+            "id": "0c70b20e-4a1c-53c5-b6ae-586e5e0ed8f3",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Approvals",
+            "subTarget": "approvals",
+            "style": "link"
+          },
+          {
+            "id": "d8ad3504-accc-5f20-b806-eb67eea6ba84",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Assignments",
+            "subTarget": "assignments",
+            "style": "link"
+          },
+          {
+            "id": "ace139a4-11e3-5c87-88ab-f97e64a0575e",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Sign-ins",
+            "subTarget": "signins",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "pa-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\npim\n| where Event == 'Activated'\n| extend User = coalesce(Target, Actor)\n| summarize Activations = count(), Users = dcount(User), TopTier = countif(TopTier == 'Yes')\n| project Signal = 'Role activations', Value = Activations,\n    Detail = strcat(Users, ' people · ', TopTier, ' of top-tier roles'), State = 'Available'",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-activations",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\nlet requests = pim\n| where Event in ('Approval requested', 'Activation requested')\n| project RequestTime = TimeGenerated, Requester = tolower(Target), RoleName, ReqJustification = Justification, ReqTicket = Ticket;\nlet decisions = pim\n| where Event in ('Approved', 'Denied')\n| project DecisionTime = TimeGenerated, Decision = Event, Approver = Actor, Requester = tolower(Target), RoleName, Area,\n    TopTier, Comment = ResultReason\n| join kind=leftouter requests on Requester, RoleName\n| summarize RequestTime = maxif(RequestTime, RequestTime <= DecisionTime),\n    Justification = take_anyif(ReqJustification, RequestTime <= DecisionTime), Ticket = take_anyif(ReqTicket, RequestTime <= DecisionTime)\n    by DecisionTime, Decision, Approver, Requester, RoleName, Area, TopTier, Comment\n| extend MinutesToDecide = round((DecisionTime - RequestTime) / 1m, 1),\n    SelfApproved = iff(isnotempty(Requester) and tolower(Approver) == Requester, 'Yes', 'No')\n| extend Rushed = iff(Decision == 'Approved' and MinutesToDecide < {FastMinutes}, 'Yes', 'No');\ndecisions\n| summarize Total = count(), Denied = countif(Decision == 'Denied'), Rushed = countif(Rushed == 'Yes'),\n    Self = countif(SelfApproved == 'Yes')\n| project Signal = 'Approval decisions', Value = Total,\n    Detail = strcat(Denied, ' denied · ', Rushed, ' under {FastMinutes} min · ', Self, ' self-approved'),\n    State = case(Self > 0, 'Unavailable', Rushed > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-decisions",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\nlet settled = pim\n| where Event in ('Approved', 'Denied', 'Activated')\n| project SettledTime = TimeGenerated, Requester = tolower(Target), RoleName;\npim\n| where Event == 'Approval requested' and TimeGenerated > ago(24h)\n| project RequestTime = TimeGenerated, Requester = tolower(Target), RoleName, Area, TopTier, Justification, Ticket\n| join kind=leftouter settled on Requester, RoleName\n| summarize Settled = countif(SettledTime >= RequestTime) by RequestTime, Requester, RoleName, Area, TopTier, Justification, Ticket\n| where Settled == 0\n| extend WaitingHours = round((now() - RequestTime) / 1h, 1)\n| project-away Settled\n| summarize Pending = count(), TopTier = countif(TopTier == 'Yes'), Oldest = max(WaitingHours)\n| project Signal = 'Requests awaiting approval', Value = Pending,\n    Detail = iff(Pending == 0, 'none in the last 24 hours', strcat(TopTier, ' top-tier · oldest ', Oldest, ' h')),\n    State = iff(Pending > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-pending",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union\n    (AuditLogs\n    | where TimeGenerated {TimeRange}\n    | where LoggedByService =~ 'Core Directory' and OperationName in~ ('Add member to role', 'Add scoped member to role')\n    | where tostring(InitiatedBy.app.displayName) !~ 'MS-PIM'\n    | extend tr = TargetResources[0]\n    | mv-apply p = tr.modifiedProperties on (\n        summarize Role = take_anyif(trim('\"', tostring(p.newValue)), tostring(p.displayName) == 'Role.DisplayName'))\n    | extend Assignee = coalesce(tostring(tr.userPrincipalName), tostring(tr.displayName)), AssigneeType = tostring(tr.type),\n        Source = 'Entra ID'),\n    (AuditLogs\n    | where TimeGenerated {TimeRange}\n    | where LoggedByService =~ 'PIM' and OperationName has 'outside of PIM'\n    | mv-apply t = TargetResources on (\n        summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n            Assignee = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal', 'Group')),\n            AssigneeType = take_anyif(tostring(t.type), tostring(t.type) in~ ('User', 'ServicePrincipal', 'Group')))\n    | extend Source = 'Reported by PIM')\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| where Source == 'Entra ID'\n| summarize Assignments = count(), ToApps = countif(AssigneeType =~ 'ServicePrincipal')\n| project Signal = 'Roles assigned outside PIM', Value = Assignments, Detail = strcat(ToApps, ' to service principals'),\n    State = iff(Assignments > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-outside",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let pattern = @'{BreakGlass}';\nunion isfuzzy=true\n    (SigninLogs\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(pattern) and UserPrincipalName matches regex pattern\n    | project TimeGenerated, UserPrincipalName, ResultType, AppDisplayName, IPAddress,\n        Country = tostring(LocationDetails.countryOrRegion), ConditionalAccessStatus, Kind = 'Interactive'),\n    (AADNonInteractiveUserSignInLogs\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(pattern) and UserPrincipalName matches regex pattern\n    | project TimeGenerated, UserPrincipalName, ResultType, AppDisplayName, IPAddress,\n        Country = tostring(parse_json(tostring(LocationDetails)).countryOrRegion), ConditionalAccessStatus, Kind = 'Non-interactive')\n| summarize SignIns = count(), Accounts = dcount(UserPrincipalName)\n| project Signal = 'Break-glass sign-ins', Value = SignIns,\n    Detail = iff(isempty(@'{BreakGlass}'), 'set the break-glass accounts at the top', strcat(Accounts, ' accounts')),\n    State = case(isempty(@'{BreakGlass}'), 'Unknown', SignIns > 0, 'Unavailable', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-breakglass",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let adminPattern = @'{AdminPattern}';\nlet privileged = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM' or (LoggedByService =~ 'Core Directory' and OperationName has 'member to role')\n| mv-apply t = TargetResources on (where tostring(t.type) =~ 'User' | project u = tolower(tostring(t.userPrincipalName)))\n| where isnotempty(u)\n| distinct u;\nSigninLogs\n| where TimeGenerated {TimeRange}\n| where tolower(UserPrincipalName) in (privileged) or (isnotempty(adminPattern) and UserPrincipalName matches regex adminPattern)\n| where ResultType == '0'\n| extend methods = tostring(AuthenticationDetails)\n| extend Strength = case(methods has_any ('FIDO2', 'Windows Hello', 'Passkey', 'X.509', 'Certificate-based'), 'Phishing-resistant',\n    AuthenticationRequirement =~ 'multiFactorAuthentication', 'MFA', 'Single factor')\n| summarize SignIns = count(), PhishingResistant = countif(Strength == 'Phishing-resistant'), Mfa = countif(Strength == 'MFA'),\n    SingleFactor = countif(Strength == 'Single factor'), Apps = dcount(AppDisplayName), LastSignIn = max(TimeGenerated)\n    by User = UserPrincipalName\n| extend Weakest = case(SingleFactor > 0, 'Single factor', Mfa > 0, 'MFA, not phishing-resistant', 'Phishing-resistant')\n| summarize Users = count(), Weak = countif(Weakest != 'Phishing-resistant'), Single = countif(Weakest == 'Single factor')\n| project Signal = 'Privileged without phishing-resistant MFA', Value = Weak,\n    Detail = strcat(Single, ' single factor · of ', Users, ' privileged accounts'),\n    State = case(Single > 0, 'Unavailable', Weak > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-mfa",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AuditLogs\n| where TimeGenerated {TimeRange}\n| where OperationName has_any ('app role assignment to service principal', 'delegated permission grant', 'Consent to application',\n    'service principal credentials', 'Certificates and secrets management', 'owner to application', 'owner to service principal')\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n    App = tostring(TargetResources[0].displayName),\n    Kind = case(OperationName has_any ('app role assignment', 'permission grant', 'Consent'), 'Permission granted',\n        OperationName has_any ('credentials', 'Certificates and secrets'), 'Credential added or changed', 'Owner added'),\n    targets = tostring(TargetResources)\n| extend Risky = iff(targets has_any ('RoleManagement.ReadWrite.Directory', 'AppRoleAssignment.ReadWrite.All', 'Application.ReadWrite.All', 'Directory.ReadWrite.All', 'PrivilegedAccess.ReadWrite.AzureAD', 'Policy.ReadWrite.ConditionalAccess', 'UserAuthenticationMethod.ReadWrite.All', 'Domain.ReadWrite.All', 'full_access_as_app'), 'Yes', '')\n| summarize Risky = countif(Risky == 'Yes'), Total = count()\n| project Signal = 'Risky app permissions granted', Value = Risky, Detail = strcat('of ', Total, ' app permission and credential changes'),\n    State = iff(Risky > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-apps",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend RoleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1]))\n| where RoleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| extend Role = case(RoleId == '8e3af657-a8ff-443c-a75c-2fe8c4bcb635', 'Owner', RoleId == '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'User Access Administrator', RoleId == 'f58310d9-a9f6-439a-9e8d-f62e7b41a168', 'RBAC Administrator', ''), scope = tolower(tostring(properties.scope))\n| extend parts = split(scope, '/')\n| extend ScopeLevel = case(scope == '/', 'Tenant root',\n    scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',\n    array_length(parts) == 3, 'Subscription', array_length(parts) == 5, 'Resource group', 'Resource')\n| summarize Created = min(todatetime(properties.createdOn)), CreatedBy = take_any(tostring(properties.createdBy))\n    by Scope = scope, ScopeLevel, Role, PrincipalType = tostring(properties.principalType),\n    PrincipalId = tostring(properties.principalId)\n| where ScopeLevel in ('Tenant root', 'Management group', 'Subscription')\n| summarize Users = countif(PrincipalType =~ 'User'), Total = count()\n| project Signal = 'Azure access admins assigned to users', Value = Users,\n    Detail = strcat('of ', Total, ' Owner / access admin assignments at subscription or above'),\n    State = iff(Users > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pa-tile-azure",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Rushed* approvals were decided within **{FastMinutes} minutes** of the request, too quickly for the approver to\nhave checked it. A *self-approved* request was approved by the account that asked for it. *Roles assigned outside\nPIM* are permanent Entra ID role assignments made directly in the directory. *Privileged* accounts are those PIM or\nthe directory recorded a role change for in the time range, plus any matching the admin account pattern.",
+              "style": "info"
+            },
+            "name": "pa-tile-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\npim\n| where Event == 'Activated'\n| extend User = coalesce(Target, Actor)\n| summarize Activations = count() by Day = bin(TimeGenerated, 1d), RoleName",
+              "size": 0,
+              "title": "Role activations per day by role",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "barchart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No role activations in the time range."
+            },
+            "name": "pa-activations-day",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\nlet requests = pim\n| where Event in ('Approval requested', 'Activation requested')\n| project RequestTime = TimeGenerated, Requester = tolower(Target), RoleName, ReqJustification = Justification, ReqTicket = Ticket;\nlet decisions = pim\n| where Event in ('Approved', 'Denied')\n| project DecisionTime = TimeGenerated, Decision = Event, Approver = Actor, Requester = tolower(Target), RoleName, Area,\n    TopTier, Comment = ResultReason\n| join kind=leftouter requests on Requester, RoleName\n| summarize RequestTime = maxif(RequestTime, RequestTime <= DecisionTime),\n    Justification = take_anyif(ReqJustification, RequestTime <= DecisionTime), Ticket = take_anyif(ReqTicket, RequestTime <= DecisionTime)\n    by DecisionTime, Decision, Approver, Requester, RoleName, Area, TopTier, Comment\n| extend MinutesToDecide = round((DecisionTime - RequestTime) / 1m, 1),\n    SelfApproved = iff(isnotempty(Requester) and tolower(Approver) == Requester, 'Yes', 'No')\n| extend Rushed = iff(Decision == 'Approved' and MinutesToDecide < {FastMinutes}, 'Yes', 'No');\ndecisions\n| summarize Decisions = count() by Day = bin(DecisionTime, 1d), Decision",
+              "size": 0,
+              "title": "Approval decisions per day",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "barchart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No approval decisions in the time range (or no role requires approval)."
+            },
+            "name": "pa-decisions-day",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "pa-tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\npim\n| where Event == 'Activated'\n| extend User = coalesce(Target, Actor)\n| summarize Activations = count(), People = dcount(User), LastActivation = max(TimeGenerated) by Area, Role = RoleName, TopTier\n| order by TopTier desc, Activations desc",
+              "size": 0,
+              "title": "Activations by role",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No role activations.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TopTier",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TopTier",
+                    "label": "Top tier"
+                  },
+                  {
+                    "columnId": "LastActivation",
+                    "label": "Last activation"
+                  }
+                ]
+              }
+            },
+            "name": "pa-by-role",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\npim\n| where Event == 'Activated'\n| extend User = coalesce(Target, Actor)\n| summarize Activations = count(), Roles = dcount(RoleName), TopTier = countif(TopTier == 'Yes'),\n    RoleList = strcat_array(make_set(RoleName, 10), ', '), LastActivation = max(TimeGenerated)\n    by User\n| order by TopTier desc, Activations desc",
+              "size": 0,
+              "title": "Activations by person",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No role activations.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TopTier",
+                    "label": "Top-tier activations"
+                  },
+                  {
+                    "columnId": "RoleList",
+                    "label": "Roles"
+                  },
+                  {
+                    "columnId": "LastActivation",
+                    "label": "Last activation"
+                  }
+                ]
+              }
+            },
+            "name": "pa-by-user",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\npim\n| where Event == 'Activated'\n| extend User = coalesce(Target, Actor)\n| extend WeakJustification = iff(strlen(trim(@'\\s+', Justification)) < 10, 'Yes', '')\n| project TimeGenerated, User, Area, Role = RoleName, TopTier, Justification, WeakJustification, Ticket\n| order by TimeGenerated desc\n| take 1000",
+              "size": 0,
+              "title": "Every activation",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No role activations in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TopTier",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "WeakJustification",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Activated"
+                  },
+                  {
+                    "columnId": "TopTier",
+                    "label": "Top tier"
+                  },
+                  {
+                    "columnId": "WeakJustification",
+                    "label": "Weak justification"
+                  }
+                ]
+              }
+            },
+            "name": "pa-activations",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Covers Entra ID roles, PIM for Groups and Azure resource roles managed in PIM. A *weak justification* is under ten characters. Someone who activates a top-tier role every day may be better served by a narrower role.",
+              "style": "info"
+            },
+            "name": "pa-activations-note"
+          }
+        ]
+      },
+      "name": "pa-tab-activations",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "activations"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\nlet settled = pim\n| where Event in ('Approved', 'Denied', 'Activated')\n| project SettledTime = TimeGenerated, Requester = tolower(Target), RoleName;\npim\n| where Event == 'Approval requested' and TimeGenerated > ago(24h)\n| project RequestTime = TimeGenerated, Requester = tolower(Target), RoleName, Area, TopTier, Justification, Ticket\n| join kind=leftouter settled on Requester, RoleName\n| summarize Settled = countif(SettledTime >= RequestTime) by RequestTime, Requester, RoleName, Area, TopTier, Justification, Ticket\n| where Settled == 0\n| extend WaitingHours = round((now() - RequestTime) / 1h, 1)\n| project-away Settled\n| order by TopTier desc, RequestTime asc",
+              "size": 0,
+              "title": "Requests awaiting approval (last 24 hours)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No requests are waiting for approval.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TopTier",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RequestTime",
+                    "label": "Requested"
+                  },
+                  {
+                    "columnId": "RoleName",
+                    "label": "Role"
+                  },
+                  {
+                    "columnId": "TopTier",
+                    "label": "Top tier"
+                  },
+                  {
+                    "columnId": "WaitingHours",
+                    "label": "Waiting (hours)"
+                  }
+                ]
+              }
+            },
+            "name": "pa-pending",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\nlet requests = pim\n| where Event in ('Approval requested', 'Activation requested')\n| project RequestTime = TimeGenerated, Requester = tolower(Target), RoleName, ReqJustification = Justification, ReqTicket = Ticket;\nlet decisions = pim\n| where Event in ('Approved', 'Denied')\n| project DecisionTime = TimeGenerated, Decision = Event, Approver = Actor, Requester = tolower(Target), RoleName, Area,\n    TopTier, Comment = ResultReason\n| join kind=leftouter requests on Requester, RoleName\n| summarize RequestTime = maxif(RequestTime, RequestTime <= DecisionTime),\n    Justification = take_anyif(ReqJustification, RequestTime <= DecisionTime), Ticket = take_anyif(ReqTicket, RequestTime <= DecisionTime)\n    by DecisionTime, Decision, Approver, Requester, RoleName, Area, TopTier, Comment\n| extend MinutesToDecide = round((DecisionTime - RequestTime) / 1m, 1),\n    SelfApproved = iff(isnotempty(Requester) and tolower(Approver) == Requester, 'Yes', 'No')\n| extend Rushed = iff(Decision == 'Approved' and MinutesToDecide < {FastMinutes}, 'Yes', 'No');\ndecisions\n| project DecisionTime, Decision, Approver, Requester, Role = RoleName, Area, TopTier, MinutesToDecide, Rushed, SelfApproved,\n    Justification, Ticket, Comment, RequestTime\n| order by DecisionTime desc",
+              "size": 0,
+              "title": "Approval decisions",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No approval decisions in the time range (or no role requires approval).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Decision",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Approved",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Denied",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "TopTier",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Rushed",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "SelfApproved",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "DecisionTime",
+                    "label": "Decided"
+                  },
+                  {
+                    "columnId": "TopTier",
+                    "label": "Top tier"
+                  },
+                  {
+                    "columnId": "MinutesToDecide",
+                    "label": "Minutes to decide"
+                  },
+                  {
+                    "columnId": "SelfApproved",
+                    "label": "Self-approved"
+                  },
+                  {
+                    "columnId": "Comment",
+                    "label": "Approver's reason"
+                  },
+                  {
+                    "columnId": "RequestTime",
+                    "label": "Requested"
+                  }
+                ]
+              }
+            },
+            "name": "pa-decisions",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\nlet requests = pim\n| where Event in ('Approval requested', 'Activation requested')\n| project RequestTime = TimeGenerated, Requester = tolower(Target), RoleName, ReqJustification = Justification, ReqTicket = Ticket;\nlet decisions = pim\n| where Event in ('Approved', 'Denied')\n| project DecisionTime = TimeGenerated, Decision = Event, Approver = Actor, Requester = tolower(Target), RoleName, Area,\n    TopTier, Comment = ResultReason\n| join kind=leftouter requests on Requester, RoleName\n| summarize RequestTime = maxif(RequestTime, RequestTime <= DecisionTime),\n    Justification = take_anyif(ReqJustification, RequestTime <= DecisionTime), Ticket = take_anyif(ReqTicket, RequestTime <= DecisionTime)\n    by DecisionTime, Decision, Approver, Requester, RoleName, Area, TopTier, Comment\n| extend MinutesToDecide = round((DecisionTime - RequestTime) / 1m, 1),\n    SelfApproved = iff(isnotempty(Requester) and tolower(Approver) == Requester, 'Yes', 'No')\n| extend Rushed = iff(Decision == 'Approved' and MinutesToDecide < {FastMinutes}, 'Yes', 'No');\ndecisions\n| summarize Approved = countif(Decision == 'Approved'), Denied = countif(Decision == 'Denied'),\n    Requesters = dcount(Requester), MedianMinutes = round(percentile(MinutesToDecide, 50), 1),\n    Rushed = countif(Rushed == 'Yes'), SelfApproved = countif(SelfApproved == 'Yes'), TopTier = countif(TopTier == 'Yes')\n    by Approver\n| order by SelfApproved desc, Rushed desc, Approved desc",
+              "size": 0,
+              "title": "Decisions by approver",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No approval decisions in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Rushed",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "SelfApproved",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "MedianMinutes",
+                    "label": "Median minutes to decide"
+                  },
+                  {
+                    "columnId": "SelfApproved",
+                    "label": "Self-approved"
+                  },
+                  {
+                    "columnId": "TopTier",
+                    "label": "Top-tier decisions"
+                  }
+                ]
+              }
+            },
+            "name": "pa-approvers",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Approvals happen only for roles whose PIM settings require them. *Minutes to decide* runs from the latest request for the same person and role before the decision, so it can be wrong when one person makes several requests for one role close together. PIM lets a request expire after 24 hours, so older unanswered requests are not listed as waiting. An approver who approves most requests within a minute or two is unlikely to be checking them.",
+              "style": "info"
+            },
+            "name": "pa-approvals-note"
+          }
+        ]
+      },
+      "name": "pa-tab-approvals",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "approvals"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Entra ID roles"
+            },
+            "name": "pa-entra-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union\n    (AuditLogs\n    | where TimeGenerated {TimeRange}\n    | where LoggedByService =~ 'Core Directory' and OperationName in~ ('Add member to role', 'Add scoped member to role')\n    | where tostring(InitiatedBy.app.displayName) !~ 'MS-PIM'\n    | extend tr = TargetResources[0]\n    | mv-apply p = tr.modifiedProperties on (\n        summarize Role = take_anyif(trim('\"', tostring(p.newValue)), tostring(p.displayName) == 'Role.DisplayName'))\n    | extend Assignee = coalesce(tostring(tr.userPrincipalName), tostring(tr.displayName)), AssigneeType = tostring(tr.type),\n        Source = 'Entra ID'),\n    (AuditLogs\n    | where TimeGenerated {TimeRange}\n    | where LoggedByService =~ 'PIM' and OperationName has 'outside of PIM'\n    | mv-apply t = TargetResources on (\n        summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n            Assignee = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal', 'Group')),\n            AssigneeType = take_anyif(tostring(t.type), tostring(t.type) in~ ('User', 'ServicePrincipal', 'Group')))\n    | extend Source = 'Reported by PIM')\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| project TimeGenerated, Source, Actor, Assignee, AssigneeType, Role, Result\n| order by TimeGenerated desc",
+              "size": 0,
+              "title": "Role assignments made outside PIM",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No roles were assigned outside PIM in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "AssigneeType",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ServicePrincipal",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Assigned"
+                  },
+                  {
+                    "columnId": "AssigneeType",
+                    "label": "Assignee type"
+                  }
+                ]
+              }
+            },
+            "name": "pa-outside",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let topTier = dynamic(['Global Administrator', 'Privileged Role Administrator', 'Privileged Authentication Administrator', 'Security Administrator', 'Conditional Access Administrator', 'Application Administrator', 'Cloud Application Administrator', 'User Administrator', 'Exchange Administrator', 'SharePoint Administrator', 'Hybrid Identity Administrator', 'Intune Administrator', 'Owner', 'User Access Administrator', 'Role Based Access Control Administrator']);\nlet pim = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM'\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName))\n| mv-apply t = TargetResources on (\n    summarize Role = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Role'),\n        Group = take_anyif(tostring(t.displayName), tostring(t.type) =~ 'Group'),\n        Target = take_anyif(coalesce(tostring(t.userPrincipalName), tostring(t.displayName)), tostring(t.type) in~ ('User', 'ServicePrincipal'))\n  )\n| extend details = tostring(AdditionalDetails)\n| extend Justification = coalesce(extract(@'\"key\":\"Justification\",\"value\":\"([^\"]*)\"', 1, details), ResultReason),\n    Ticket = extract(@'\"key\":\"TicketNumber\",\"value\":\"([^\"]*)\"', 1, details),\n    RoleName = coalesce(Role, Group),\n    Area = case(Category =~ 'GroupManagement', 'PIM group', Category =~ 'ResourceManagement', 'Azure resource', 'Entra role'),\n    op = tolower(OperationName)\n| extend Event = case(\n        op has 'approved', 'Approved',\n        op has_any ('denied', 'rejected'), 'Denied',\n        op has 'approval' and op has 'request', 'Approval requested',\n        op has 'activation' and op has 'completed', 'Activated',\n        op has 'activation' and op has 'requested', 'Activation requested',\n        op has 'deactivat', 'Deactivated',\n        op has 'expired', 'Expired',\n        op has 'outside of pim', 'Outside PIM',\n        op has 'eligible', 'Eligible assignment',\n        op has_any ('permanent', 'timebound'), 'Active assignment',\n        OperationName),\n    TopTier = iff(coalesce(Role, Group) in (topTier), 'Yes', '');\npim\n| where Event in ('Eligible assignment', 'Active assignment') or OperationName has 'Remove'\n| where Event !in ('Activated', 'Activation requested', 'Approval requested', 'Approved', 'Denied', 'Deactivated', 'Expired')\n| where tolower(OperationName) !has 'requested'\n| extend Duration = case(tolower(OperationName) has 'permanent', 'Permanent', tolower(OperationName) has 'timebound', 'Time-bound', '')\n| project TimeGenerated, Operation = OperationName, Actor, Assignee = Target, Role = RoleName, Area, TopTier, Duration, Result\n| order by TimeGenerated desc\n| take 1000",
+              "size": 0,
+              "title": "Eligible and active assignments made or removed in PIM",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No PIM assignment changes in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "TopTier",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Duration",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Time-bound",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Permanent",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Changed"
+                  },
+                  {
+                    "columnId": "TopTier",
+                    "label": "Top tier"
+                  }
+                ]
+              }
+            },
+            "name": "pa-pim-changes",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Applications"
+            },
+            "name": "pa-apps-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AuditLogs\n| where TimeGenerated {TimeRange}\n| where OperationName has_any ('app role assignment to service principal', 'delegated permission grant', 'Consent to application',\n    'service principal credentials', 'Certificates and secrets management', 'owner to application', 'owner to service principal')\n| extend Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n    App = tostring(TargetResources[0].displayName),\n    Kind = case(OperationName has_any ('app role assignment', 'permission grant', 'Consent'), 'Permission granted',\n        OperationName has_any ('credentials', 'Certificates and secrets'), 'Credential added or changed', 'Owner added'),\n    targets = tostring(TargetResources)\n| extend Risky = iff(targets has_any ('RoleManagement.ReadWrite.Directory', 'AppRoleAssignment.ReadWrite.All', 'Application.ReadWrite.All', 'Directory.ReadWrite.All', 'PrivilegedAccess.ReadWrite.AzureAD', 'Policy.ReadWrite.ConditionalAccess', 'UserAuthenticationMethod.ReadWrite.All', 'Domain.ReadWrite.All', 'full_access_as_app'), 'Yes', '')\n| project TimeGenerated, Kind, Risky, App, Operation = OperationName, Actor, Result\n| order by Risky desc, TimeGenerated desc\n| take 500",
+              "size": 0,
+              "title": "Application permissions, credentials and owners",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No application permission or credential changes.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Risky",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Kind",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Permission granted",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Credential added or changed",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Owner added",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Changed"
+                  }
+                ]
+              }
+            },
+            "name": "pa-apps",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Risky* permissions let an application make itself or anyone else an administrator (for example `RoleManagement.ReadWrite.Directory` or `AppRoleAssignment.ReadWrite.All`). A credential added to an application that already holds such a permission is worth checking.",
+              "style": "info"
+            },
+            "name": "pa-apps-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Azure"
+            },
+            "name": "pa-azure-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend RoleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1]))\n| where RoleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| extend Role = case(RoleId == '8e3af657-a8ff-443c-a75c-2fe8c4bcb635', 'Owner', RoleId == '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'User Access Administrator', RoleId == 'f58310d9-a9f6-439a-9e8d-f62e7b41a168', 'RBAC Administrator', ''), scope = tolower(tostring(properties.scope))\n| extend parts = split(scope, '/')\n| extend ScopeLevel = case(scope == '/', 'Tenant root',\n    scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',\n    array_length(parts) == 3, 'Subscription', array_length(parts) == 5, 'Resource group', 'Resource')\n| summarize Created = min(todatetime(properties.createdOn)), CreatedBy = take_any(tostring(properties.createdBy))\n    by Scope = scope, ScopeLevel, Role, PrincipalType = tostring(properties.principalType),\n    PrincipalId = tostring(properties.principalId)\n| order by case(ScopeLevel == 'Tenant root', 0, ScopeLevel == 'Management group', 1, ScopeLevel == 'Subscription', 2, 3) asc,\n    case(PrincipalType =~ 'User', 0, 1) asc, Scope asc",
+              "size": 0,
+              "title": "Owner and access administrator assignments",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Owner or access administrator assignments.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PrincipalType",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "User",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ScopeLevel",
+                    "label": "Scope level"
+                  },
+                  {
+                    "columnId": "PrincipalType",
+                    "label": "Principal type"
+                  },
+                  {
+                    "columnId": "PrincipalId",
+                    "label": "Principal id"
+                  },
+                  {
+                    "columnId": "CreatedBy",
+                    "label": "Created by (id)"
+                  }
+                ]
+              }
+            },
+            "name": "pa-azure"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where OperationNameValue =~ 'MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE' and ActivityStatusValue in~ ('Success', 'Succeeded')\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| extend body = todynamic(tostring(props.requestbody))\n| extend RoleId = tolower(tostring(split(tostring(body.Properties.RoleDefinitionId), '/')[-1]))\n| where RoleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| project TimeGenerated, Role = case(RoleId == '8e3af657-a8ff-443c-a75c-2fe8c4bcb635', 'Owner', RoleId == '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'User Access Administrator', RoleId == 'f58310d9-a9f6-439a-9e8d-f62e7b41a168', 'RBAC Administrator', ''), Scope = tostring(split(tolower(_ResourceId), '/providers/microsoft.authorization/roleassignments/')[0]),\n    PrincipalId = tostring(body.Properties.PrincipalId), PrincipalType = tostring(body.Properties.PrincipalType), Caller\n| order by TimeGenerated desc",
+              "size": 0,
+              "title": "Owner and access administrator assignments made (activity log)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Owner or access administrator assignments were made in the time range (or the activity log is not sent to this workspace).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Assigned"
+                  },
+                  {
+                    "columnId": "PrincipalId",
+                    "label": "Principal id"
+                  },
+                  {
+                    "columnId": "PrincipalType",
+                    "label": "Principal type"
+                  }
+                ]
+              }
+            },
+            "name": "pa-azure-grants",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Resource Graph shows assignments active now, including those activated through PIM for their duration, and holds principal ids only. Assign these roles to groups managed in PIM rather than to people directly.",
+              "style": "info"
+            },
+            "name": "pa-azure-note"
+          }
+        ]
+      },
+      "name": "pa-tab-assignments",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "assignments"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Set **Break-glass accounts** at the top to watch the emergency access accounts. They should never sign in outside a tested emergency.",
+              "style": "info"
+            },
+            "name": "pa-bg-hint",
+            "conditionalVisibility": {
+              "parameterName": "BreakGlass",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let pattern = @'{BreakGlass}';\nunion isfuzzy=true\n    (SigninLogs\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(pattern) and UserPrincipalName matches regex pattern\n    | project TimeGenerated, UserPrincipalName, ResultType, AppDisplayName, IPAddress,\n        Country = tostring(LocationDetails.countryOrRegion), ConditionalAccessStatus, Kind = 'Interactive'),\n    (AADNonInteractiveUserSignInLogs\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(pattern) and UserPrincipalName matches regex pattern\n    | project TimeGenerated, UserPrincipalName, ResultType, AppDisplayName, IPAddress,\n        Country = tostring(parse_json(tostring(LocationDetails)).countryOrRegion), ConditionalAccessStatus, Kind = 'Non-interactive')\n| project TimeGenerated, User = UserPrincipalName, Kind, Result = iff(ResultType == '0', 'Success', strcat('Failed (', ResultType, ')')),\n    App = AppDisplayName, IPAddress, Country, ConditionalAccess = ConditionalAccessStatus\n| order by TimeGenerated desc",
+              "size": 0,
+              "title": "Break-glass account sign-ins",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No sign-ins by the break-glass accounts in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Result",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Signed in"
+                  },
+                  {
+                    "columnId": "IPAddress",
+                    "label": "IP address"
+                  },
+                  {
+                    "columnId": "ConditionalAccess",
+                    "label": "Conditional Access"
+                  }
+                ]
+              }
+            },
+            "name": "pa-break-glass",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "Workspace",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              },
+              {
+                "parameterName": "BreakGlass",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              }
+            ]
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let adminPattern = @'{AdminPattern}';\nlet privileged = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM' or (LoggedByService =~ 'Core Directory' and OperationName has 'member to role')\n| mv-apply t = TargetResources on (where tostring(t.type) =~ 'User' | project u = tolower(tostring(t.userPrincipalName)))\n| where isnotempty(u)\n| distinct u;\nSigninLogs\n| where TimeGenerated {TimeRange}\n| where tolower(UserPrincipalName) in (privileged) or (isnotempty(adminPattern) and UserPrincipalName matches regex adminPattern)\n| where ResultType == '0'\n| extend methods = tostring(AuthenticationDetails)\n| extend Strength = case(methods has_any ('FIDO2', 'Windows Hello', 'Passkey', 'X.509', 'Certificate-based'), 'Phishing-resistant',\n    AuthenticationRequirement =~ 'multiFactorAuthentication', 'MFA', 'Single factor')\n| summarize SignIns = count(), PhishingResistant = countif(Strength == 'Phishing-resistant'), Mfa = countif(Strength == 'MFA'),\n    SingleFactor = countif(Strength == 'Single factor'), Apps = dcount(AppDisplayName), LastSignIn = max(TimeGenerated)\n    by User = UserPrincipalName\n| extend Weakest = case(SingleFactor > 0, 'Single factor', Mfa > 0, 'MFA, not phishing-resistant', 'Phishing-resistant')\n| project User, Weakest, SignIns, PhishingResistant, Mfa, SingleFactor, Apps, LastSignIn\n| order by case(Weakest == 'Single factor', 0, Weakest startswith 'MFA', 1, 2) asc, SignIns desc",
+              "size": 0,
+              "title": "How privileged accounts sign in",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No successful sign-ins by privileged accounts in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Weakest",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Phishing-resistant",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "MFA, not phishing-resistant",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Single factor",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Weakest",
+                    "label": "Weakest method"
+                  },
+                  {
+                    "columnId": "SignIns",
+                    "label": "Sign-ins"
+                  },
+                  {
+                    "columnId": "PhishingResistant",
+                    "label": "Phishing-resistant"
+                  },
+                  {
+                    "columnId": "Mfa",
+                    "label": "Other MFA"
+                  },
+                  {
+                    "columnId": "SingleFactor",
+                    "label": "Single factor"
+                  },
+                  {
+                    "columnId": "LastSignIn",
+                    "label": "Last sign-in"
+                  }
+                ]
+              }
+            },
+            "name": "pa-auth-strength",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Phishing-resistant* means a FIDO2 key, passkey, Windows Hello for Business or certificate. A sign-in that reuses an earlier MFA from the same session counts as *other MFA*, so an account can show some even when it always uses a passkey. Require an authentication strength in Conditional Access for admin roles to close the gap.",
+              "style": "info"
+            },
+            "name": "pa-auth-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let adminPattern = @'{AdminPattern}';\nlet privileged = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM' or (LoggedByService =~ 'Core Directory' and OperationName has 'member to role')\n| mv-apply t = TargetResources on (where tostring(t.type) =~ 'User' | project u = tolower(tostring(t.userPrincipalName)))\n| where isnotempty(u)\n| distinct u;\nSigninLogs\n| where TimeGenerated {TimeRange}\n| where tolower(UserPrincipalName) in (privileged) or (isnotempty(adminPattern) and UserPrincipalName matches regex adminPattern)\n| where RiskLevelDuringSignIn in~ ('medium', 'high') or RiskState =~ 'atRisk'\n| project TimeGenerated, User = UserPrincipalName, Risk = RiskLevelDuringSignIn, RiskState,\n    Result = iff(ResultType == '0', 'Success', strcat('Failed (', ResultType, ')')), App = AppDisplayName, IPAddress,\n    Country = tostring(LocationDetails.countryOrRegion)\n| order by TimeGenerated desc",
+              "size": 0,
+              "title": "Risky sign-ins by privileged accounts",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No medium or high risk sign-ins by privileged accounts.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Risk",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "high",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Result",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Signed in"
+                  },
+                  {
+                    "columnId": "RiskState",
+                    "label": "Risk state"
+                  },
+                  {
+                    "columnId": "IPAddress",
+                    "label": "IP address"
+                  }
+                ]
+              }
+            },
+            "name": "pa-risky",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let adminPattern = @'{AdminPattern}';\nlet privileged = AuditLogs\n| where TimeGenerated {TimeRange}\n| where LoggedByService =~ 'PIM' or (LoggedByService =~ 'Core Directory' and OperationName has 'member to role')\n| mv-apply t = TargetResources on (where tostring(t.type) =~ 'User' | project u = tolower(tostring(t.userPrincipalName)))\n| where isnotempty(u)\n| distinct u;\nSigninLogs\n| where TimeGenerated {TimeRange}\n| where ClientAppUsed !in~ ('Browser', 'Mobile Apps and Desktop clients', '')\n| summarize SignIns = count(), Succeeded = countif(ResultType == '0'), LastSeen = max(TimeGenerated)\n    by User = UserPrincipalName, ClientApp = ClientAppUsed\n| extend u = tolower(User)\n| join kind=leftouter (privileged | extend Privileged = 'Yes') on u\n| extend Privileged = iff(Privileged == 'Yes' or (isnotempty(adminPattern) and User matches regex adminPattern), 'Yes', 'No')\n| project User, Privileged, ClientApp, SignIns, Succeeded, LastSeen\n| order by Privileged desc, Succeeded desc\n| take 200",
+              "size": 0,
+              "title": "Legacy authentication sign-ins",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No legacy authentication sign-ins in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Privileged",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ClientApp",
+                    "label": "Client"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "pa-legacy",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AuditLogs\n| where TimeGenerated {TimeRange}\n| where OperationName has_any ('conditional access policy', 'named location', 'authentication strength', 'authentication method',\n    'authorization policy', 'cross-tenant access', 'role setting', 'role management policy')\n| project TimeGenerated, Operation = OperationName,\n    Actor = coalesce(tostring(InitiatedBy.user.userPrincipalName), tostring(InitiatedBy.app.displayName)),\n    Target = tostring(TargetResources[0].displayName), Result\n| order by TimeGenerated desc\n| take 500",
+              "size": 0,
+              "title": "Changes to Conditional Access, authentication and PIM role settings",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No policy changes in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Changed"
+                  }
+                ]
+              }
+            },
+            "name": "pa-policy-changes",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "pa-tab-signins",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "signins"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

@@ -1,0 +1,2941 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Microsoft Sentinel operations\nFor the team that runs Sentinel: is it collecting what it should, are detections and automation running, is the incident queue being worked, what does it cost, and is Purview data arriving?"
+      },
+      "name": "snt-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "4492f681-6476-570e-960d-2abf87d00793",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "b8319485-71db-521a-84e1-2953c3781409",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 604800000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "Applies to health, alerts, closed incidents and cost. Open incidents and table baselines use fixed windows."
+          },
+          {
+            "id": "f0cffc21-05a3-543a-8f2b-b1f52e86201d",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Sentinel workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": false,
+            "query": "resources\n| where type =~ 'microsoft.operationsmanagement/solutions'\n| where name startswith 'SecurityInsights('\n| project id = tostring(properties.workspaceResourceId)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::1",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Workspaces with Microsoft Sentinel turned on."
+          },
+          {
+            "id": "296342b6-2147-5b8d-b2c1-851eeee9eefd",
+            "version": "KqlParameterItem/1.0",
+            "name": "SilentHours",
+            "label": "Table is silent after",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"6\", \"label\": \"6 hours\"}, {\"value\": \"12\", \"label\": \"12 hours\"}, {\"value\": \"24\", \"label\": \"24 hours\"}, {\"value\": \"48\", \"label\": \"48 hours\"}]",
+            "value": "24",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "A table that has sent nothing for this long is flagged. Some tables are naturally quiet (alerts, rarely used connectors), so read the list rather than the count."
+          },
+          {
+            "id": "a61b4b37-c2ac-57a4-b552-70fcc6e7d66b",
+            "version": "KqlParameterItem/1.0",
+            "name": "TriageHours",
+            "label": "Triage due within",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"1\", \"label\": \"1 hour\"}, {\"value\": \"4\", \"label\": \"4 hours\"}, {\"value\": \"8\", \"label\": \"8 hours\"}, {\"value\": \"24\", \"label\": \"24 hours\"}]",
+            "value": "4",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "A medium or high incident still New after this long counts as not triaged."
+          },
+          {
+            "id": "05f55d5b-b878-5005-b8d9-78b69cb92a63",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "snt-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "b7908bc4-9639-5051-ad2a-0ed3ba195d40",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "62b734e7-efb0-59ba-9054-c6dc1c85906a",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Data collection",
+            "subTarget": "data",
+            "style": "link"
+          },
+          {
+            "id": "ab004008-5c15-5921-8939-2f891ecc7232",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Detections",
+            "subTarget": "detections",
+            "style": "link"
+          },
+          {
+            "id": "271d4075-9207-5256-b642-9ad3b3cabe9c",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Incidents",
+            "subTarget": "incidents",
+            "style": "link"
+          },
+          {
+            "id": "35cb5ee9-cbb5-56ad-b255-a6572040acc6",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Automation",
+            "subTarget": "automation",
+            "style": "link"
+          },
+          {
+            "id": "b47f12d2-a2a4-56d4-a589-08a9eb3290f8",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Cost and retention",
+            "subTarget": "cost",
+            "style": "link"
+          },
+          {
+            "id": "e780a145-dec4-5eb0-b712-aede0a110ed9",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Purview",
+            "subTarget": "purview",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "snt-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated > ago(8d)\n| summarize LastSeen = max(TimeGenerated),\n    GBLast24h = round(sumif(Quantity, TimeGenerated > ago(1d)) / 1000.0, 2),\n    GBDailyAvg = round(sumif(Quantity, TimeGenerated <= ago(1d)) / 1000.0 / 7.0, 2),\n    Billable = take_any(IsBillable)\n    by Table = DataType\n| extend HoursSinceData = datetime_diff('hour', now(), LastSeen)\n| extend Status = case(HoursSinceData >= {SilentHours}, 'Silent',\n    GBDailyAvg >= 0.01 and GBLast24h < 0.5 * GBDailyAvg, 'Dropped',\n    GBDailyAvg >= 0.01 and GBLast24h > 2.0 * GBDailyAvg, 'Spiked', 'Normal')\n| summarize Silent = countif(Status == 'Silent'), Dropped = countif(Status == 'Dropped'), Total = count()\n| project Signal = 'Tables gone silent', Value = Silent,\n    Detail = strcat(Dropped, ' dropped by half · of ', Total, ' tables'),\n    State = case(Silent > 0, 'Unavailable', Dropped > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContext": {
+                "durationMs": 691200000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "snt-tile-silent",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, SentinelResourceId:string, SentinelResourceName:string, SentinelResourceType:string,\n        Status:string, Description:string, OperationName:string)[]),\n    (SentinelHealth)\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, Status) by SentinelResourceId, SentinelResourceType\n| summarize Failing = countif(Status !~ 'Success'), Total = count()\n| project Signal = 'Connectors, rules and automation failing', Value = Failing,\n    Detail = iff(Total == 0, 'no health records: turn on health monitoring', strcat('of ', Total, ' reporting health')),\n    State = case(Total == 0, 'Unknown', Failing > 0, 'Unavailable', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "snt-tile-health",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where Status != 'Closed' and Severity == 'High'\n| summarize Open = count(), Unassigned = countif(isempty(Assignee))\n| project Signal = 'Open high-severity incidents', Value = Open, Detail = strcat(Unassigned, ' unassigned'),\n    State = case(Unassigned > 0, 'Unavailable', Open > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "snt-tile-high",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where Status == 'New' and Severity in ('High', 'Medium') and CreatedTime < ago({TriageHours}h)\n| summarize Late = count(), High = countif(Severity == 'High')\n| project Signal = 'Not triaged within {TriageHours} h', Value = Late, Detail = strcat(High, ' high · medium and high, still New'),\n    State = case(High > 0, 'Unavailable', Late > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "snt-tile-untriaged",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "arg(\"\").ResourceContainers\n| where type =~ 'microsoft.resources/subscriptions'\n| project SubscriptionId = tolower(subscriptionId), Subscription = name, State = tostring(properties.state)\n| join kind=leftouter (\n    union isfuzzy=true (datatable(TimeGenerated:datetime, SubscriptionId:string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | summarize Records = count(), LastRecord = max(TimeGenerated) by SubscriptionId = tolower(SubscriptionId)\n  ) on SubscriptionId\n| extend Status = case(isnull(LastRecord), 'Not sending', LastRecord < ago(1d), 'Stale', 'Sending')\n| where State =~ 'Enabled'\n| summarize Missing = countif(Status != 'Sending'), Total = count()\n| project Signal = 'Subscriptions not sending activity log', Value = Missing, Detail = strcat('of ', Total, ' enabled subscriptions'),\n    State = iff(Missing > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "snt-tile-activity",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where id =~ '{Workspace}'\n| extend Cap = todouble(properties.workspaceCapping.dailyQuotaGb), Retention = toint(properties.retentionInDays)\n| project Signal = 'Retention (days)', Value = Retention,\n    Detail = iff(Cap > 0, strcat('daily cap ', Cap, ' GB: security data stops when hit'), 'no daily cap'),\n    State = case(Cap > 0, 'Unavailable', Retention < 90, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "snt-tile-workspace",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A table is *silent* when nothing has arrived for **{SilentHours} hours** and *dropped* when the last 24 hours\nbrought in less than half its daily average of the 7 days before. An incident is *not triaged* when it is still\n**New** after **{TriageHours} hours**. Incidents are counted over the last 90 days whatever the time range.\nA daily cap on a Sentinel workspace stops security data arriving when it is reached, and Sentinel includes 90 days\nof retention, so less than that is usually a mistake.",
+              "style": "info"
+            },
+            "name": "snt-tile-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated {TimeRange}\n| summarize GB = sum(Quantity) / 1000.0 by DataType\n| top 10 by GB desc\n| join kind=inner (\n    Usage\n    | where TimeGenerated {TimeRange}\n    | summarize GB = sum(Quantity) / 1000.0 by bin(TimeGenerated, {TimeRange:grain}), DataType\n  ) on DataType\n| project TimeGenerated, DataType, GB = GB1",
+              "size": 0,
+              "title": "Ingestion by table, top 10 (GB)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "snt-ingestion",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where CreatedTime >= todatetime('{TimeRange:startISO}')\n| summarize Incidents = count() by Day = bin(CreatedTime, 1d), Severity",
+              "size": 0,
+              "title": "Incidents created per day by severity",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "barchart",
+              "timeContext": {
+                "durationMs": 7776000000
+              }
+            },
+            "name": "snt-created",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, SentinelResourceId:string, SentinelResourceName:string, SentinelResourceType:string,\n        Status:string, Description:string, OperationName:string)[]),\n    (SentinelHealth)\n| where TimeGenerated {TimeRange}\n| summarize arg_max(TimeGenerated, Status, Description) by Type = SentinelResourceType, Resource = SentinelResourceName\n| where Status !~ 'Success'\n| project Type, Resource, Status, Since = TimeGenerated, Detail = substring(Description, 0, 300)\n| order by Type asc, Resource asc",
+              "size": 0,
+              "title": "Connectors, rules and automation failing (latest state)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "Nothing is failing (or health monitoring is not turned on: Sentinel → Settings → Auditing and health monitoring).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Partial success",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failure",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "snt-failing",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "snt-tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated > ago(8d)\n| summarize LastSeen = max(TimeGenerated),\n    GBLast24h = round(sumif(Quantity, TimeGenerated > ago(1d)) / 1000.0, 2),\n    GBDailyAvg = round(sumif(Quantity, TimeGenerated <= ago(1d)) / 1000.0 / 7.0, 2),\n    Billable = take_any(IsBillable)\n    by Table = DataType\n| extend HoursSinceData = datetime_diff('hour', now(), LastSeen)\n| extend Status = case(HoursSinceData >= {SilentHours}, 'Silent',\n    GBDailyAvg >= 0.01 and GBLast24h < 0.5 * GBDailyAvg, 'Dropped',\n    GBDailyAvg >= 0.01 and GBLast24h > 2.0 * GBDailyAvg, 'Spiked', 'Normal')\n| project Table, Status, LastSeen, HoursSinceData, GBLast24h, GBDailyAvg, Billable\n| order by case(Status == 'Silent', 0, Status == 'Dropped', 1, Status == 'Spiked', 2, 3) asc, GBDailyAvg desc",
+              "size": 0,
+              "title": "Tables: last record and volume (last 24 hours against the 7 days before)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 691200000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Normal",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Dropped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Spiked",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Silent",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last data"
+                  },
+                  {
+                    "columnId": "HoursSinceData",
+                    "label": "Hours since data"
+                  },
+                  {
+                    "columnId": "GBLast24h",
+                    "label": "GB last 24 h"
+                  },
+                  {
+                    "columnId": "GBDailyAvg",
+                    "label": "GB per day (7-day average)"
+                  }
+                ]
+              }
+            },
+            "name": "snt-freshness",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Read from the `Usage` table, which records every table's volume each hour. A table that sent nothing for the whole 8 days is not listed: check the data connector itself.",
+              "style": "info"
+            },
+            "name": "snt-freshness-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, SentinelResourceId:string, SentinelResourceName:string, SentinelResourceType:string,\n        Status:string, Description:string, OperationName:string)[]),\n    (SentinelHealth)\n| where TimeGenerated {TimeRange}\n| where SentinelResourceType =~ 'Data connector'\n| summarize arg_max(TimeGenerated, Status, Description), Failures = countif(Status !~ 'Success')\n    by Connector = SentinelResourceName, Kind = tostring(column_ifexists('SentinelResourceKind', ''))\n| project Connector, Kind, Status, Failures, LastReport = TimeGenerated, Detail = substring(Description, 0, 300)\n| order by case(Status =~ 'Failure', 0, Status !~ 'Success', 1, 2) asc, Failures desc",
+              "size": 0,
+              "title": "Data connector health",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No data connector health records. Only some connectors report health, and only once health monitoring is turned on.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Partial success",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failure",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastReport",
+                    "label": "Last report"
+                  }
+                ]
+              }
+            },
+            "name": "snt-connector-health",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Workspace}/providers/Microsoft.SecurityInsights/dataConnectors\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2024-03-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Connector\"}, {\"path\": \"$.kind\", \"columnid\": \"Kind\"}]}}]}",
+              "size": 0,
+              "title": "Data connectors configured",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              },
+              "noDataMessage": "No data connectors returned. Connectors installed from the Content hub as solutions may not be listed here."
+            },
+            "name": "snt-connectors",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "arg(\"\").ResourceContainers\n| where type =~ 'microsoft.resources/subscriptions'\n| project SubscriptionId = tolower(subscriptionId), Subscription = name, State = tostring(properties.state)\n| join kind=leftouter (\n    union isfuzzy=true (datatable(TimeGenerated:datetime, SubscriptionId:string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | summarize Records = count(), LastRecord = max(TimeGenerated) by SubscriptionId = tolower(SubscriptionId)\n  ) on SubscriptionId\n| extend Status = case(isnull(LastRecord), 'Not sending', LastRecord < ago(1d), 'Stale', 'Sending')\n| project Subscription, SubscriptionId, State, Status, Records, LastRecord\n| order by case(State !~ 'Enabled', 3, Status == 'Not sending', 0, Status == 'Stale', 1, 2) asc, Subscription asc",
+              "size": 0,
+              "title": "Subscriptions sending the activity log to this workspace",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sending",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stale",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not sending",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warned",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastRecord",
+                    "label": "Last record"
+                  }
+                ]
+              }
+            },
+            "name": "snt-activity-coverage",
+            "customWidth": "60",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated {TimeRange}\n| summarize GB = sum(Quantity) / 1000.0 by DataType\n| top 10 by GB desc\n| join kind=inner (\n    Usage\n    | where TimeGenerated {TimeRange}\n    | summarize GB = sum(Quantity) / 1000.0 by bin(TimeGenerated, {TimeRange:grain}), DataType\n  ) on DataType\n| project TimeGenerated, DataType, GB = GB1",
+              "size": 0,
+              "title": "Ingestion by table over time, top 10 (GB)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "snt-ingestion-tables",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "snt-tab-data",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "data"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, SentinelResourceId:string, SentinelResourceName:string, SentinelResourceType:string,\n        Status:string, Description:string, OperationName:string)[]),\n    (SentinelHealth)\n| where TimeGenerated {TimeRange}\n| where SentinelResourceType =~ 'Analytics Rule'\n| extend IssueTime = iff(Status !~ 'Success', TimeGenerated, datetime(null)), Issue = substring(Description, 0, 300)\n| summarize Runs = count(), Failures = countif(Status !~ 'Success'), (LastIssueTime, LastIssue) = arg_max(IssueTime, Issue),\n    (LastRun, LastStatus) = arg_max(TimeGenerated, Status)\n    by Rule = SentinelResourceName, Kind = tostring(column_ifexists('SentinelResourceKind', ''))\n| where Failures > 0\n| project Rule, Kind, Status = LastStatus, Failures, Runs, LastIssueTime, LastIssue, LastRun\n| order by case(Status =~ 'Failure', 0, 1) asc, Failures desc",
+              "size": 0,
+              "title": "Analytics rules with failed runs",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No analytics rule failures (or health monitoring is not turned on).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Partial success",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warning",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failure",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastIssueTime",
+                    "label": "Last failure"
+                  },
+                  {
+                    "columnId": "LastIssue",
+                    "label": "Last failure detail"
+                  },
+                  {
+                    "columnId": "LastRun",
+                    "label": "Last run"
+                  }
+                ]
+              }
+            },
+            "name": "snt-rule-health",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Sentinel turns off a scheduled rule that keeps failing (for example because a table or column it reads no longer exists). Such a rule shows here before it is turned off, and as *Enabled: false* below after.",
+              "style": "info"
+            },
+            "name": "snt-rule-health-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Workspace}/providers/Microsoft.SecurityInsights/alertRules\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2024-03-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.properties.displayName\", \"columnid\": \"Rule\"}, {\"path\": \"$.kind\", \"columnid\": \"Kind\"}, {\"path\": \"$.properties.enabled\", \"columnid\": \"Enabled\"}, {\"path\": \"$.properties.severity\", \"columnid\": \"Severity\"}, {\"path\": \"$.properties.queryFrequency\", \"columnid\": \"Frequency\"}, {\"path\": \"$.properties.lastModifiedUtc\", \"columnid\": \"Last modified\", \"columnType\": \"datetime\"}, {\"path\": \"$.properties.templateVersion\", \"columnid\": \"Template version\"}]}}]}",
+              "size": 0,
+              "title": "Analytics rules",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Enabled",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "False",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              },
+              "noDataMessage": "No analytics rules."
+            },
+            "name": "snt-rules"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where Status == 'Closed' and ClosedTime >= todatetime('{TimeRange:startISO}')\n| mv-expand RuleId = RelatedAnalyticRuleIds to typeof(string)\n| extend RuleId = tolower(tostring(split(RuleId, '/')[-1]))\n| where isnotempty(RuleId)\n| summarize Closed = count(), TruePositive = countif(Classification == 'TruePositive'),\n    BenignPositive = countif(Classification == 'BenignPositive'), FalsePositive = countif(Classification == 'FalsePositive'),\n    Undetermined = countif(Classification == 'Undetermined' or isempty(Classification)), AnyTitle = take_any(Title)\n    by RuleId\n| join kind=leftouter (\n\n    union isfuzzy=true\n        (datatable(TimeGenerated:datetime, AlertName:string, AlertSeverity:string, ProductName:string, ProviderName:string,\n            ExtendedProperties:string, SystemAlertId:string)[]),\n        (SecurityAlert)\n    | where TimeGenerated > ago(90d)\n    | extend ep = todynamic(ExtendedProperties)\n    | extend RuleId = tolower(tostring(split(tostring(todynamic(tostring(ep['Analytic Rule Ids']))[0]), '/')[-1])),\n        Rule = tostring(ep['Analytic Rule Name'])\n    | where isnotempty(RuleId)\n    | summarize Rule = take_any(Rule) by RuleId\n  ) on RuleId\n| extend Rule = coalesce(Rule, AnyTitle), NotTruePct = round(100.0 * (Closed - TruePositive) / Closed, 0)\n| where Closed >= 3\n| project Rule, Closed, NotTruePct, FalsePositive, BenignPositive, Undetermined, TruePositive\n| order by NotTruePct desc, Closed desc",
+              "size": 0,
+              "title": "Rules to tune: closed incidents that were not true positives",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "noDataMessage": "No rule had three or more incidents closed in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "NotTruePct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "80",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "50",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TruePositive",
+                    "label": "True positive"
+                  },
+                  {
+                    "columnId": "BenignPositive",
+                    "label": "Benign positive"
+                  },
+                  {
+                    "columnId": "FalsePositive",
+                    "label": "False positive"
+                  },
+                  {
+                    "columnId": "NotTruePct",
+                    "label": "Not true positive %"
+                  }
+                ]
+              }
+            },
+            "name": "snt-tuning",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, AlertName:string, AlertSeverity:string, ProductName:string, ProviderName:string,\n        ExtendedProperties:string, SystemAlertId:string)[]),\n    (SecurityAlert)\n| where TimeGenerated {TimeRange}\n| extend ep = todynamic(ExtendedProperties)\n| extend RuleId = tolower(tostring(split(tostring(todynamic(tostring(ep['Analytic Rule Ids']))[0]), '/')[-1])),\n    Rule = tostring(ep['Analytic Rule Name'])\n| where isnotempty(RuleId)\n| summarize Alerts = count(), Severity = take_any(AlertSeverity), LastAlert = max(TimeGenerated) by Rule\n| top 25 by Alerts desc",
+              "size": 0,
+              "title": "Noisiest rules (alerts in the time range)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No alerts from analytics rules.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastAlert",
+                    "label": "Last alert"
+                  }
+                ]
+              }
+            },
+            "name": "snt-noisy",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, SentinelResourceId:string, SentinelResourceName:string, SentinelResourceType:string,\n        Status:string, Description:string, OperationName:string)[]),\n    (SentinelHealth)\n| where TimeGenerated {TimeRange}\n| where SentinelResourceType =~ 'Analytics Rule' and Status =~ 'Success'\n| summarize Runs = count(), LastRun = max(TimeGenerated)\n    by RuleId = tolower(tostring(split(SentinelResourceId, '/')[-1])), Rule = SentinelResourceName\n| join kind=leftanti (\n\n    union isfuzzy=true\n        (datatable(TimeGenerated:datetime, AlertName:string, AlertSeverity:string, ProductName:string, ProviderName:string,\n            ExtendedProperties:string, SystemAlertId:string)[]),\n        (SecurityAlert)\n    | where TimeGenerated {TimeRange}\n    | extend ep = todynamic(ExtendedProperties)\n    | extend RuleId = tolower(tostring(split(tostring(todynamic(tostring(ep['Analytic Rule Ids']))[0]), '/')[-1])),\n        Rule = tostring(ep['Analytic Rule Name'])\n    | where isnotempty(RuleId)\n    | distinct RuleId\n  ) on RuleId\n| project Rule, Runs, LastRun\n| order by Rule asc",
+              "size": 0,
+              "title": "Rules that ran but raised no alert (time range)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "Every rule that ran raised at least one alert (or health monitoring is not turned on).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastRun",
+                    "label": "Last run"
+                  }
+                ]
+              }
+            },
+            "name": "snt-quiet",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A quiet rule is often fine. It is worth a look when the table it reads has gone silent (Data collection tab), or after the source changed its schema.",
+              "style": "info"
+            },
+            "name": "snt-quiet-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, OperationName:string, SentinelResourceName:string, SentinelResourceType:string,\n        Status:string, ExtendedProperties:dynamic)[]),\n    (SentinelAudit)\n| where TimeGenerated {TimeRange}\n| project TimeGenerated, Type = SentinelResourceType, Resource = SentinelResourceName, Operation = OperationName, Status,\n    Caller = tostring(ExtendedProperties.CallerName), CallerIp = tostring(ExtendedProperties.CallerIpAddress)\n| order by TimeGenerated desc\n| take 500",
+              "size": 0,
+              "title": "Changes to rules, connectors and settings (SentinelAudit)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No changes recorded (or auditing is not turned on: Sentinel → Settings → Auditing and health monitoring).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CallerIp",
+                    "label": "Caller IP"
+                  }
+                ]
+              }
+            },
+            "name": "snt-audit",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "snt-tab-detections",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "detections"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where Status != 'Closed'\n| extend AgeDays = datetime_diff('day', now(), CreatedTime)\n| summarize Open = count(), Unassigned = countif(isempty(Assignee)), New = countif(Status == 'New'),\n    UnderADay = countif(AgeDays < 1), OneToSevenDays = countif(AgeDays between (1 .. 6)),\n    SevenToThirtyDays = countif(AgeDays between (7 .. 29)), OverThirtyDays = countif(AgeDays >= 30)\n    by Severity\n| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc",
+              "size": 0,
+              "title": "Open incidents by severity and age",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "noDataMessage": "No open incidents.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "UnderADay",
+                    "label": "Under a day"
+                  },
+                  {
+                    "columnId": "OneToSevenDays",
+                    "label": "1–7 days"
+                  },
+                  {
+                    "columnId": "SevenToThirtyDays",
+                    "label": "7–30 days"
+                  },
+                  {
+                    "columnId": "OverThirtyDays",
+                    "label": "Over 30 days"
+                  }
+                ]
+              }
+            },
+            "name": "snt-backlog",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where Status == 'New' and CreatedTime < ago({TriageHours}h)\n| project Incident = IncidentNumber, Title, Severity, Owner = iff(isempty(Assignee), 'Unassigned', Assignee),\n    Created = CreatedTime, AgeHours = datetime_diff('hour', now(), CreatedTime), Product, IncidentUrl\n| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc, Created asc",
+              "size": 0,
+              "title": "Still New after {TriageHours} hours",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "noDataMessage": "Every incident has been picked up within {TriageHours} hours.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Owner",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unassigned",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "IncidentUrl",
+                    "formatter": 7,
+                    "formatOptions": {
+                      "linkTarget": "Url",
+                      "linkLabel": "Open"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "AgeHours",
+                    "label": "Age (hours)"
+                  },
+                  {
+                    "columnId": "IncidentUrl",
+                    "label": "Link"
+                  }
+                ]
+              }
+            },
+            "name": "snt-untriaged",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where CreatedTime >= todatetime('{TimeRange:startISO}')\n| extend TriageMin = datetime_diff('minute', FirstModifiedTime, CreatedTime),\n    CloseHours = iff(Status == 'Closed', datetime_diff('minute', ClosedTime, CreatedTime) / 60.0, real(null))\n| summarize Created = count(), Closed = countif(Status == 'Closed'),\n    MedianMinutesToTriage = round(percentile(TriageMin, 50), 0), P90MinutesToTriage = round(percentile(TriageMin, 90), 0),\n    MedianHoursToClose = round(percentile(CloseHours, 50), 1), P90HoursToClose = round(percentile(CloseHours, 90), 1)\n    by Severity\n| order by case(Severity == 'High', 0, Severity == 'Medium', 1, Severity == 'Low', 2, 3) asc",
+              "size": 0,
+              "title": "Time to triage and close, incidents created in the time range",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "MedianMinutesToTriage",
+                    "label": "Median minutes to triage"
+                  },
+                  {
+                    "columnId": "P90MinutesToTriage",
+                    "label": "P90 minutes to triage"
+                  },
+                  {
+                    "columnId": "MedianHoursToClose",
+                    "label": "Median hours to close"
+                  },
+                  {
+                    "columnId": "P90HoursToClose",
+                    "label": "P90 hours to close"
+                  }
+                ]
+              }
+            },
+            "name": "snt-response",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Triage* is the time from creation to the first change anyone made (assigning, changing status, commenting). Incidents closed by an automation rule count as triaged at once.",
+              "style": "info"
+            },
+            "name": "snt-response-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| extend Owner = iff(isempty(Assignee), 'Unassigned', Assignee)\n| summarize Open = countif(Status != 'Closed'), OpenHigh = countif(Status != 'Closed' and Severity == 'High'),\n    ClosedInRange = countif(Status == 'Closed' and ClosedTime >= todatetime('{TimeRange:startISO}')),\n    MedianHoursToClose = round(percentile(iff(Status == 'Closed' and ClosedTime >= todatetime('{TimeRange:startISO}'),\n        datetime_diff('minute', ClosedTime, CreatedTime) / 60.0, real(null)), 50), 1)\n    by Owner\n| where Open > 0 or ClosedInRange > 0\n| order by Open desc",
+              "size": 0,
+              "title": "Workload by owner",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "OpenHigh",
+                    "label": "Open high"
+                  },
+                  {
+                    "columnId": "ClosedInRange",
+                    "label": "Closed in time range"
+                  },
+                  {
+                    "columnId": "MedianHoursToClose",
+                    "label": "Median hours to close"
+                  }
+                ]
+              }
+            },
+            "name": "snt-owners",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let incidents = union isfuzzy=true\n    (datatable(TimeGenerated:datetime, IncidentNumber:int, Title:string, Severity:string, Status:string, Owner:dynamic,\n        CreatedTime:datetime, FirstModifiedTime:datetime, ClosedTime:datetime, Classification:string,\n        ClassificationReason:string, ProviderName:string, IncidentUrl:string, RelatedAnalyticRuleIds:dynamic,\n        AdditionalData:dynamic)[]),\n    (SecurityIncident)\n| where TimeGenerated > ago(90d)\n| summarize arg_max(TimeGenerated, *) by IncidentNumber\n| extend Assignee = tostring(Owner.assignedTo), Product = tostring(AdditionalData.alertProductNames[0]);\nincidents\n| where Status == 'Closed' and ClosedTime >= todatetime('{TimeRange:startISO}')\n| summarize Closed = count(), TruePositive = countif(Classification == 'TruePositive'),\n    BenignPositive = countif(Classification == 'BenignPositive'), FalsePositive = countif(Classification == 'FalsePositive'),\n    Undetermined = countif(Classification == 'Undetermined' or isempty(Classification))\n    by Source = coalesce(Product, ProviderName)\n| extend TruePositivePct = round(100.0 * TruePositive / Closed, 0)\n| order by Closed desc",
+              "size": 0,
+              "title": "Closed incidents by source and classification",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 7776000000
+              },
+              "noDataMessage": "No incidents closed in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TruePositive",
+                    "label": "True positive"
+                  },
+                  {
+                    "columnId": "BenignPositive",
+                    "label": "Benign positive"
+                  },
+                  {
+                    "columnId": "FalsePositive",
+                    "label": "False positive"
+                  },
+                  {
+                    "columnId": "TruePositivePct",
+                    "label": "True positive %"
+                  }
+                ]
+              }
+            },
+            "name": "snt-sources",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "snt-tab-incidents",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "incidents"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Workspace}/providers/Microsoft.SecurityInsights/automationRules\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2024-03-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.properties.displayName\", \"columnid\": \"Rule\"}, {\"path\": \"$.properties.order\", \"columnid\": \"Order\"}, {\"path\": \"$.properties.triggeringLogic.isEnabled\", \"columnid\": \"Enabled\"}, {\"path\": \"$.properties.triggeringLogic.triggersOn\", \"columnid\": \"Triggers on\"}, {\"path\": \"$.properties.triggeringLogic.triggersWhen\", \"columnid\": \"When\"}, {\"path\": \"$.properties.triggeringLogic.expirationTimeUtc\", \"columnid\": \"Expires\", \"columnType\": \"datetime\"}, {\"path\": \"$.properties.lastModifiedTimeUtc\", \"columnid\": \"Last modified\", \"columnType\": \"datetime\"}]}}]}",
+              "size": 0,
+              "title": "Automation rules",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Enabled",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "True",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "False",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              },
+              "noDataMessage": "No automation rules."
+            },
+            "name": "snt-automation-rules"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, SentinelResourceId:string, SentinelResourceName:string, SentinelResourceType:string,\n        Status:string, Description:string, OperationName:string)[]),\n    (SentinelHealth)\n| where TimeGenerated {TimeRange}\n| where SentinelResourceType in~ ('Automation rule', 'Playbook')\n| extend IssueTime = iff(Status !~ 'Success', TimeGenerated, datetime(null)), Issue = substring(Description, 0, 300)\n| summarize Runs = count(), Failures = countif(Status !~ 'Success'), (LastIssueTime, LastIssue) = arg_max(IssueTime, Issue),\n    LastRun = max(TimeGenerated)\n    by Type = SentinelResourceType, Resource = SentinelResourceName\n| order by Failures desc, Runs desc",
+              "size": 0,
+              "title": "Automation rule and playbook runs",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No automation runs recorded (or health monitoring is not turned on).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Failures",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastIssueTime",
+                    "label": "Last failure"
+                  },
+                  {
+                    "columnId": "LastIssue",
+                    "label": "Last failure detail"
+                  },
+                  {
+                    "columnId": "LastRun",
+                    "label": "Last run"
+                  }
+                ]
+              }
+            },
+            "name": "snt-automation-health",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.logic/workflows'\n| where tostring(properties.parameters) has 'azuresentinel' or tostring(properties.definition.triggers) has 'azuresentinel'\n| project id, State = tostring(properties.state), Identity = tostring(identity.type),\n    Trigger = tostring(bag_keys(properties.definition.triggers)[0]),\n    Changed = todatetime(properties.changedTime), ResourceGroup = resourceGroup\n| order by State asc, id asc",
+              "size": 0,
+              "title": "Playbooks (Logic Apps that use the Sentinel connector)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Logic Apps using the Sentinel connector in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Playbook"
+                  },
+                  {
+                    "columnId": "Identity",
+                    "label": "Managed identity"
+                  }
+                ]
+              }
+            },
+            "name": "snt-playbooks"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "04d08bc4-c586-56b0-b7ec-5ed70cc76858",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Playbooks",
+                  "label": "Playbooks",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.logic/workflows'\n| where tostring(properties.parameters) has 'azuresentinel' or tostring(properties.definition.triggers) has 'azuresentinel'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::10",
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::10",
+                  "value": [
+                    "value::10"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "snt-playbook-params"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookcc5b1877-1946-55f9-88a9-85d5e5301acc",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.logic/workflows",
+              "metricScope": 0,
+              "resourceParameter": "Playbooks",
+              "resourceIds": [
+                "{Playbooks}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.logic/workflows",
+                  "metric": "microsoft.logic/workflows--RunsFailed",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Playbook runs failed",
+              "showOpenInMe": true
+            },
+            "name": "snt-playbook-runs",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook643e1e92-47d6-568b-b03e-c7fd9b55e3f6",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.logic/workflows",
+              "metricScope": 0,
+              "resourceParameter": "Playbooks",
+              "resourceIds": [
+                "{Playbooks}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.logic/workflows",
+                  "metric": "microsoft.logic/workflows--ActionThrottledEvents",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Playbook actions throttled",
+              "showOpenInMe": true
+            },
+            "name": "snt-playbook-throttled",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A playbook that uses an API connection rather than a managed identity stops working when the account that authorised the connection leaves or changes its password.",
+              "style": "info"
+            },
+            "name": "snt-playbook-note"
+          }
+        ]
+      },
+      "name": "snt-tab-automation",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "automation"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where id =~ '{Workspace}'\n| project id, Tier = tostring(properties.sku.name), CommitmentGBPerDay = toint(properties.sku.capacityReservationLevel),\n    RetentionDays = toint(properties.retentionInDays), DailyCapGB = todouble(properties.workspaceCapping.dailyQuotaGb),\n    Ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    PublicIngestion = tostring(properties.publicNetworkAccessForIngestion),\n    PublicQuery = tostring(properties.publicNetworkAccessForQuery),\n    ResourcePermissions = tostring(properties.features.enableLogAccessUsingOnlyResourcePermissions),\n    Location = location",
+              "size": 0,
+              "title": "Workspace pricing and access",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Ingestion",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "RespectQuota",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ApproachingQuota",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "OverQuota",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "ForceOff",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "SubscriptionSuspended",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Workspace"
+                  },
+                  {
+                    "columnId": "CommitmentGBPerDay",
+                    "label": "Commitment tier (GB/day)"
+                  },
+                  {
+                    "columnId": "RetentionDays",
+                    "label": "Retention (days)"
+                  },
+                  {
+                    "columnId": "DailyCapGB",
+                    "label": "Daily cap (GB, -1 = none)"
+                  },
+                  {
+                    "columnId": "PublicIngestion",
+                    "label": "Public ingestion"
+                  },
+                  {
+                    "columnId": "PublicQuery",
+                    "label": "Public query"
+                  },
+                  {
+                    "columnId": "ResourcePermissions",
+                    "label": "Resource-context access only"
+                  }
+                ]
+              }
+            },
+            "name": "snt-workspace"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated {TimeRange}\n| where IsBillable\n| summarize GB = sum(Quantity) / 1000.0 by Day = bin(TimeGenerated, 1d)\n| summarize AvgGBPerDay = round(avg(GB), 1), PeakGBPerDay = round(max(GB), 1), LowestGBPerDay = round(min(GB), 1), Days = count()",
+              "size": 0,
+              "title": "Billable ingestion per day (time range)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "AvgGBPerDay",
+                    "label": "Average GB/day"
+                  },
+                  {
+                    "columnId": "PeakGBPerDay",
+                    "label": "Peak GB/day"
+                  },
+                  {
+                    "columnId": "LowestGBPerDay",
+                    "label": "Lowest GB/day"
+                  }
+                ]
+              }
+            },
+            "name": "snt-daily-avg",
+            "customWidth": "40",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Compare the average with the commitment tier above. Ingestion well under the tier is paid for anyway; ingestion steadily over the next tier up is cheaper on that tier. Sentinel and Log Analytics share one commitment tier under simplified pricing.",
+              "style": "info"
+            },
+            "name": "snt-tier-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated {TimeRange}\n| summarize GB = sum(Quantity) / 1000.0 by Day = bin(TimeGenerated, 1d), Kind = iff(IsBillable, 'Billable', 'Free')",
+              "size": 0,
+              "title": "Billable and free ingestion per day (GB)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "barchart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "snt-billable-daily",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated {TimeRange}\n| where IsBillable\n| summarize GB = round(sum(Quantity) / 1000.0, 2), Days = dcount(bin(TimeGenerated, 1d)) by Table = DataType, Solution\n| extend GBPerDay = round(GB / Days, 2)\n| project Table, Solution, GB, GBPerDay\n| order by GB desc",
+              "size": 0,
+              "title": "Billable ingestion by table",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "GBPerDay",
+                    "label": "GB per day"
+                  }
+                ]
+              }
+            },
+            "name": "snt-billable-tables",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Workspace}/tables\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2022-10-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Table\"}, {\"path\": \"$.properties.plan\", \"columnid\": \"Plan\"}, {\"path\": \"$.properties.retentionInDays\", \"columnid\": \"Retention (days)\"}, {\"path\": \"$.properties.totalRetentionInDays\", \"columnid\": \"Total retention (days)\"}, {\"path\": \"$.properties.archiveRetentionInDays\", \"columnid\": \"Archive (days)\"}]}}]}",
+              "size": 0,
+              "title": "Table plans and retention",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Plan",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Analytics",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Basic",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Auxiliary",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "snt-tables",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Analytics rules can only read tables on the *Analytics* plan. High-volume data you keep for investigation rather than detection (firewall flows, verbose diagnostics) is cheaper on *Basic* or *Auxiliary*. The **Log Analytics: cost and noise** workbook shows which tables are queried and by whom.",
+              "style": "info"
+            },
+            "name": "snt-plans-note"
+          }
+        ]
+      },
+      "name": "snt-tab-cost",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "cost"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Purview reaches Sentinel in several ways: DLP and Insider Risk alerts through the Defender XDR connector (as `SecurityAlert`, with alert detail in `AlertInfo` and `AlertEvidence`), sensitivity label activity through the *Microsoft Purview Information Protection* connector (`MicrosoftPurviewInformationProtection`), data map classifications through the *Microsoft Purview* connector (`PurviewDataSensitivityLogs`) and Microsoft 365 audit through *Office 365* (`OfficeActivity`). A table that is missing below is not connected.",
+              "style": "info"
+            },
+            "name": "snt-purview-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "Usage\n| where TimeGenerated > ago(8d)\n| summarize LastSeen = max(TimeGenerated),\n    GBLast24h = round(sumif(Quantity, TimeGenerated > ago(1d)) / 1000.0, 2),\n    GBDailyAvg = round(sumif(Quantity, TimeGenerated <= ago(1d)) / 1000.0 / 7.0, 2),\n    Billable = take_any(IsBillable)\n    by Table = DataType\n| extend HoursSinceData = datetime_diff('hour', now(), LastSeen)\n| extend Status = case(HoursSinceData >= {SilentHours}, 'Silent',\n    GBDailyAvg >= 0.01 and GBLast24h < 0.5 * GBDailyAvg, 'Dropped',\n    GBDailyAvg >= 0.01 and GBLast24h > 2.0 * GBDailyAvg, 'Spiked', 'Normal')\n| where Table in ('MicrosoftPurviewInformationProtection', 'PurviewDataSensitivityLogs', 'OfficeActivity', 'AlertInfo', 'AlertEvidence', 'SecurityAlert')\n| project Table, Status, LastSeen, HoursSinceData, GBLast24h, GBDailyAvg\n| order by Table asc",
+              "size": 0,
+              "title": "Purview-related tables",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContext": {
+                "durationMs": 691200000
+              },
+              "noDataMessage": "None of the Purview-related tables has received data in the last 8 days.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Normal",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Dropped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Spiked",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Silent",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last data"
+                  },
+                  {
+                    "columnId": "HoursSinceData",
+                    "label": "Hours since data"
+                  },
+                  {
+                    "columnId": "GBLast24h",
+                    "label": "GB last 24 h"
+                  },
+                  {
+                    "columnId": "GBDailyAvg",
+                    "label": "GB per day (7-day average)"
+                  }
+                ]
+              }
+            },
+            "name": "snt-purview-freshness",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, AlertName:string, AlertSeverity:string, ProductName:string, ProviderName:string,\n        ExtendedProperties:string, SystemAlertId:string)[]),\n    (SecurityAlert)\n| where TimeGenerated {TimeRange}\n| where ProductName has_any ('Data Loss Prevention', 'Insider Risk', 'Purview', 'Information Protection', 'Communication Compliance')\n| summarize Alerts = count() by bin(TimeGenerated, {TimeRange:grain}), ProductName",
+              "size": 0,
+              "title": "DLP, Insider Risk and Information Protection alerts",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Purview alerts in the time range."
+            },
+            "name": "snt-purview-trend",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated:datetime, AlertName:string, AlertSeverity:string, ProductName:string, ProviderName:string,\n        ExtendedProperties:string, SystemAlertId:string)[]),\n    (SecurityAlert)\n| where TimeGenerated {TimeRange}\n| where ProductName has_any ('Data Loss Prevention', 'Insider Risk', 'Purview', 'Information Protection', 'Communication Compliance')\n| summarize Alerts = count(), LastSeen = max(TimeGenerated) by Product = ProductName, Alert = AlertName, Severity = AlertSeverity\n| top 50 by Alerts desc",
+              "size": 0,
+              "title": "Most frequent Purview alerts",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Purview alerts in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Informational",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "snt-purview-top",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (MicrosoftPurviewInformationProtection)\n| where TimeGenerated {TimeRange}\n| extend Operation = tostring(column_ifexists('Operation', '')), Workload = tostring(column_ifexists('Workload', '')),\n    User = tostring(column_ifexists('UserId', ''))\n| summarize Events = count(), Users = dcount(User) by Workload, Operation\n| top 40 by Events desc",
+              "size": 0,
+              "title": "Sensitivity label activity by workload",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Information Protection events (or the connector is not configured).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "snt-mip-operations",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (MicrosoftPurviewInformationProtection)\n| where TimeGenerated {TimeRange}\n| extend Operation = tostring(column_ifexists('Operation', '')), Workload = tostring(column_ifexists('Workload', '')),\n    User = tostring(column_ifexists('UserId', ''))\n| where Operation has_any ('Removed', 'Downgrade')\n| summarize Events = count(), LastSeen = max(TimeGenerated) by User, Operation, Workload\n| top 50 by Events desc",
+              "size": 0,
+              "title": "Labels removed or downgraded, by user",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No labels removed or downgraded in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "snt-mip-removals",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "snt-tab-purview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "purview"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

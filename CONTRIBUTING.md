@@ -20,6 +20,8 @@ python src/build_avd_user.py
 python src/build_log_cost.py
 python src/build_routing.py
 python src/build_avs.py
+python src/build_sentinel.py
+python src/build_privileged_access.py
 python src/build_grafana.py
 ```
 
