@@ -1,7 +1,7 @@
 # Keeps the generated files in step with the scripts that generate them.
 #
 # The workbook JSON and both Grafana dashboards are build output: nobody edits them by hand, and the
-# dashboards are derived from the workbook definition. This check regenerates all three and fails when
+# dashboards are derived from the workbook definition. This check regenerates all of them and fails when
 # the committed copies differ, which catches a forgotten regenerate, a hand edit, and a change to the
 # workbook that was not carried into the dashboards.
 name: Generated files
@@ -27,6 +27,12 @@ jobs:
           python3 src/build_workbook.py
           python3 src/build_firewall_troubleshoot.py
           python3 src/build_backup.py
+          python3 src/build_dns_troubleshoot.py
+          python3 src/build_changes.py
+          python3 src/build_policy_denials.py
+          python3 src/build_avd_user.py
+          python3 src/build_log_cost.py
+          python3 src/build_routing.py
           python3 src/build_grafana.py
 
       - name: Fail if the committed files differ
@@ -38,6 +44,12 @@ jobs:
             echo "    python src/build_workbook.py"
             echo "    python src/build_firewall_troubleshoot.py"
             echo "    python src/build_backup.py"
+            echo "    python src/build_dns_troubleshoot.py"
+            echo "    python src/build_changes.py"
+            echo "    python src/build_policy_denials.py"
+            echo "    python src/build_avd_user.py"
+            echo "    python src/build_log_cost.py"
+            echo "    python src/build_routing.py"
             echo "    python src/build_grafana.py"
             exit 1
           fi

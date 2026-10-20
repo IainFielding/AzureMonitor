@@ -5,13 +5,20 @@ generator script rather than the JSON.
 
 ## Making a change
 
-Edit [src/build_workbook.py](src/build_workbook.py), regenerate, and commit the script and the
-generated JSON. The Grafana dashboards are generated from the workbook definition, so run both:
+Edit the workbook's script in [src/](src/) (the shared helpers are in
+[src/build_workbook.py](src/build_workbook.py)), regenerate, and commit the script and the generated JSON. The
+Grafana dashboards are generated from the platform health workbook's definition. Run them all:
 
 ```sh
 python src/build_workbook.py
 python src/build_firewall_troubleshoot.py
 python src/build_backup.py
+python src/build_dns_troubleshoot.py
+python src/build_changes.py
+python src/build_policy_denials.py
+python src/build_avd_user.py
+python src/build_log_cost.py
+python src/build_routing.py
 python src/build_grafana.py
 ```
 

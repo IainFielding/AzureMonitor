@@ -1,0 +1,1371 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Why was this request refused?\nAzure Policy denials and the other reasons Resource Manager refuses a request (permissions, locks, quota, template errors), and for a policy: which assignment, which policy, the values that failed it, and how to exempt or exclude."
+      },
+      "name": "pol-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "d73bf65d-2a77-5c56-9466-be321512390d",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "a43263d1-488e-5db7-855e-b297a5950089",
+            "version": "KqlParameterItem/1.0",
+            "name": "Search",
+            "label": "Search",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. A correlation id, or part of a resource name or id, deployment name or caller."
+          },
+          {
+            "id": "84f55ae3-67b2-57a7-940a-8826b03fc0ae",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace the subscriptions' activity log is sent to. Needed for the refused requests.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "5cf7b898-5309-5f14-abca-c52a6682f5b5",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "Applies to the activity log panels."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "pol-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Paste anything you have into **Search**: the correlation id from the error, the resource or deployment name, or\nthe caller. Leave it empty to see every refused request in the time range.\n\n**Fixing a policy denial.** In order of preference:\n1. **Change the request** to meet the policy (*Why it was denied* shows the field, its value and what the policy\n   expects: an allowed location, a SKU, a tag, private access only).\n2. **Exempt** the resource or resource group from that assignment, as *Waiver* or *Mitigated*, ideally with an\n   expiry date. An exemption can name single policies of an initiative.\n3. **Exclude** the scope from the assignment (*notScopes*), or set the policy's effect parameter to *Audit*.\n\nSetting the assignment's enforcement mode to *DoNotEnforce* stops every policy in it denying anywhere it applies:\nuse it to unblock a change in an emergency, then put it back. Policy changes and new exemptions can take a few\nminutes to apply.",
+        "style": "info"
+      },
+      "name": "pol-howto"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select the **Log Analytics workspace** your subscriptions send their activity log to (`AzureActivity`) to see refused requests. The policy panels further down work without one.",
+        "style": "info"
+      },
+      "name": "pol-ws-hint",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Search = trim(@'\\s+', @'{Search}');\nlet Refusals = AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| extend Message = tostring(props.statusMessage), StatusCode = tostring(props.statusCode)\n| where isempty(Search) or CorrelationId == Search or _ResourceId contains Search or Caller contains Search or Message contains Search\n| summarize arg_max(TimeGenerated, Message, StatusCode) by CorrelationId, OperationNameValue, _ResourceId, Caller, SubscriptionId\n| extend Codes = extract_all(@'code[\\\\\"]*\\s*:\\s*[\\\\\"]*([A-Za-z]+)', Message)\n| extend Code = tostring(set_difference(Codes, dynamic(['DeploymentFailed', 'InvalidTemplateDeployment', 'Forbidden', 'Conflict', 'BadRequest']))[0])\n| extend Code = coalesce(Code, tostring(Codes[0]), StatusCode)\n| extend Reason = case(\n    Message has 'RequestDisallowedByPolicy' or Message has 'disallowed by policy', 'Policy',\n    Message has 'RequestDisallowedByAzure', 'Azure restriction (region or service)',\n    Message has_any ('AuthorizationFailed', 'LinkedAuthorizationFailed', 'LinkedAccessCheckFailed', 'InvalidAuthenticationToken'), 'Permissions',\n    Message has 'ScopeLocked', 'Resource lock',\n    Message has_any ('QuotaExceeded', 'ResourceQuotaExceeded', 'SkuNotAvailable', 'ZonalAllocationFailed', 'AllocationFailed',\n        'OverconstrainedAllocationRequest', 'MaxStorageAccountsCountPerSubscriptionExceeded') or Message has 'quota', 'Quota or capacity',\n    Message has_any ('InvalidTemplate', 'InvalidParameter', 'InvalidRequestContent', 'InvalidResourceReference', 'ResourceNotFound',\n        'ParentResourceNotFound', 'NoRegisteredProviderFound', 'MissingSubscriptionRegistration', 'LocationNotAvailableForResourceType'), 'Template or request',\n    Message has_any ('AnotherOperationInProgress', 'Conflict', 'ResourceGroupBeingDeleted'), 'Conflict with another operation',\n    'Other')\n| extend err = parse_json(Message).error\n| extend Detail = substring(coalesce(tostring(err.details[0].message), tostring(err.message), tostring(parse_json(Message).message), Message), 0, 500),\n    Action = extract(@\"perform action '([^']+)'\", 1, Message), Scope = extract(@\"over scope '([^']+)'\", 1, Message);\n\nRefusals\n| summarize Requests = count(), Callers = dcount(Caller), Last = max(TimeGenerated) by Reason\n| project Reason, Requests, Detail = strcat(Callers, ' callers · last ', format_datetime(Last, 'yyyy-MM-dd HH:mm')),\n    State = iff(Reason == 'Policy', 'Unavailable', 'Degraded')\n| order by Requests desc",
+        "size": 3,
+        "title": "",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "tiles",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No refused requests in the time range.",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Reason",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "State",
+            "formatter": 18,
+            "formatOptions": {
+              "thresholdsOptions": "icons",
+              "thresholdsGrid": [
+                {
+                  "operator": "==",
+                  "thresholdValue": "Available",
+                  "representation": "success",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Degraded",
+                  "representation": "2",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unavailable",
+                  "representation": "4",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unknown",
+                  "representation": "unknown",
+                  "text": "​"
+                },
+                {
+                  "operator": "Default",
+                  "thresholdValue": null,
+                  "representation": "Blank",
+                  "text": "​"
+                }
+              ]
+            }
+          },
+          "rightContent": {
+            "columnMatch": "Requests",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            }
+          },
+          "showBorder": true,
+          "secondaryContent": {
+            "columnMatch": "Detail",
+            "formatter": 1
+          }
+        }
+      },
+      "name": "pol-tiles",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Search = trim(@'\\s+', @'{Search}');\nlet Refusals = AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| extend Message = tostring(props.statusMessage), StatusCode = tostring(props.statusCode)\n| where isempty(Search) or CorrelationId == Search or _ResourceId contains Search or Caller contains Search or Message contains Search\n| summarize arg_max(TimeGenerated, Message, StatusCode) by CorrelationId, OperationNameValue, _ResourceId, Caller, SubscriptionId\n| extend Codes = extract_all(@'code[\\\\\"]*\\s*:\\s*[\\\\\"]*([A-Za-z]+)', Message)\n| extend Code = tostring(set_difference(Codes, dynamic(['DeploymentFailed', 'InvalidTemplateDeployment', 'Forbidden', 'Conflict', 'BadRequest']))[0])\n| extend Code = coalesce(Code, tostring(Codes[0]), StatusCode)\n| extend Reason = case(\n    Message has 'RequestDisallowedByPolicy' or Message has 'disallowed by policy', 'Policy',\n    Message has 'RequestDisallowedByAzure', 'Azure restriction (region or service)',\n    Message has_any ('AuthorizationFailed', 'LinkedAuthorizationFailed', 'LinkedAccessCheckFailed', 'InvalidAuthenticationToken'), 'Permissions',\n    Message has 'ScopeLocked', 'Resource lock',\n    Message has_any ('QuotaExceeded', 'ResourceQuotaExceeded', 'SkuNotAvailable', 'ZonalAllocationFailed', 'AllocationFailed',\n        'OverconstrainedAllocationRequest', 'MaxStorageAccountsCountPerSubscriptionExceeded') or Message has 'quota', 'Quota or capacity',\n    Message has_any ('InvalidTemplate', 'InvalidParameter', 'InvalidRequestContent', 'InvalidResourceReference', 'ResourceNotFound',\n        'ParentResourceNotFound', 'NoRegisteredProviderFound', 'MissingSubscriptionRegistration', 'LocationNotAvailableForResourceType'), 'Template or request',\n    Message has_any ('AnotherOperationInProgress', 'Conflict', 'ResourceGroupBeingDeleted'), 'Conflict with another operation',\n    'Other')\n| extend err = parse_json(Message).error\n| extend Detail = substring(coalesce(tostring(err.details[0].message), tostring(err.message), tostring(parse_json(Message).message), Message), 0, 500),\n    Action = extract(@\"perform action '([^']+)'\", 1, Message), Scope = extract(@\"over scope '([^']+)'\", 1, Message);\n\nRefusals\n| project Time = TimeGenerated, Reason, Code, Operation = OperationNameValue, Resource = _ResourceId, Caller, Detail,\n    Action, Scope, CorrelationId\n| order by Time desc\n| take 500",
+        "size": 0,
+        "title": "Refused requests (latest 500)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No refused requests. Widen the time range or clear Search.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Reason",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Azure restriction (region or service)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Permissions",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Resource lock",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Quota or capacity",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Template or request",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Conflict with another operation",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Other",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Policy",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Resource",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Operation",
+              "label": "Operation"
+            },
+            {
+              "columnId": "Detail",
+              "label": "Error"
+            },
+            {
+              "columnId": "Action",
+              "label": "Action needed"
+            },
+            {
+              "columnId": "Scope",
+              "label": "At scope"
+            },
+            {
+              "columnId": "CorrelationId",
+              "label": "Correlation id"
+            }
+          ]
+        }
+      },
+      "name": "pol-refusals",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "*Permissions* means the caller lacks the role for that action at that scope (see *Action* and *Scope*); a\n*LinkedAuthorizationFailed* means it also needs rights on a resource it references, such as the subnet or key\nvault. *Resource lock* means a CanNotDelete or ReadOnly lock on the resource, its resource group or subscription.\n*Azure restriction* is a region or service the subscription is not allowed to use, which policy does not control:\nraise a support request.",
+        "style": "info"
+      },
+      "name": "pol-refusals-note",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Search = trim(@'\\s+', @'{Search}');\nlet Why = AzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n| extend Message = tostring(column_ifexists('Properties_d', dynamic(null)).statusMessage)\n| where Message has 'RequestDisallowedByPolicy'\n| extend err = parse_json(Message).error\n| mv-expand d = iff(array_length(err.details) > 0, err.details, pack_array(err))\n| mv-expand ai = d.additionalInfo\n| where tostring(ai.type) == 'PolicyViolation'\n| mv-expand ex = ai.info.evaluationDetails.evaluatedExpressions\n| extend Check = strcat(tostring(ex.path), ' = ', tostring(ex.expressionValue), ' (', tostring(ex.operator), ' ', tostring(ex.targetValue), ')')\n| summarize Why = strcat_array(make_set_if(Check, isnotempty(tostring(ex.path)), 10), ' · ')\n    by CorrelationId, AssignmentId = tolower(tostring(ai.info.policyAssignmentId)), ReferenceId = tostring(ai.info.policyDefinitionReferenceId);\nAzureActivity\n| where TimeGenerated {TimeRange}\n| where CategoryValue =~ 'Policy' and OperationNameValue contains 'deny'\n| extend Message = ''\n| where isempty(Search) or CorrelationId == Search or _ResourceId contains Search or Caller contains Search or Message contains Search\n| extend props = column_ifexists('Properties_d', dynamic(null))\n| mv-expand p = parse_json(tostring(props.policies))\n| extend AssignmentId = tolower(tostring(p.policyAssignmentId)), ReferenceId = tostring(p.policyDefinitionReferenceId)\n| summarize arg_max(TimeGenerated, p, Caller, OperationNameValue) by CorrelationId, _ResourceId, AssignmentId, ReferenceId\n| join kind=leftouter Why on CorrelationId, AssignmentId, ReferenceId\n| project Time = TimeGenerated, Resource = _ResourceId, Caller,\n    Assignment = coalesce(tostring(p.policyAssignmentDisplayName), tostring(p.policyAssignmentName)),\n    Policy = coalesce(tostring(p.policyDefinitionDisplayName), tostring(p.policyDefinitionName)),\n    Initiative = coalesce(tostring(p.policySetDefinitionDisplayName), tostring(p.policySetDefinitionName)),\n    ReferenceId, Effect = tostring(p.policyDefinitionEffect), Why,\n    AssignmentScope = tostring(p.policyAssignmentScope), AssignmentId, CorrelationId\n| order by Time desc\n| take 500",
+        "size": 0,
+        "title": "Policy denials: which assignment, which policy, and why",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No policy denials in the time range. Check *Refused requests* above for other reasons.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Effect",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "AuditIfNotExists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "auditifnotexists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DeployIfNotExists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deployifnotexists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DenyAction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "denyaction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Resource",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ReferenceId",
+              "label": "Policy reference id"
+            },
+            {
+              "columnId": "Why",
+              "label": "Why it was denied"
+            },
+            {
+              "columnId": "AssignmentScope",
+              "label": "Assigned at"
+            },
+            {
+              "columnId": "AssignmentId",
+              "label": "Assignment id"
+            },
+            {
+              "columnId": "CorrelationId",
+              "label": "Correlation id"
+            }
+          ]
+        },
+        "exportFieldName": "AssignmentId",
+        "exportParameterName": "Assignment",
+        "exportDefaultValue": ""
+      },
+      "name": "pol-denials",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Policy assignments"
+      },
+      "name": "pol-policy-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| where tostring(properties.policyDefinitionAction) in~ ('deny', 'denyaction')\n| where (isempty(trim(@'\\s+', @'{Search}')) or tolower(tostring(properties.resourceId)) contains tolower(trim(@'\\s+', @'{Search}')))\n| summarize NonCompliant = countif(tostring(properties.complianceState) =~ 'NonCompliant'), Resources = dcount(tostring(properties.resourceId)),\n    Effect = take_any(tostring(properties.policyDefinitionAction)), Scope = take_any(tostring(properties.policyAssignmentScope))\n    by AssignmentId = tolower(tostring(properties.policyAssignmentId)), DefinitionId = tolower(tostring(properties.policyDefinitionId)),\n    ReferenceId = tostring(properties.policyDefinitionReferenceId)\n| join kind=leftouter (\n    policyresources\n    | where type =~ 'microsoft.authorization/policyassignments'\n    | project AssignmentId = tolower(id), Assignment = coalesce(tostring(properties.displayName), name),\n        Enforcement = tostring(properties.enforcementMode)\n  ) on AssignmentId\n| join kind=leftouter (\n    policyresources\n    | where type =~ 'microsoft.authorization/policydefinitions'\n    | project DefinitionId = tolower(id), Policy = coalesce(tostring(properties.displayName), name)\n  ) on DefinitionId\n| project Assignment, Policy, Effect, Enforcement, NonCompliant, Resources, Scope, ReferenceId, AssignmentId\n| order by NonCompliant desc, Assignment asc",
+        "size": 0,
+        "title": "Policies that deny, and the existing resources they find non-compliant",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No policy with a deny effect has evaluated a resource in the selected subscriptions.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Effect",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "AuditIfNotExists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "auditifnotexists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DeployIfNotExists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deployifnotexists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DenyAction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "denyaction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Enforcement",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Default",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DoNotEnforce",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "NonCompliant",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">",
+                    "thresholdValue": "0",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "NonCompliant",
+              "label": "Non-compliant"
+            },
+            {
+              "columnId": "Resources",
+              "label": "Resources evaluated"
+            },
+            {
+              "columnId": "ReferenceId",
+              "label": "Policy reference id"
+            },
+            {
+              "columnId": "AssignmentId",
+              "label": "Assignment id"
+            }
+          ]
+        },
+        "exportFieldName": "AssignmentId",
+        "exportParameterName": "Assignment",
+        "exportDefaultValue": ""
+      },
+      "name": "pol-deny-policies"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "e1c6ab77-7f90-580b-9db8-be13c0600b5c",
+            "version": "KqlParameterItem/1.0",
+            "name": "Assignment",
+            "label": "Policy assignment",
+            "type": 2,
+            "isRequired": false,
+            "multiSelect": false,
+            "query": "policyresources\n| where type =~ 'microsoft.authorization/policyassignments'\n| project value = tolower(id), label = strcat(coalesce(tostring(properties.displayName), name), ' (', tostring(properties.scope), ')')\n| order by label asc",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Pick one, or select a row in a table above."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "pol-assignment-params"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\n| where type =~ 'microsoft.authorization/policyassignments' and tolower(id) == '{Assignment}'\n| extend defId = tolower(tostring(properties.policyDefinitionId))\n| join kind=leftouter (\n    policyresources\n    | where type in~ ('microsoft.authorization/policydefinitions', 'microsoft.authorization/policysetdefinitions')\n    | project defId = tolower(id), Definition = coalesce(tostring(properties.displayName), name),\n        Kind = iff(type endswith 'setdefinitions', 'Initiative', 'Policy')\n  ) on defId\n| project Assignment = coalesce(tostring(properties.displayName), name), Kind, Definition,\n    Scope = tostring(properties.scope), Excluded = strcat_array(properties.notScopes, ', '),\n    Enforcement = tostring(properties.enforcementMode),\n    Overrides = iff(array_length(properties.overrides) > 0, tostring(properties.overrides), ''),\n    Selectors = iff(array_length(properties.resourceSelectors) > 0, tostring(properties.resourceSelectors), ''),\n    Message = tostring(properties.nonComplianceMessages[0].message),\n    Identity = tostring(identity.type), CreatedOn = todatetime(properties.metadata.createdOn),\n    UpdatedOn = todatetime(properties.metadata.updatedOn)",
+        "size": 0,
+        "title": "The assignment",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "Assignment not found in the selected subscriptions.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Enforcement",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Default",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DoNotEnforce",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Excluded",
+              "label": "Excluded scopes (notScopes)"
+            },
+            {
+              "columnId": "Overrides",
+              "label": "Effect overrides"
+            },
+            {
+              "columnId": "Selectors",
+              "label": "Resource selectors"
+            },
+            {
+              "columnId": "Message",
+              "label": "Non-compliance message"
+            },
+            {
+              "columnId": "CreatedOn",
+              "label": "Created"
+            },
+            {
+              "columnId": "UpdatedOn",
+              "label": "Updated"
+            }
+          ]
+        }
+      },
+      "name": "pol-assignment",
+      "conditionalVisibility": {
+        "parameterName": "Assignment",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\n| where type =~ 'microsoft.authorization/policyassignments' and tolower(id) == '{Assignment}'\n| project aParams = properties.parameters, defId = tolower(tostring(properties.policyDefinitionId))\n| join kind=inner (\n    policyresources\n    | where type in~ ('microsoft.authorization/policydefinitions', 'microsoft.authorization/policysetdefinitions')\n    | project defId = tolower(id), def = properties, isSet = type endswith 'setdefinitions'\n  ) on defId\n| extend members = iff(isSet, def.policyDefinitions,\n    pack_array(pack('policyDefinitionId', defId, 'policyDefinitionReferenceId', '', 'parameters',\n        pack('effect', pack('value', \"[parameters('effect')]\")))))\n| mv-expand m = members limit 2000\n| extend passed = tostring(m.parameters.effect.value)\n| extend pname = extract(@\"^\\[parameters\\('([^']+)'\\)\\]$\", 1, passed)\n| extend fromParent = iff(isempty(pname), passed, coalesce(tostring(aParams[pname].value), tostring(def.parameters[pname].defaultValue)))\n| extend memberId = tolower(tostring(m.policyDefinitionId)), ReferenceId = tostring(m.policyDefinitionReferenceId)\n| join kind=leftouter (\n    policyresources\n    | where type =~ 'microsoft.authorization/policydefinitions'\n    | project memberId = tolower(id), Policy = coalesce(tostring(properties.displayName), name),\n        Category = tostring(properties.metadata.category), ownDefault = tostring(properties.parameters.effect.defaultValue),\n        ruleEffect = tostring(properties.policyRule.then.effect)\n  ) on memberId\n| extend Effect = case(isnotempty(fromParent), fromParent, ruleEffect startswith '[', ownDefault, ruleEffect)\n| project Policy, Effect, Category, ReferenceId, memberId\n| order by case(Effect =~ 'Deny', 0, Effect =~ 'DenyAction', 1, Effect =~ 'Modify', 2, Effect =~ 'DeployIfNotExists', 3, 4) asc, Policy asc",
+        "size": 0,
+        "title": "Policies in the assignment and the effect each resolves to",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "Could not read the assignment's definition.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Effect",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "AuditIfNotExists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "auditifnotexists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DeployIfNotExists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deployifnotexists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DenyAction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "denyaction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "memberId",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ReferenceId",
+              "label": "Policy reference id"
+            },
+            {
+              "columnId": "memberId",
+              "label": "Definition"
+            }
+          ]
+        }
+      },
+      "name": "pol-effects",
+      "customWidth": "60",
+      "conditionalVisibility": {
+        "parameterName": "Assignment",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\n| where type =~ 'microsoft.authorization/policyexemptions'\n| where tolower(tostring(properties.policyAssignmentId)) == '{Assignment}'\n| extend Expires = todatetime(properties.expiresOn)\n| project Exemption = coalesce(tostring(properties.displayName), name), Scope = tostring(split(tolower(id), '/providers/microsoft.authorization/policyexemptions/')[0]),\n    Category = tostring(properties.exemptionCategory),\n    Policies = iff(array_length(properties.policyDefinitionReferenceIds) > 0, strcat_array(properties.policyDefinitionReferenceIds, ', '), '(all)'),\n    Expires, Status = case(isnull(Expires), 'No expiry', Expires < now(), 'Expired', Expires < now() + 14d, 'Expires within 14 days', 'Active'),\n    Description = tostring(properties.description)\n| order by Scope asc",
+        "size": 0,
+        "title": "Exemptions from the assignment",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No exemptions from this assignment.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Active",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Expires within 14 days",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No expiry",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Expired",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Scope",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        }
+      },
+      "name": "pol-exemptions",
+      "customWidth": "40",
+      "conditionalVisibility": {
+        "parameterName": "Assignment",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| where tolower(tostring(properties.policyAssignmentId)) == '{Assignment}'\n| where tostring(properties.complianceState) =~ 'NonCompliant'\n| where (isempty(trim(@'\\s+', @'{Search}')) or tolower(tostring(properties.resourceId)) contains tolower(trim(@'\\s+', @'{Search}')))\n| project Resource = tostring(properties.resourceId), ReferenceId = tostring(properties.policyDefinitionReferenceId),\n    Effect = tostring(properties.policyDefinitionAction), Evaluated = todatetime(properties.timestamp)\n| order by Effect asc, Resource asc\n| take 500",
+        "size": 0,
+        "title": "Resources the assignment finds non-compliant (latest 500)",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No non-compliant resources (or none match Search).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Effect",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "audit",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "AuditIfNotExists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "auditifnotexists",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "modify",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DeployIfNotExists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deployifnotexists",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "append",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DenyAction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "denyaction",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "disabled",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "manual",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Resource",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ReferenceId",
+              "label": "Policy reference id"
+            }
+          ]
+        }
+      },
+      "name": "pol-noncompliant",
+      "conditionalVisibility": {
+        "parameterName": "Assignment",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Locks"
+      },
+      "name": "pol-locks-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.authorization/locks'\n| extend Scope = tostring(split(tolower(id), '/providers/microsoft.authorization/locks/')[0])\n| where isempty(trim(@'\\s+', @'{Search}')) or tolower(trim(@'\\s+', @'{Search}')) contains Scope or Scope contains tolower(trim(@'\\s+', @'{Search}'))\n| project Lock = name, Level = tostring(properties.level), Scope, Notes = tostring(properties.notes)\n| order by Scope asc",
+        "size": 0,
+        "title": "Locks (matching Search, if given)",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No locks in the selected subscriptions (or none on the resource in Search).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Level",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "CanNotDelete",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "ReadOnly",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Scope",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true
+        }
+      },
+      "name": "pol-locks"
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

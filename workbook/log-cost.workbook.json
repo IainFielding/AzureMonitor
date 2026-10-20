@@ -1,0 +1,829 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Log Analytics: cost and noise\nWhere is ingestion going, what does it cost, and what could you stop paying for? Volume by table and source, spikes, tables nobody queries, data collected twice, and the workspace's plan and limits."
+      },
+      "name": "lac-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "426e1b5f-b82d-5de5-a370-d6a0f8a756ac",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "42012f1b-a963-5ddc-bb95-d55676b355d3",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": false,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace to analyse."
+          },
+          {
+            "id": "a07fdad7-c24d-50d7-802f-d15c9e178053",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 2592000000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 5184000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "3de53b56-6b34-5018-b5ee-153fd3b5c2c8",
+            "version": "KqlParameterItem/1.0",
+            "name": "Price",
+            "label": "Price per GB",
+            "type": 1,
+            "isRequired": false,
+            "value": "2.30",
+            "description": "What you pay per GB of Analytics logs, in your currency. Used for the estimated cost columns."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "lac-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Pick one workspace and a time range (30 days gives a fair month), and set **Price per GB** to what you pay for\nAnalytics logs in your region and currency (pay-as-you-go, before any commitment tier discount), so the cost\ncolumns are close. Usage is billable volume as Azure Monitor meters it; Microsoft Sentinel and Defender for\nServers charges and data allowances are not included.\n\n**Where savings usually are**, roughly in order:\n1. **Stop collecting what nobody reads.** *Who reads it* lists tables no query has touched. Drop them at the\n   source (diagnostic setting categories, data collection rules), or filter them with a transformation.\n2. **Trim noisy sources.** Select a table under *Tables* to see what inside it is big: a debug log category, a\n   Windows event ID, a performance counter at a 10-second interval, one chatty resource.\n3. **Collect once.** *Collected twice* finds machines sending the same data through two agents or two paths.\n4. **Cheaper plans** for logs kept for investigation, not alerting: *Basic* or *Auxiliary* tables cost far less\n   to ingest but limit how they can be queried. Not every table supports them; see *Table plans and retention*.\n5. **A commitment tier** once you ingest a steady 100 GB a day or more.",
+        "style": "info"
+      },
+      "name": "lac-howto"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where id =~ '{Workspace}'\n| project id, Sku = tostring(properties.sku.name),\n    CommitmentGBPerDay = toint(properties.sku.capacityReservationLevel),\n    RetentionDays = toint(properties.retentionInDays),\n    DailyCapGB = iff(todouble(properties.workspaceCapping.dailyQuotaGb) < 0, real(null), todouble(properties.workspaceCapping.dailyQuotaGb)),\n    Ingestion = tostring(properties.workspaceCapping.dataIngestionStatus),\n    CapResetsAt = tostring(properties.workspaceCapping.quotaNextResetTime),\n    Location = location",
+        "size": 0,
+        "title": "Workspace",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "id",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Ingestion",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "RespectQuota",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "ApproachingQuota",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "OverQuota",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "SubscriptionSuspended",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Workspace"
+            },
+            {
+              "columnId": "CommitmentGBPerDay",
+              "label": "Commitment tier (GB/day)"
+            },
+            {
+              "columnId": "RetentionDays",
+              "label": "Retention (days)"
+            },
+            {
+              "columnId": "DailyCapGB",
+              "label": "Daily cap (GB)"
+            },
+            {
+              "columnId": "CapResetsAt",
+              "label": "Cap resets at"
+            }
+          ]
+        }
+      },
+      "name": "lac-workspace"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Price = todouble(trim(@'\\s+', @'{Price}'));\nlet Daily = Usage\n    | where TimeGenerated {TimeRange}\n    | where IsBillable == true\n    | summarize GB = sum(Quantity) / 1000 by Day = startofday(TimeGenerated), DataType, Solution;\nDaily\n| summarize GB = sum(GB), Days = dcount(Day), Tables = dcount(DataType)\n| extend PerDay = iff(Days > 0, GB / Days, 0.0)\n| extend Peak = toscalar(Daily | summarize sum(GB) by Day | summarize max(sum_GB))\n| extend rows = pack_array(\n    pack('Signal', 'Billable ingestion', 'Value', round(GB, 1), 'Detail', strcat('GB from ', Tables, ' tables over ', Days, ' days')),\n    pack('Signal', 'Average per day', 'Value', round(PerDay, 1), 'Detail', strcat('GB · busiest day ', round(Peak, 1), ' GB')),\n    pack('Signal', 'Estimated per month', 'Value', round(PerDay * 30.4 * Price), 'Detail',\n        iff(isnull(Price), 'set a price per GB at the top', strcat('at ', Price, ' per GB'))))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toreal(r.Value), Detail = tostring(r.Detail), State = 'Unknown'",
+        "size": 3,
+        "title": "",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "tiles",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Signal",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "State",
+            "formatter": 18,
+            "formatOptions": {
+              "thresholdsOptions": "icons",
+              "thresholdsGrid": [
+                {
+                  "operator": "==",
+                  "thresholdValue": "Available",
+                  "representation": "success",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Degraded",
+                  "representation": "2",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unavailable",
+                  "representation": "4",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unknown",
+                  "representation": "unknown",
+                  "text": "​"
+                },
+                {
+                  "operator": "Default",
+                  "thresholdValue": null,
+                  "representation": "Blank",
+                  "text": "​"
+                }
+              ]
+            }
+          },
+          "rightContent": {
+            "columnMatch": "Value",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            }
+          },
+          "showBorder": true,
+          "secondaryContent": {
+            "columnMatch": "Detail",
+            "formatter": 1
+          }
+        }
+      },
+      "name": "lac-tiles",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Price = todouble(trim(@'\\s+', @'{Price}'));\nlet Daily = Usage\n    | where TimeGenerated {TimeRange}\n    | where IsBillable == true\n    | summarize GB = sum(Quantity) / 1000 by Day = startofday(TimeGenerated), DataType, Solution;\nlet Top = Daily | summarize GB = sum(GB) by DataType | top 10 by GB | project DataType;\nDaily\n| extend Table = iff(DataType in (Top), DataType, 'Other')\n| summarize GB = round(sum(GB), 2) by Day, Table",
+        "size": 0,
+        "title": "Billable GB per day, ten biggest tables",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "barchart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        }
+      },
+      "name": "lac-trend",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Price = todouble(trim(@'\\s+', @'{Price}'));\nlet Daily = Usage\n    | where TimeGenerated {TimeRange}\n    | where IsBillable == true\n    | summarize GB = sum(Quantity) / 1000 by Day = startofday(TimeGenerated), DataType, Solution;\nlet Total = toscalar(Daily | summarize sum(GB));\nlet Days = toscalar(Daily | summarize dcount(Day));\nDaily\n| summarize GB = sum(GB), Last7 = sumif(GB, Day >= startofday(ago(7d))),\n    Prev7 = sumif(GB, Day >= startofday(ago(14d)) and Day < startofday(ago(7d))),\n    Solutions = strcat_array(make_set(Solution, 3), ', ') by DataType\n| project DataType, GB = round(GB, 2), SharePct = round(100 * GB / Total, 1), PerDay = round(GB / Days, 2),\n    CostPerMonth = round(GB / Days * 30.4 * Price, 0),\n    ChangePct = iff(Prev7 > 0, round(100 * (Last7 - Prev7) / Prev7), real(null)), Solutions\n| order by GB desc",
+        "size": 0,
+        "title": "Tables by billable volume",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No billable ingestion in the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "ChangePct",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "50",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "20",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "SharePct",
+              "formatter": 4,
+              "formatOptions": {
+                "palette": "blue",
+                "min": 0,
+                "max": 100
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "DataType",
+              "label": "Table"
+            },
+            {
+              "columnId": "SharePct",
+              "label": "Share %"
+            },
+            {
+              "columnId": "PerDay",
+              "label": "GB per day"
+            },
+            {
+              "columnId": "CostPerMonth",
+              "label": "Est. per month"
+            },
+            {
+              "columnId": "ChangePct",
+              "label": "Change % (7 days)"
+            }
+          ]
+        },
+        "exportFieldName": "DataType",
+        "exportParameterName": "SelectedTable",
+        "exportDefaultValue": ""
+      },
+      "name": "lac-tables",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select a table to see its biggest sources and what makes it big, below. *Change* compares the last 7 days with\nthe 7 before; it needs a time range of 14 days or more. *Spikes* lists any day at least twice the table's normal\nday.",
+        "style": "info"
+      },
+      "name": "lac-tables-note"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let T = '{SelectedTable}';\ntable(T)\n| where TimeGenerated {TimeRange}\n| where _IsBillable == true\n| extend Source = coalesce(tolower(tostring(column_ifexists('_ResourceId', ''))), tostring(column_ifexists('Computer', ''))), Detail = case(\n    T == 'AzureDiagnostics', strcat_delim(' · ', tostring(column_ifexists('ResourceProvider', '')), tostring(column_ifexists('Category', ''))),\n    T == 'AzureActivity', strcat_delim(' · ', tostring(column_ifexists('CategoryValue', '')), tostring(column_ifexists('OperationNameValue', ''))),\n    T == 'AzureMetrics', tostring(column_ifexists('MetricName', '')),\n    T == 'SecurityEvent', strcat('Event ', tostring(column_ifexists('EventID', ''))),\n    T == 'Event', strcat_delim(' · ', tostring(column_ifexists('Source', '')), tostring(column_ifexists('EventID', ''))),\n    T == 'WindowsEvent', strcat_delim(' · ', tostring(column_ifexists('Provider', '')), tostring(column_ifexists('EventID', ''))),\n    T == 'Perf', strcat_delim(' · ', tostring(column_ifexists('ObjectName', '')), tostring(column_ifexists('CounterName', ''))),\n    T == 'InsightsMetrics', strcat_delim(' · ', tostring(column_ifexists('Namespace', '')), tostring(column_ifexists('Name', ''))),\n    T == 'Syslog', strcat_delim(' · ', tostring(column_ifexists('Facility', '')), tostring(column_ifexists('SeverityLevel', '')),\n        tostring(column_ifexists('ProcessName', ''))),\n    T == 'CommonSecurityLog', strcat_delim(' · ', tostring(column_ifexists('DeviceVendor', '')), tostring(column_ifexists('DeviceProduct', '')),\n        tostring(column_ifexists('Activity', ''))),\n    T in ('ContainerLogV2', 'ContainerLog'), strcat_delim(' · ', tostring(column_ifexists('PodNamespace', '')), tostring(column_ifexists('ContainerName', ''))),\n    T startswith 'App', tostring(column_ifexists('AppRoleName', '')),\n    T startswith 'AZFW', tostring(column_ifexists('Action', '')),\n    T in ('SigninLogs', 'AADNonInteractiveUserSignInLogs', 'AADServicePrincipalSignInLogs'), tostring(column_ifexists('AppDisplayName', '')),\n    T startswith 'Storage', tostring(column_ifexists('OperationName', '')),\n    '')\n| summarize GB = round(sum(_BilledSize) / 1e9, 3), Records = count() by Source, Detail\n| top 100 by GB desc",
+        "size": 0,
+        "title": "{SelectedTable}: biggest sources, and what makes it big",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No billable records in this table in the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Source",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Detail",
+              "label": "What (category, event, counter...)"
+            }
+          ]
+        }
+      },
+      "name": "lac-table-detail",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "SelectedTable",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Price = todouble(trim(@'\\s+', @'{Price}'));\nlet Daily = Usage\n    | where TimeGenerated {TimeRange}\n    | where IsBillable == true\n    | summarize GB = sum(Quantity) / 1000 by Day = startofday(TimeGenerated), DataType, Solution;\nDaily\n| summarize GB = sum(GB) by Day, DataType\n| summarize Median = percentile(GB, 50), arg_max(GB, Day) by DataType\n| where GB >= 1 and GB >= 2 * Median\n| project DataType, PeakDay = Day, PeakGB = round(GB, 2), MedianGB = round(Median, 2), Times = round(GB / Median, 1)\n| order by Times desc",
+        "size": 0,
+        "title": "Spikes: days at least twice a table's normal volume",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No spikes over 1 GB.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "DataType",
+              "label": "Table"
+            },
+            {
+              "columnId": "PeakDay",
+              "label": "Day"
+            },
+            {
+              "columnId": "PeakGB",
+              "label": "GB that day"
+            },
+            {
+              "columnId": "MedianGB",
+              "label": "Normal day (GB)"
+            },
+            {
+              "columnId": "Times",
+              "label": "Times normal"
+            }
+          ]
+        }
+      },
+      "name": "lac-spikes",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "_LogOperation\n| where TimeGenerated {TimeRange}\n| where Level in~ ('Warning', 'Error')\n| summarize Count = count(), LastSeen = max(TimeGenerated), Detail = take_any(Detail) by Level, Category, Operation\n| order by Level asc, Count desc",
+        "size": 0,
+        "title": "Ingestion warnings (daily cap, dropped or throttled data)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No ingestion warnings.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Level",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Warning",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Error",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "lac-ops",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Who reads it"
+      },
+      "name": "lac-read-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Price = todouble(trim(@'\\s+', @'{Price}'));\nlet Daily = Usage\n    | where TimeGenerated {TimeRange}\n    | where IsBillable == true\n    | summarize GB = sum(Quantity) / 1000 by Day = startofday(TimeGenerated), DataType, Solution;\nlet Queried = union isfuzzy=true (datatable(TimeGenerated: datetime, QueryText: string)[]), (LAQueryLogs)\n    | where TimeGenerated {TimeRange}\n    | extend Who = coalesce(tostring(column_ifexists('AADEmail', '')), tostring(column_ifexists('AADClientId', ''))),\n        App = tostring(column_ifexists('RequestClientApp', ''))\n    | extend Words = set_union(extract_all(@'([A-Za-z_][A-Za-z0-9_]*)', QueryText), dynamic([]))\n    | mv-expand Word = Words to typeof(string)\n    | summarize Queries = count(), People = dcount(Who), Apps = strcat_array(make_set(App, 5), ', '), LastQueried = max(TimeGenerated)\n        by Word;\nlet Audited = toscalar(union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (LAQueryLogs) | where TimeGenerated {TimeRange} | count) > 0;\nDaily\n| summarize GB = round(sum(GB), 2) by DataType\n| join kind=leftouter Queried on $left.DataType == $right.Word\n| extend Queries = coalesce(Queries, 0)\n| project DataType, GB, Queries, People, Apps, LastQueried,\n    Verdict = case(not(Audited), 'Unknown: query auditing is off',\n        Queries == 0, 'Never queried', Queries < 10, 'Rarely queried', 'In use')\n| order by case(Verdict == 'Never queried', 0, Verdict == 'Rarely queried', 1, 2) asc, GB desc",
+        "size": 0,
+        "title": "Tables and the queries that read them",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No billable ingestion in the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Verdict",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "In use",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Rarely queried",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Never queried",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Unknown: query auditing is off",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "DataType",
+              "label": "Table"
+            },
+            {
+              "columnId": "People",
+              "label": "People and apps"
+            },
+            {
+              "columnId": "Apps",
+              "label": "Client apps"
+            },
+            {
+              "columnId": "LastQueried",
+              "label": "Last queried"
+            }
+          ]
+        }
+      },
+      "name": "lac-queried",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Counts every query run against this workspace in the time range: people in the portal, alert rules, workbooks, dashboards and other tools. It needs the workspace's own diagnostic setting sending **Audit** (`LAQueryLogs`); queries that reach the table through a function or another workspace's cross-workspace query may be missed. *Never queried* over 30 days is a strong hint, not proof: check for alert rules and data exports first.",
+        "style": "info"
+      },
+      "name": "lac-queried-note"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Who sends it"
+      },
+      "name": "lac-send-h"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union withsource = LogTable_ *\n| where TimeGenerated {TimeRange}\n| where _IsBillable == true\n| extend Source = coalesce(tolower(tostring(column_ifexists('_ResourceId', ''))), tostring(column_ifexists('Computer', '')))\n| summarize GB = round(sum(_BilledSize) / 1e9, 2) by Source, Table = LogTable_\n| top 100 by GB desc",
+              "size": 0,
+              "title": "Biggest sources (resource or computer, by table)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No billable records.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Source",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "lac-top-sources",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ],
+        "loadType": "explicit",
+        "loadButtonText": "Show the biggest sources (reads every table: slow over a long time range)"
+      },
+      "name": "lac-sources"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Agents = union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string, Category: string)[]), (Heartbeat)\n    | where TimeGenerated {TimeRange}\n    | summarize Agents = make_set(Category) by Computer\n    | where set_has_element(Agents, 'Azure Monitor Agent') and (set_has_element(Agents, 'Direct Agent') or set_has_element(Agents, 'SCOM Agent'))\n    | project Computer, Issue = 'Two agents: Azure Monitor Agent and the legacy agent', Detail = strcat_array(Agents, ', ');\nlet PerfGB = union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string, _BilledSize: real)[]), (Perf)\n    | where TimeGenerated {TimeRange}\n    | summarize PerfGB = sum(_BilledSize) / 1e9 by Computer;\nlet MetricsGB = union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string, _BilledSize: real)[]), (InsightsMetrics)\n    | where TimeGenerated {TimeRange}\n    | summarize MetricsGB = sum(_BilledSize) / 1e9 by Computer;\nlet Counters = PerfGB\n    | join kind=inner MetricsGB on Computer\n    | project Computer, Issue = 'Performance counters in both Perf and InsightsMetrics',\n        Detail = strcat(round(PerfGB, 2), ' GB in Perf, ', round(MetricsGB, 2), ' GB in InsightsMetrics');\nunion Agents, Counters\n| order by Issue asc, Computer asc\n| take 500",
+        "size": 0,
+        "title": "Collected twice",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No machine sends through two agents, or the same counters to both Perf and InsightsMetrics.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        }
+      },
+      "name": "lac-duplicates",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Table plans and retention"
+      },
+      "name": "lac-plans-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Workspace}/tables\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2022-10-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Table\"}, {\"path\": \"$.properties.plan\", \"columnid\": \"Plan\"}, {\"path\": \"$.properties.retentionInDays\", \"columnid\": \"Retention (days)\"}, {\"path\": \"$.properties.totalRetentionInDays\", \"columnid\": \"Total retention (days)\"}, {\"path\": \"$.properties.schema.tableType\", \"columnid\": \"Kind\"}, {\"path\": \"$.properties.schema.tableSubType\", \"columnid\": \"Collected by\"}]}}]}",
+        "size": 0,
+        "title": "Tables",
+        "queryType": 12,
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        },
+        "noDataMessage": "Could not read the workspace's tables."
+      },
+      "name": "lac-plans"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "*Analytics* is the full plan. *Basic* and *Auxiliary* cost much less to ingest but are charged per query and cannot drive most alerts; they suit verbose logs kept for investigation. Retention beyond the workspace default, and *Total retention* (long-term), are charged per GB per month.",
+        "style": "info"
+      },
+      "name": "lac-plans-note"
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

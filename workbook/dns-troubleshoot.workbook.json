@@ -1,0 +1,1353 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# DNS and private endpoints\nWhy does this name not resolve, or resolve to the wrong address? Follows a Private Link name from the endpoint to its private DNS zone, the networks the zone is linked to, and the DNS server the client uses, then shows what the DNS servers actually answered."
+      },
+      "name": "dns-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "3ca9834d-15f2-5fa7-87f7-1eb74af68378",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "5742a34b-c1ba-5d7f-bb4e-4261e0de4405",
+            "version": "KqlParameterItem/1.0",
+            "name": "Name",
+            "label": "Name to resolve",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "The FQDN (or URL) that will not resolve, e.g. mystg.blob.core.windows.net."
+          },
+          {
+            "id": "c361ab81-dd36-5d82-9900-f1634ecd676f",
+            "version": "KqlParameterItem/1.0",
+            "name": "ClientIp",
+            "label": "Client IP",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. The private IP of the machine doing the lookup, to find its network and DNS servers."
+          },
+          {
+            "id": "8cfdb46a-c749-5b6d-ac52-caaa0c420647",
+            "version": "KqlParameterItem/1.0",
+            "name": "DnsServer",
+            "label": "DNS server",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. The DNS server the client uses, if not its network's. For a client on-premises, the address its forwarder sends to."
+          },
+          {
+            "id": "41cc10d8-7a38-5c77-aef3-258b1692e79a",
+            "version": "KqlParameterItem/1.0",
+            "name": "LookupVnets",
+            "type": 1,
+            "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| take 1\n| project k = 1\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets\n    | extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n    | where isnotempty(trim(@'\\s+', @'{ClientIp}')) and ipv4_is_in_any_range(trim(@'\\s+', @'{ClientIp}'), prefixes)\n    | take 1\n    | project k = 1, vnet = tolower(id), Subnet = tostring(s.name),\n        Servers = iff(array_length(properties.dhcpOptions.dnsServers) > 0, properties.dhcpOptions.dnsServers, pack_array('168.63.129.16'))\n  ) on k\n| where isnotempty(vnet) or isnotempty(trim(@'\\s+', @'{DnsServer}'))\n| extend Servers = iff(isnotempty(trim(@'\\s+', @'{DnsServer}')), split(replace_regex(trim(@'[\\s,;]+', @'{DnsServer}'), @'[\\s,;]+', ','), ','), Servers)\n| mv-expand Server = Servers to typeof(string)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/dnsresolvers/inboundendpoints'\n    | mv-expand c = properties.ipConfigurations\n    | project Ip = tostring(c.privateIpAddress), Kind = 'DNS Private Resolver inbound endpoint', Owner = tolower(id),\n        Lookup = tolower(tostring(split(tostring(c.subnet.id), '/subnets/')[0])),\n        Then = 'Private DNS zones linked to the resolver network, then forwarding rulesets linked to it'\n    | union (\n        // A Virtual WAN hub firewall has no IP configurations, only a hub address.\n        resources\n        | where type =~ 'microsoft.network/azurefirewalls'\n        | extend hubIp = tostring(properties.hubIPAddresses.privateIPAddress)\n        | mv-expand c = iff(isnotempty(hubIp), pack_array(hubIp), properties.ipConfigurations)\n        | extend Ip = iff(isnotempty(hubIp), hubIp, tostring(c.properties.privateIPAddress)),\n            Lookup = iff(isnotempty(hubIp), tolower(tostring(properties.virtualHub.id)),\n                tolower(tostring(split(tostring(c.properties.subnet.id), '/subnets/')[0])))\n        | where isnotempty(Ip)\n        | project Ip, Lookup, Owner = tolower(id), policy = tolower(tostring(properties.firewallPolicy.id)))\n    | join kind=leftouter (\n        resources\n        | where type =~ 'microsoft.network/firewallpolicies'\n        | project policy = tolower(id), Proxy = tostring(properties.dnsSettings.enableProxy),\n            Servers = strcat_array(properties.dnsSettings.servers, ', ')\n      ) on policy\n    | extend Kind = coalesce(Kind, iff(Proxy =~ 'true', 'Azure Firewall (DNS proxy)', 'Azure Firewall (DNS proxy is off)')),\n        Then = coalesce(Then, iff(isempty(Servers), 'Azure DNS from the firewall network',\n            strcat('Forwards to ', Servers, ': enter one as the DNS server to follow it')))\n    | union (\n        resources\n        | where type =~ 'microsoft.network/networkinterfaces' and isnotempty(tostring(properties.virtualMachine.id))\n        | mv-expand c = properties.ipConfigurations\n        | project Ip = tostring(c.properties.privateIPAddress), Kind = 'Virtual machine (custom DNS server)',\n            Owner = tolower(tostring(properties.virtualMachine.id)),\n            Lookup = tolower(tostring(split(tostring(c.properties.subnet.id), '/subnets/')[0])),\n            Then = 'Its own forwarders. Azure DNS (and so the private zones) only if it forwards to 168.63.129.16')\n    | project Ip, Kind, Owner, Lookup, Then\n  ) on $left.Server == $right.Ip\n| extend Kind = case(Server == '168.63.129.16', 'Azure-provided DNS', isnotempty(Kind), Kind, 'Not an Azure resource in the selected subscriptions'),\n    Lookup = case(Server == '168.63.129.16', vnet, Lookup),\n    Then = case(Server == '168.63.129.16', 'Private DNS zones linked to the client network, then public DNS',\n        isnotempty(Then), Then, 'On-premises or third-party DNS: it needs a conditional forwarder to a resolver inbound endpoint')\n| project ClientVnet = vnet, Subnet, Server, Kind, Owner, Lookup, Then\n| where isnotempty(Lookup)\n| summarize ids = make_set(Lookup)\n| project value = iff(array_length(ids) == 0, \"''\", strcat(\"'\", strcat_array(ids, \"','\"), \"'\"))",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "61ae928f-ff30-521b-8331-3b68335ccf65",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Optional. The workspace your firewalls, DNS security policies or DNS servers log to.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "4fd99bdd-be1f-52f4-9cac-a380d075c709",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 3600000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 900000
+                },
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "Applies to the DNS logs."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "dns-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Type the name that will not resolve, e.g. `mystg.blob.core.windows.net` (a URL works too). Add the **client IP**\nto see which DNS server the client uses and whether that server can see the private zone. For a client\non-premises, or to follow a forwarder, put the DNS server's address in **DNS server** instead.\n\n**How a Private Link name resolves.** The public name (`mystg.blob.core.windows.net`) is a CNAME to the\nPrivate Link name (`mystg.privatelink.blob.core.windows.net`). Azure DNS answers that from a private DNS zone\n**only if the zone is linked to the virtual network the lookup is made from**; otherwise it carries on to public\nDNS and returns the public address. So check, in order:\n1. **The endpoint:** approved, and with a DNS zone group, so its A record is written into the zone.\n2. **The zone:** one copy of `privatelink.…` that holds the record. Two copies in different subscriptions each\n   answer only for the networks linked to them.\n3. **The lookup network:** the zone is linked to the network the DNS server looks up from (the client's own\n   network for Azure-provided DNS; the resolver's network for a DNS Private Resolver; the firewall's for DNS proxy).\n4. **On-premises:** a conditional forwarder for the public zone (`blob.core.windows.net`, not `privatelink.…`) to\n   a resolver inbound endpoint.",
+        "style": "info"
+      },
+      "name": "dns-howto"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/networkinterfaces' and isnotempty(tostring(properties.privateEndpoint.id))\n| mv-expand ipc = properties.ipConfigurations\n| mv-expand f = ipc.properties.privateLinkConnectionProperties.fqdns\n| extend Fqdn = tolower(tostring(f))\n| extend N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))))\n| extend Label = tostring(split(N, '.')[0])\n| extend Rest = substring(N, strlen(Label) + 1)\n| extend PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest))\n| where isnotempty(N) and (Fqdn == N or Fqdn == PL)\n| project pe = tolower(tostring(properties.privateEndpoint.id)), Fqdn, Ip = tostring(ipc.properties.privateIPAddress)\n| union (\n    resources\n    | where type =~ 'microsoft.network/privateendpoints'\n    | mv-expand c = array_concat(properties.privateLinkServiceConnections, properties.manualPrivateLinkServiceConnections)\n    | extend N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))))\n    | extend Label = tostring(split(N, '.')[0])\n    | extend Rest = substring(N, strlen(Label) + 1)\n    | extend PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest))\n    | where isnotempty(Label) and tolower(tostring(split(tostring(c.properties.privateLinkServiceId), '/')[8])) == Label\n    | project pe = tolower(id), Fqdn = '', Ip = '')\n| summarize Fqdns = make_set_if(Fqdn, isnotempty(Fqdn)), Ips = make_set_if(Ip, isnotempty(Ip)) by pe\n| join kind=inner (\n    resources\n    | where type =~ 'microsoft.network/privateendpoints'\n    | extend conns = iff(array_length(properties.privateLinkServiceConnections) > 0,\n        properties.privateLinkServiceConnections, properties.manualPrivateLinkServiceConnections)\n    | mv-expand c = conns\n    | project pe = tolower(id), Connection = tostring(c.properties.privateLinkServiceConnectionState.status),\n        Target = tostring(c.properties.privateLinkServiceId), SubResource = tostring(c.properties.groupIds[0]),\n        Provisioning = tostring(properties.provisioningState),\n        ZoneGroup = iff(array_length(properties.customDnsConfigs) > 0, 'None', 'Yes'),\n        Subnet = tostring(split(tostring(properties.subnet.id), '/')[10]),\n        Vnet = tostring(split(tostring(properties.subnet.id), '/')[8])\n  ) on pe\n| project pe, ShouldResolveTo = strcat_array(Ips, ', '), Connection, ZoneGroup, Provisioning, Target, SubResource,\n    Vnet, Subnet, Fqdns = strcat_array(Fqdns, ', ')\n| order by case(Connection =~ 'Approved', 1, 0) asc, pe asc",
+        "size": 0,
+        "title": "Private endpoints for this name",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No private endpoint serves this name in the selected subscriptions. The name resolves publicly unless a zone holds a record for it by hand.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "pe",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Target",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Provisioning",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Succeeded",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Updating",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Creating",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deleting",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Canceled",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Connection",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Approved",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Pending",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Rejected",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disconnected",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "ZoneGroup",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Yes",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "None",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "pe",
+              "label": "Private endpoint"
+            },
+            {
+              "columnId": "ShouldResolveTo",
+              "label": "Should resolve to"
+            },
+            {
+              "columnId": "ZoneGroup",
+              "label": "DNS zone group"
+            },
+            {
+              "columnId": "SubResource",
+              "label": "Sub-resource"
+            },
+            {
+              "columnId": "Vnet",
+              "label": "Virtual network"
+            },
+            {
+              "columnId": "Fqdns",
+              "label": "Names it serves"
+            }
+          ]
+        }
+      },
+      "name": "dns-pe",
+      "conditionalVisibility": {
+        "parameterName": "Name",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/privatednszones'\n| extend Zone = tolower(name)\n| extend N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))))\n| extend Label = tostring(split(N, '.')[0])\n| extend Rest = substring(N, strlen(Label) + 1)\n| extend PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest))\n| where isnotempty(N) and (N == Zone or N endswith strcat('.', Zone) or PL == Zone or PL endswith strcat('.', Zone))\n| extend zone = tolower(id)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/privatednszones'\n    | summarize Copies = count() by Zone = tolower(name)\n  ) on Zone\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/privatednszones/virtualnetworklinks'\n    | summarize LinkedToLookup = countif(tolower(tostring(properties.virtualNetwork.id)) in~ ({LookupVnets})),\n        Fallback = countif(tostring(properties.resolutionPolicy) =~ 'NxDomainRedirect')\n        by zone = tolower(tostring(split(id, '/virtualnetworklinks/')[0]))\n  ) on zone\n| project zone, Answers = iff(N == Zone or N endswith strcat('.', Zone), N, PL),\n    LookupVnet = case(isempty(trim(@'\\s+', strcat(@'{ClientIp}', @'{DnsServer}'))), 'No client given',\n        LinkedToLookup > 0, 'Linked', 'Not linked'),\n    Copies, Links = toint(properties.numberOfVirtualNetworkLinks), RecordSets = toint(properties.numberOfRecordSets),\n    Fallback = iff(Fallback > 0, 'On some links', 'Off'), ResourceGroup = resourceGroup, SubscriptionId = subscriptionId\n| order by strlen(Answers) desc, LookupVnet asc",
+        "size": 0,
+        "title": "Private DNS zones that can answer this name",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No private DNS zone in the selected subscriptions covers this name, so Azure DNS answers it from public DNS.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "zone",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "LookupVnet",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Linked",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Not linked",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No client given",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Copies",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">",
+                    "thresholdValue": "1",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Fallback",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "On some links",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "zone",
+              "label": "Zone"
+            },
+            {
+              "columnId": "Answers",
+              "label": "Answers for"
+            },
+            {
+              "columnId": "LookupVnet",
+              "label": "Lookup network"
+            },
+            {
+              "columnId": "RecordSets",
+              "label": "Record sets"
+            },
+            {
+              "columnId": "Fallback",
+              "label": "Internet fallback"
+            },
+            {
+              "columnId": "SubscriptionId",
+              "label": "Subscription"
+            }
+          ]
+        }
+      },
+      "name": "dns-zones",
+      "conditionalVisibility": {
+        "parameterName": "Name",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "*Lookup network* says whether the zone is linked to a network that resolves for the client (fill in *Client IP*\nor *DNS server*). *Copies* above 1 means the same zone exists more than once: each copy answers only for the\nnetworks linked to it, so the record may be in one and the client's network linked to the other. *Internet\nfallback* (`NxDomainRedirect`) answers from public DNS when the private zone has no record, which hides a missing\nrecord. A Virtual WAN hub cannot be linked to a zone, so a secured hub firewall's DNS proxy must forward to a\nresolver.",
+        "style": "info"
+      },
+      "name": "dns-zones-note",
+      "conditionalVisibility": {
+        "parameterName": "Name",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/privatednszones/virtualnetworklinks'\n| extend Zone = tolower(tostring(split(id, '/')[8]))\n| extend N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))))\n| extend Label = tostring(split(N, '.')[0])\n| extend Rest = substring(N, strlen(Label) + 1)\n| extend PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest))\n| where isnotempty(N) and (N == Zone or N endswith strcat('.', Zone) or PL == Zone or PL endswith strcat('.', Zone))\n| project zone = tolower(tostring(split(id, '/virtualnetworklinks/')[0])), Vnet = tolower(tostring(properties.virtualNetwork.id)),\n    Lookup = iff(tolower(tostring(properties.virtualNetwork.id)) in~ ({LookupVnets}), 'Yes', ''), State = tostring(properties.virtualNetworkLinkState),\n    AutoRegistration = tostring(properties.registrationEnabled),\n    Fallback = iff(tostring(properties.resolutionPolicy) =~ 'NxDomainRedirect', 'Internet fallback', 'Default'),\n    Provisioning = tostring(properties.provisioningState)\n| order by Lookup desc, zone asc",
+        "size": 0,
+        "title": "Networks linked to those zones",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "The matching zones are not linked to any virtual network.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "zone",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Vnet",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Lookup",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Yes",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "State",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Completed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "InProgress",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Fallback",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Internet fallback",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "zone",
+              "label": "Zone"
+            },
+            {
+              "columnId": "Vnet",
+              "label": "Virtual network"
+            },
+            {
+              "columnId": "Lookup",
+              "label": "Resolves for the client"
+            },
+            {
+              "columnId": "AutoRegistration",
+              "label": "Auto-registration"
+            }
+          ]
+        }
+      },
+      "name": "dns-links",
+      "conditionalVisibility": {
+        "parameterName": "Name",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The client's DNS servers"
+      },
+      "name": "dns-client-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| take 1\n| project k = 1\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets\n    | extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n    | where isnotempty(trim(@'\\s+', @'{ClientIp}')) and ipv4_is_in_any_range(trim(@'\\s+', @'{ClientIp}'), prefixes)\n    | take 1\n    | project k = 1, vnet = tolower(id), Subnet = tostring(s.name),\n        Servers = iff(array_length(properties.dhcpOptions.dnsServers) > 0, properties.dhcpOptions.dnsServers, pack_array('168.63.129.16'))\n  ) on k\n| where isnotempty(vnet) or isnotempty(trim(@'\\s+', @'{DnsServer}'))\n| extend Servers = iff(isnotempty(trim(@'\\s+', @'{DnsServer}')), split(replace_regex(trim(@'[\\s,;]+', @'{DnsServer}'), @'[\\s,;]+', ','), ','), Servers)\n| mv-expand Server = Servers to typeof(string)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/dnsresolvers/inboundendpoints'\n    | mv-expand c = properties.ipConfigurations\n    | project Ip = tostring(c.privateIpAddress), Kind = 'DNS Private Resolver inbound endpoint', Owner = tolower(id),\n        Lookup = tolower(tostring(split(tostring(c.subnet.id), '/subnets/')[0])),\n        Then = 'Private DNS zones linked to the resolver network, then forwarding rulesets linked to it'\n    | union (\n        // A Virtual WAN hub firewall has no IP configurations, only a hub address.\n        resources\n        | where type =~ 'microsoft.network/azurefirewalls'\n        | extend hubIp = tostring(properties.hubIPAddresses.privateIPAddress)\n        | mv-expand c = iff(isnotempty(hubIp), pack_array(hubIp), properties.ipConfigurations)\n        | extend Ip = iff(isnotempty(hubIp), hubIp, tostring(c.properties.privateIPAddress)),\n            Lookup = iff(isnotempty(hubIp), tolower(tostring(properties.virtualHub.id)),\n                tolower(tostring(split(tostring(c.properties.subnet.id), '/subnets/')[0])))\n        | where isnotempty(Ip)\n        | project Ip, Lookup, Owner = tolower(id), policy = tolower(tostring(properties.firewallPolicy.id)))\n    | join kind=leftouter (\n        resources\n        | where type =~ 'microsoft.network/firewallpolicies'\n        | project policy = tolower(id), Proxy = tostring(properties.dnsSettings.enableProxy),\n            Servers = strcat_array(properties.dnsSettings.servers, ', ')\n      ) on policy\n    | extend Kind = coalesce(Kind, iff(Proxy =~ 'true', 'Azure Firewall (DNS proxy)', 'Azure Firewall (DNS proxy is off)')),\n        Then = coalesce(Then, iff(isempty(Servers), 'Azure DNS from the firewall network',\n            strcat('Forwards to ', Servers, ': enter one as the DNS server to follow it')))\n    | union (\n        resources\n        | where type =~ 'microsoft.network/networkinterfaces' and isnotempty(tostring(properties.virtualMachine.id))\n        | mv-expand c = properties.ipConfigurations\n        | project Ip = tostring(c.properties.privateIPAddress), Kind = 'Virtual machine (custom DNS server)',\n            Owner = tolower(tostring(properties.virtualMachine.id)),\n            Lookup = tolower(tostring(split(tostring(c.properties.subnet.id), '/subnets/')[0])),\n            Then = 'Its own forwarders. Azure DNS (and so the private zones) only if it forwards to 168.63.129.16')\n    | project Ip, Kind, Owner, Lookup, Then\n  ) on $left.Server == $right.Ip\n| extend Kind = case(Server == '168.63.129.16', 'Azure-provided DNS', isnotempty(Kind), Kind, 'Not an Azure resource in the selected subscriptions'),\n    Lookup = case(Server == '168.63.129.16', vnet, Lookup),\n    Then = case(Server == '168.63.129.16', 'Private DNS zones linked to the client network, then public DNS',\n        isnotempty(Then), Then, 'On-premises or third-party DNS: it needs a conditional forwarder to a resolver inbound endpoint')\n| project ClientVnet = vnet, Subnet, Server, Kind, Owner, Lookup, Then",
+        "size": 0,
+        "title": "DNS servers the client uses, and where each looks names up",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "Enter a client IP or a DNS server. A client IP that is not in any virtual network in the selected subscriptions is probably on-premises: enter its DNS server instead.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "ClientVnet",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Owner",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Lookup",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ClientVnet",
+              "label": "Client network"
+            },
+            {
+              "columnId": "Server",
+              "label": "DNS server"
+            },
+            {
+              "columnId": "Kind",
+              "label": "Server is"
+            },
+            {
+              "columnId": "Owner",
+              "label": "Resource"
+            },
+            {
+              "columnId": "Lookup",
+              "label": "Looks up from"
+            },
+            {
+              "columnId": "Then",
+              "label": "Then"
+            }
+          ]
+        }
+      },
+      "name": "dns-client"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Records in a zone"
+      },
+      "name": "dns-records-h"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Record sets are not in Resource Graph, so pick a zone to read its A records from Azure Resource Manager. The Private Link name needs an A record for the first label (e.g. `mystg`) pointing at the endpoint's address above.",
+        "style": "info"
+      },
+      "name": "dns-records-note"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "80b984cd-f4b6-52de-b704-8b381c3ddc5f",
+            "version": "KqlParameterItem/1.0",
+            "name": "Zone",
+            "label": "Zone",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": false,
+            "query": "resources\n| where type =~ 'microsoft.network/privatednszones'\n| extend Zone = tolower(name)\n| extend N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))))\n| extend Label = tostring(split(N, '.')[0])\n| extend Rest = substring(N, strlen(Label) + 1)\n| extend PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest))\n| where isnotempty(N) and (N == Zone or N endswith strcat('.', Zone) or PL == Zone or PL endswith strcat('.', Zone))\n| project value = id, label = strcat(name, ' (', resourceGroup, ')')",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "dns-zone-params"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Zone}/A\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2020-06-01\"}, {\"key\": \"$top\", \"value\": \"1000\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Record\"}, {\"path\": \"$.properties.fqdn\", \"columnid\": \"FQDN\"}, {\"path\": \"$.properties.aRecords[*].ipv4Address\", \"columnid\": \"Addresses\"}, {\"path\": \"$.properties.ttl\", \"columnid\": \"TTL\"}, {\"path\": \"$.properties.isAutoRegistered\", \"columnid\": \"Auto-registered\"}]}}]}",
+        "size": 0,
+        "title": "A records",
+        "queryType": 12,
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        },
+        "noDataMessage": "The zone has no A records."
+      },
+      "name": "dns-records",
+      "conditionalVisibility": {
+        "parameterName": "Zone",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### DNS Private Resolver"
+      },
+      "name": "dns-resolver-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/dnsresolvers'\n| project resolver = tolower(id), Vnet = tolower(tostring(properties.virtualNetwork.id)),\n    State = tostring(properties.dnsResolverState), Provisioning = tostring(properties.provisioningState), Location = location\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/dnsresolvers/inboundendpoints'\n    | mv-expand c = properties.ipConfigurations\n    | summarize Inbound = strcat_array(make_set(tostring(c.privateIpAddress)), ', ')\n        by resolver = tolower(tostring(split(id, '/inboundendpoints/')[0]))\n  ) on resolver\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/dnsresolvers/outboundendpoints'\n    | summarize Outbound = count() by resolver = tolower(tostring(split(id, '/outboundendpoints/')[0]))\n  ) on resolver\n| project resolver, Vnet, Inbound, Outbound = coalesce(Outbound, 0), State, Provisioning, Location",
+        "size": 0,
+        "title": "Resolvers and their inbound endpoints",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No DNS Private Resolvers in the selected subscriptions.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "resolver",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Vnet",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Provisioning",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Succeeded",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Updating",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Creating",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deleting",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Canceled",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "State",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Connected",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disconnected",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "resolver",
+              "label": "Resolver"
+            },
+            {
+              "columnId": "Vnet",
+              "label": "Virtual network"
+            },
+            {
+              "columnId": "Inbound",
+              "label": "Inbound endpoint IPs"
+            },
+            {
+              "columnId": "Outbound",
+              "label": "Outbound endpoints"
+            }
+          ]
+        }
+      },
+      "name": "dns-resolvers"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/dnsforwardingrulesets'\n| project id, Resolvers = strcat_array(properties.dnsResolverOutboundEndpoints, ', '),\n    Provisioning = tostring(properties.provisioningState), ResourceGroup = resourceGroup, Location = location\n| extend Resolvers = extract_all(@'dnsResolvers/([^/]+)/', Resolvers)\n| project id, Resolvers = strcat_array(Resolvers, ', '), Provisioning, ResourceGroup, Location",
+        "size": 0,
+        "title": "Forwarding rulesets",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No forwarding rulesets in the selected subscriptions.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "id",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Provisioning",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Succeeded",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Updating",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Creating",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deleting",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Canceled",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Ruleset"
+            },
+            {
+              "columnId": "Resolvers",
+              "label": "Outbound endpoints of"
+            }
+          ]
+        }
+      },
+      "name": "dns-rulesets"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "A forwarding rule sends every name under its domain to the target servers instead of Azure DNS, so a rule for `windows.net.` or `.` stops the private zones being used for networks linked to the ruleset. Pick a ruleset to read its rules and links from Azure Resource Manager.",
+        "style": "info"
+      },
+      "name": "dns-rules-note"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "aa3fe9ff-803c-5813-ba1c-243b74c85e99",
+            "version": "KqlParameterItem/1.0",
+            "name": "Ruleset",
+            "label": "Ruleset",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": false,
+            "query": "resources\n| where type =~ 'microsoft.network/dnsforwardingrulesets'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "dns-ruleset-params"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Ruleset}/forwardingRules\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2022-07-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Rule\"}, {\"path\": \"$.properties.domainName\", \"columnid\": \"Domain\"}, {\"path\": \"$.properties.targetDnsServers[*].ipAddress\", \"columnid\": \"Target servers\"}, {\"path\": \"$.properties.forwardingRuleState\", \"columnid\": \"State\"}]}}]}",
+        "size": 0,
+        "title": "Forwarding rules",
+        "queryType": 12,
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        },
+        "noDataMessage": "The ruleset has no rules."
+      },
+      "name": "dns-rules",
+      "customWidth": "60",
+      "conditionalVisibility": {
+        "parameterName": "Ruleset",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Ruleset}/virtualNetworkLinks\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2022-07-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Link\"}, {\"path\": \"$.properties.virtualNetwork.id\", \"columnid\": \"Virtual network\"}]}}]}",
+        "size": 0,
+        "title": "Networks linked to the ruleset",
+        "queryType": 12,
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        },
+        "noDataMessage": "The ruleset is not linked to any network."
+      },
+      "name": "dns-ruleset-links",
+      "customWidth": "40",
+      "conditionalVisibility": {
+        "parameterName": "Ruleset",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### What the DNS servers answered"
+      },
+      "name": "dns-logs-h"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select a **Log Analytics workspace** to see the lookups your DNS servers logged.",
+        "style": "info"
+      },
+      "name": "dns-ws-hint",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "*Answered* reads **Public address** when the lookup succeeded but returned a public IP: the private zone was not\nused, so the request goes to the public endpoint (and is usually refused there). **NXDOMAIN** for the Private\nLink name means the zone was used but has no record: check the endpoint's DNS zone group. Sources: Azure Firewall\nDNS proxy (`AZFWDnsQuery`), DNS security policy (`DNSQueryLogs`), and Windows DNS servers (`DnsEvents`, or\n`ASimDnsActivityLogs` from the Windows DNS events connector). Azure-provided DNS logs nothing on its own: add a DNS\nsecurity policy to the client network to see those lookups.",
+        "style": "info"
+      },
+      "name": "dns-logs-note",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))));\nlet Label = tostring(split(N, '.')[0]);\nlet Rest = substring(N, strlen(Label) + 1);\nlet PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest));\nlet Client = trim(@'\\s+', @'{ClientIp}');\nlet Rcode = (code: int) { case(code == 0, 'NOERROR', code == 2, 'SERVFAIL', code == 3, 'NXDOMAIN', code == 5, 'REFUSED', tostring(code)) };\nlet Lookups = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWDnsQuery)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'Azure Firewall DNS proxy',\n        Server = tostring(split(tostring(column_ifexists('_ResourceId', '')), '/')[-1]),\n        ClientIp = tostring(column_ifexists('SourceIp', '')), Query = tostring(column_ifexists('QueryName', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')), Result = toupper(tostring(column_ifexists('ResponseCode', ''))),\n        Answer = '', Detail = tostring(column_ifexists('ErrorMessage', ''))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DNSQueryLogs)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'DNS security policy',\n        Server = tostring(split(tostring(column_ifexists('VirtualNetworkId', '')), '/')[-1]),\n        ClientIp = tostring(column_ifexists('SourceIpAddress', '')), Query = tostring(column_ifexists('QueryName', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')),\n        Result = toupper(coalesce(tostring(column_ifexists('ResponseCode', '')), tostring(column_ifexists('QueryResponseCode', '')))),\n        Answer = tostring(column_ifexists('Answer', '')),\n        Detail = strcat_delim(' · ', tostring(column_ifexists('ResolutionPath', '')), tostring(column_ifexists('ResolverPolicyRuleAction', '')))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'Windows DNS server', Server = tostring(column_ifexists('Computer', '')),\n        ClientIp = tostring(column_ifexists('ClientIP', '')), Query = tostring(column_ifexists('Name', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')), Result = Rcode(toint(column_ifexists('ResultCode', int(null)))),\n        Answer = tostring(column_ifexists('IPAddresses', '')), Detail = ''),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'DNS server (ASIM)', Server = tostring(column_ifexists('Dvc', '')),\n        ClientIp = tostring(column_ifexists('SrcIpAddr', '')), Query = tostring(column_ifexists('DnsQuery', '')),\n        QueryType = tostring(column_ifexists('DnsQueryTypeName', '')), Result = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))),\n        Answer = tostring(column_ifexists('DnsResponseName', '')), Detail = '')\n| extend Query = tolower(trim_end(@'\\.', Query))\n| where isempty(N) or Query == N or Query == PL or Query endswith strcat('.', N)\n| where isempty(Client) or ClientIp == Client\n| extend AnswerIp = extract(@'(\\d+\\.\\d+\\.\\d+\\.\\d+)', 1, Answer)\n| extend Answered = case(Result != 'NOERROR', Result, isempty(AnswerIp), 'NOERROR',\n    ipv4_is_private(AnswerIp), 'Private address', 'Public address');\n\nLookups\n| summarize Lookups = count(), Clients = dcount(ClientIp), Answers = strcat_array(make_set_if(AnswerIp, isnotempty(AnswerIp), 5), ', '),\n    LastSeen = max(TimeGenerated) by Log, Server, Query, QueryType, Answered\n| order by case(Answered in ('NOERROR', 'Private address'), 1, 0) asc, Lookups desc\n| take 200",
+        "size": 0,
+        "title": "Lookups by server, name and answer",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No matching lookups. Widen the time range, clear Client IP, or check the DNS logs reach this workspace.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Answered",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Private address",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NOERROR",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Public address",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NXDOMAIN",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "SERVFAIL",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "REFUSED",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "QueryType",
+              "label": "Type"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "dns-log-summary",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))));\nlet Label = tostring(split(N, '.')[0]);\nlet Rest = substring(N, strlen(Label) + 1);\nlet PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest));\nlet Client = trim(@'\\s+', @'{ClientIp}');\nlet Rcode = (code: int) { case(code == 0, 'NOERROR', code == 2, 'SERVFAIL', code == 3, 'NXDOMAIN', code == 5, 'REFUSED', tostring(code)) };\nlet Lookups = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWDnsQuery)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'Azure Firewall DNS proxy',\n        Server = tostring(split(tostring(column_ifexists('_ResourceId', '')), '/')[-1]),\n        ClientIp = tostring(column_ifexists('SourceIp', '')), Query = tostring(column_ifexists('QueryName', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')), Result = toupper(tostring(column_ifexists('ResponseCode', ''))),\n        Answer = '', Detail = tostring(column_ifexists('ErrorMessage', ''))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DNSQueryLogs)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'DNS security policy',\n        Server = tostring(split(tostring(column_ifexists('VirtualNetworkId', '')), '/')[-1]),\n        ClientIp = tostring(column_ifexists('SourceIpAddress', '')), Query = tostring(column_ifexists('QueryName', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')),\n        Result = toupper(coalesce(tostring(column_ifexists('ResponseCode', '')), tostring(column_ifexists('QueryResponseCode', '')))),\n        Answer = tostring(column_ifexists('Answer', '')),\n        Detail = strcat_delim(' · ', tostring(column_ifexists('ResolutionPath', '')), tostring(column_ifexists('ResolverPolicyRuleAction', '')))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'Windows DNS server', Server = tostring(column_ifexists('Computer', '')),\n        ClientIp = tostring(column_ifexists('ClientIP', '')), Query = tostring(column_ifexists('Name', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')), Result = Rcode(toint(column_ifexists('ResultCode', int(null)))),\n        Answer = tostring(column_ifexists('IPAddresses', '')), Detail = ''),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'DNS server (ASIM)', Server = tostring(column_ifexists('Dvc', '')),\n        ClientIp = tostring(column_ifexists('SrcIpAddr', '')), Query = tostring(column_ifexists('DnsQuery', '')),\n        QueryType = tostring(column_ifexists('DnsQueryTypeName', '')), Result = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))),\n        Answer = tostring(column_ifexists('DnsResponseName', '')), Detail = '')\n| extend Query = tolower(trim_end(@'\\.', Query))\n| where isempty(N) or Query == N or Query == PL or Query endswith strcat('.', N)\n| where isempty(Client) or ClientIp == Client\n| extend AnswerIp = extract(@'(\\d+\\.\\d+\\.\\d+\\.\\d+)', 1, Answer)\n| extend Answered = case(Result != 'NOERROR', Result, isempty(AnswerIp), 'NOERROR',\n    ipv4_is_private(AnswerIp), 'Private address', 'Public address');\n\nLookups\n| summarize Lookups = count() by bin(TimeGenerated, {TimeRange:grain}), Answered",
+        "size": 0,
+        "title": "Lookups over time by answer",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        }
+      },
+      "name": "dns-log-timeline",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let N = trim_end(@'\\.', extract(@'^(?:[a-z]+://)?([^/:?\\s]+)', 1, tolower(trim(@'\\s+', @'{Name}'))));\nlet Label = tostring(split(N, '.')[0]);\nlet Rest = substring(N, strlen(Label) + 1);\nlet PL = iff(isempty(N) or Rest startswith 'privatelink.', N, strcat(Label, '.privatelink.', Rest));\nlet Client = trim(@'\\s+', @'{ClientIp}');\nlet Rcode = (code: int) { case(code == 0, 'NOERROR', code == 2, 'SERVFAIL', code == 3, 'NXDOMAIN', code == 5, 'REFUSED', tostring(code)) };\nlet Lookups = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWDnsQuery)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'Azure Firewall DNS proxy',\n        Server = tostring(split(tostring(column_ifexists('_ResourceId', '')), '/')[-1]),\n        ClientIp = tostring(column_ifexists('SourceIp', '')), Query = tostring(column_ifexists('QueryName', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')), Result = toupper(tostring(column_ifexists('ResponseCode', ''))),\n        Answer = '', Detail = tostring(column_ifexists('ErrorMessage', ''))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DNSQueryLogs)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'DNS security policy',\n        Server = tostring(split(tostring(column_ifexists('VirtualNetworkId', '')), '/')[-1]),\n        ClientIp = tostring(column_ifexists('SourceIpAddress', '')), Query = tostring(column_ifexists('QueryName', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')),\n        Result = toupper(coalesce(tostring(column_ifexists('ResponseCode', '')), tostring(column_ifexists('QueryResponseCode', '')))),\n        Answer = tostring(column_ifexists('Answer', '')),\n        Detail = strcat_delim(' · ', tostring(column_ifexists('ResolutionPath', '')), tostring(column_ifexists('ResolverPolicyRuleAction', '')))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'Windows DNS server', Server = tostring(column_ifexists('Computer', '')),\n        ClientIp = tostring(column_ifexists('ClientIP', '')), Query = tostring(column_ifexists('Name', '')),\n        QueryType = tostring(column_ifexists('QueryType', '')), Result = Rcode(toint(column_ifexists('ResultCode', int(null)))),\n        Answer = tostring(column_ifexists('IPAddresses', '')), Detail = ''),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Log = 'DNS server (ASIM)', Server = tostring(column_ifexists('Dvc', '')),\n        ClientIp = tostring(column_ifexists('SrcIpAddr', '')), Query = tostring(column_ifexists('DnsQuery', '')),\n        QueryType = tostring(column_ifexists('DnsQueryTypeName', '')), Result = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))),\n        Answer = tostring(column_ifexists('DnsResponseName', '')), Detail = '')\n| extend Query = tolower(trim_end(@'\\.', Query))\n| where isempty(N) or Query == N or Query == PL or Query endswith strcat('.', N)\n| where isempty(Client) or ClientIp == Client\n| extend AnswerIp = extract(@'(\\d+\\.\\d+\\.\\d+\\.\\d+)', 1, Answer)\n| extend Answered = case(Result != 'NOERROR', Result, isempty(AnswerIp), 'NOERROR',\n    ipv4_is_private(AnswerIp), 'Private address', 'Public address');\n\nLookups\n| top 500 by TimeGenerated desc\n| project TimeGenerated, Log, Server, ClientIp, Query, QueryType, Answered, Answer, Detail",
+        "size": 0,
+        "title": "Lookups (latest 500)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No matching lookups.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Answered",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Private address",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NOERROR",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Public address",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NXDOMAIN",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "SERVFAIL",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "REFUSED",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "TimeGenerated",
+              "label": "Time"
+            },
+            {
+              "columnId": "ClientIp",
+              "label": "Client"
+            },
+            {
+              "columnId": "QueryType",
+              "label": "Type"
+            }
+          ]
+        }
+      },
+      "name": "dns-log-events",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

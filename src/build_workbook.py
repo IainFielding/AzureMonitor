@@ -171,15 +171,17 @@ def arg(name, title, query, **kw):
 
 
 def arm(name, title, path, api_version, columns, *, sort_desc=None, no_data=None, width=None,
-        body=None, table="$.value", formatters=None, labels=None):
+        body=None, table="$.value", formatters=None, labels=None, url_params=()):
     """Call Azure Resource Manager: GET, or POST when a body is given.
 
     columns: list of (column, JSONPath, type-or-None), each path relative to a row of `table`.
+    url_params: further (key, value) query string parameters after api-version.
     """
     request = {
         "version": "ARMEndpoint/1.0", "data": json.dumps(body) if body else None, "headers": [],
         "method": "POST" if body else "GET", "path": path,
-        "urlParams": [{"key": "api-version", "value": api_version}], "batchDisabled": False,
+        "urlParams": [{"key": "api-version", "value": api_version}] + [{"key": k, "value": v} for k, v in url_params],
+        "batchDisabled": False,
         "transformers": [{"type": "jsonpath", "settings": {"tablePath": table, "columns": [
             {"path": jp, "columnid": col, **({"columnType": kind} if kind else {})} for col, jp, kind in columns]}}],
     }
@@ -314,6 +316,133 @@ def group(name, items, tab=None, load_button=None):
     if tab:
         g["conditionalVisibility"] = {"parameterName": "selectedTab", "comparison": "isEqualTo", "value": tab}
     return g
+
+
+# ---------------------------------------------------------------------------
+# Parameters and helpers shared by the single-question workbooks (DNS, changes, policy, AVD user, log cost,
+# routing). Each takes a prefix so its parameter ids stay distinct from every other workbook's.
+# ---------------------------------------------------------------------------
+
+def subscription_param(prefix):
+    return {
+        "id": gid(f"{prefix}-param-Subscription"),
+        "version": "KqlParameterItem/1.0",
+        "name": "Subscription",
+        "label": "Subscriptions",
+        "type": 6,
+        "isRequired": True,
+        "multiSelect": True,
+        "quote": "'",
+        "delimiter": ",",
+        "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+        "crossComponentResources": ["value::all"],
+        "typeSettings": {"additionalResourceOptions": ["value::all"], "showDefault": False},
+        "defaultValue": "value::all",
+        "value": ["value::all"],
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+    }
+
+
+def workspace_param(prefix, description, required=False, multi=True):
+    p = {
+        "id": gid(f"{prefix}-param-Workspace"),
+        "version": "KqlParameterItem/1.0",
+        "name": "Workspace",
+        "label": "Log Analytics workspace",
+        "type": 5,
+        "isRequired": required,
+        "multiSelect": multi,
+        "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+        "crossComponentResources": ["{Subscription}"],
+        "typeSettings": {"resourceTypeFilter": {"microsoft.operationalinsights/workspaces": True},
+                         "additionalResourceOptions": [], "showDefault": False},
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "description": description,
+    }
+    if multi:
+        p.update({"quote": "'", "delimiter": ","})
+    return p
+
+
+def time_param(prefix, default_ms, choices_ms, description=None):
+    p = {
+        "id": gid(f"{prefix}-param-TimeRange"),
+        "version": "KqlParameterItem/1.0",
+        "name": "TimeRange",
+        "label": "Time range",
+        "type": 4,
+        "isRequired": True,
+        "value": {"durationMs": default_ms},
+        "typeSettings": {"selectableValues": [{"durationMs": ms} for ms in choices_ms], "allowCustom": True},
+    }
+    if description:
+        p["description"] = description
+    return p
+
+
+def free_text_param(prefix, name, label, description, value=""):
+    return {"id": gid(f"{prefix}-param-{name}"), "version": "KqlParameterItem/1.0", "name": name, "label": label,
+            "type": 1, "isRequired": False, "value": value, "description": description}
+
+
+def choice_param(prefix, name, label, values, default, description):
+    """A required drop-down of fixed (value, label) pairs."""
+    return {"id": gid(f"{prefix}-param-{name}"), "version": "KqlParameterItem/1.0", "name": name, "label": label,
+            "type": 2, "isRequired": True, "jsonData": json.dumps([{"value": v, "label": l} for v, l in values]),
+            "value": default, "typeSettings": {"showDefault": False}, "description": description}
+
+
+def hidden_arg_param(prefix, name, query):
+    """A parameter the user never sees, set to the single value a Resource Graph query returns.
+
+    Resource Graph has no `let`, so a value several panels need (a subnet, a route table) is worked out once here
+    and substituted into each of them.
+    """
+    return {"id": gid(f"{prefix}-param-{name}"), "version": "KqlParameterItem/1.0", "name": name, "type": 1,
+            "query": query.strip(), "crossComponentResources": ["{Subscription}"], "isHiddenWhenLocked": True,
+            "queryType": 1, "resourceType": "microsoft.resourcegraph/resources"}
+
+
+def when_set(item, *names):
+    """Show the item only once every named parameter has a value, on top of any condition it already has."""
+    conds = [{"parameterName": n, "comparison": "isNotEqualTo", "value": ""} for n in names]
+    existing = item.pop("conditionalVisibility", None)
+    conds = ([existing] if existing else []) + item.pop("conditionalVisibilities", []) + conds
+    if len(conds) == 1:
+        item["conditionalVisibility"] = conds[0]
+    else:
+        item["conditionalVisibilities"] = conds
+    return item
+
+
+def when_empty(item, name):
+    """Show the item only while the named parameter is empty."""
+    item["conditionalVisibility"] = {"parameterName": name, "comparison": "isEqualTo", "value": ""}
+    return item
+
+
+def export_row(item, field, param):
+    """Selecting a row of the grid sets `param` to the row's `field`, for a drill-down panel below it."""
+    item["content"].update({"exportFieldName": field, "exportParameterName": param, "exportDefaultValue": ""})
+    return item
+
+
+def write_workbook(out, workbook):
+    out.parent.mkdir(parents=True, exist_ok=True)
+    # newline="\n" keeps the output byte-identical on Windows and Linux; CI regenerates it and compares.
+    out.write_text(json.dumps(workbook, indent=2, ensure_ascii=False) + "\n", encoding="utf-8", newline="\n")
+    print(f"Wrote {out}")
+
+
+def notebook(items):
+    return {
+        "version": "Notebook/1.0",
+        "items": items,
+        "fallbackResourceIds": ["Azure Monitor"],
+        "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json",
+    }
 
 
 # ---------------------------------------------------------------------------

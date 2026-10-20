@@ -1,0 +1,1067 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Routing: what path does traffic take?\nFrom one IP to another: where each address lives, the route each side picks, the next hop, whether the reply comes back the same way, and what every network security group on the way decides."
+      },
+      "name": "rt-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "ecd24dad-4bdf-58b2-8a0a-e99a0042f0ad",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "5c30b4c3-e5e5-5052-8d6a-765a9c8a0bea",
+            "version": "KqlParameterItem/1.0",
+            "name": "SourceIp",
+            "label": "Source IP",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "The address the traffic comes from."
+          },
+          {
+            "id": "baf0d919-dea6-595d-9a7c-464fe06b53b0",
+            "version": "KqlParameterItem/1.0",
+            "name": "DestinationIp",
+            "label": "Destination IP",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "The address it is going to."
+          },
+          {
+            "id": "d9926f5f-bab0-5b6c-a711-f0352dbd83ec",
+            "version": "KqlParameterItem/1.0",
+            "name": "Port",
+            "label": "Destination port",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. Makes the NSG check exact."
+          },
+          {
+            "id": "ef04b78c-f1dd-592c-a0e6-cb91e1e7dbd4",
+            "version": "KqlParameterItem/1.0",
+            "name": "Protocol",
+            "label": "Protocol",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"Tcp\", \"label\": \"TCP\"}, {\"value\": \"Udp\", \"label\": \"UDP\"}, {\"value\": \"Icmp\", \"label\": \"ICMP\"}, {\"value\": \"Any\", \"label\": \"Any\"}]",
+            "value": "Tcp",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "For the NSG check."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "rt-params"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "357949a4-6b35-5333-88e6-92ca60e09b4d",
+            "version": "KqlParameterItem/1.0",
+            "name": "SrcVnet",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets limit 2000\n| extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n| where ipv4_is_in_any_range(trim(@'\\s+', @'{SourceIp}'), prefixes)\n| summarize v = take_any(tolower(id))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "a073fc84-ac4e-5cb9-b7d9-5011636f6c3a",
+            "version": "KqlParameterItem/1.0",
+            "name": "SrcRouteTable",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets limit 2000\n| extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n| where ipv4_is_in_any_range(trim(@'\\s+', @'{SourceIp}'), prefixes)\n| summarize v = take_any(tolower(tostring(s.properties.routeTable.id)))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "927b827a-9f52-5815-95e1-37b16e92e85f",
+            "version": "KqlParameterItem/1.0",
+            "name": "SrcSubnetNsg",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets limit 2000\n| extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n| where ipv4_is_in_any_range(trim(@'\\s+', @'{SourceIp}'), prefixes)\n| summarize v = take_any(tolower(tostring(s.properties.networkSecurityGroup.id)))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "dd6d14ae-5b16-5d63-a651-677ec17f5a2d",
+            "version": "KqlParameterItem/1.0",
+            "name": "SrcNicNsg",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/networkinterfaces'\n| mv-expand c = properties.ipConfigurations\n| where tostring(c.properties.privateIPAddress) == trim(@'\\s+', @'{SourceIp}')\n| summarize v = take_any(tolower(tostring(properties.networkSecurityGroup.id)))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "009bcb90-1224-5401-84b9-383a3ce004c4",
+            "version": "KqlParameterItem/1.0",
+            "name": "DstVnet",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets limit 2000\n| extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n| where ipv4_is_in_any_range(trim(@'\\s+', @'{DestinationIp}'), prefixes)\n| summarize v = take_any(tolower(id))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "6a02783a-939c-5e5f-bc43-e10d3d65927a",
+            "version": "KqlParameterItem/1.0",
+            "name": "DstRouteTable",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets limit 2000\n| extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n| where ipv4_is_in_any_range(trim(@'\\s+', @'{DestinationIp}'), prefixes)\n| summarize v = take_any(tolower(tostring(s.properties.routeTable.id)))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "129da485-381f-579b-a1e5-0117a2d1fed4",
+            "version": "KqlParameterItem/1.0",
+            "name": "DstSubnetNsg",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets limit 2000\n| extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n| where ipv4_is_in_any_range(trim(@'\\s+', @'{DestinationIp}'), prefixes)\n| summarize v = take_any(tolower(tostring(s.properties.networkSecurityGroup.id)))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "dd6d4de1-b958-525b-b48e-a1f8cdd4039a",
+            "version": "KqlParameterItem/1.0",
+            "name": "DstNicNsg",
+            "type": 1,
+            "query": "resources\n| where type =~ 'microsoft.network/networkinterfaces'\n| mv-expand c = properties.ipConfigurations\n| where tostring(c.properties.privateIPAddress) == trim(@'\\s+', @'{DestinationIp}')\n| summarize v = take_any(tolower(tostring(properties.networkSecurityGroup.id)))\n| project value = iff(isempty(v), 'none', v)",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "isHiddenWhenLocked": true,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "rt-hidden"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Enter a source and a destination IP (a port and protocol make the NSG check exact). This works from configuration\nin Resource Graph, so it answers instantly and needs no logs or Network Watcher, but see the note on learned routes.\n\n**Reading it, top to bottom.**\n1. **Where the addresses are.** A *Private, but not in any network here* address is on-premises or in a\n   subscription you have not selected.\n2. **The route each side picks.** Longest prefix wins; on a tie a user route beats a system route. *Forward* is the\n   source subnet's route to the destination, *Return* the destination subnet's route back.\n3. **The verdict.** The usual failure is **asymmetric** routing: the request goes through a firewall and the reply\n   does not (or the other way round), and the firewall drops the half-session it sees.\n4. **The NSGs.** Outbound at the source, inbound at the destination. A flow must be allowed at every NSG.\n\n**Learned routes are not visible here.** Routes a network learns over BGP (from ExpressRoute, VPN, a Virtual WAN\nhub or Route Server) are not in Resource Graph. If a network uses a gateway or is connected to a Virtual WAN hub,\nopen *Effective routes* on the network interface for the definitive answer, and check the hub's routing intent\nbelow. Once the route is right, use the firewall workbook to see what the firewall decided.",
+        "style": "info"
+      },
+      "name": "rt-howto"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| take 1\n| mv-expand e = pack_array(pack('Role', 'Source', 'Ip', trim(@'\\s+', @'{SourceIp}')), pack('Role', 'Destination', 'Ip', trim(@'\\s+', @'{DestinationIp}')))\n| project Role = tostring(e.Role), Ip = tostring(e.Ip)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 2000\n    | extend prefixes = iff(array_length(s.properties.addressPrefixes) > 0, s.properties.addressPrefixes, pack_array(s.properties.addressPrefix))\n    | mv-expand e = pack_array(pack('Role', 'Source', 'Ip', trim(@'\\s+', @'{SourceIp}')), pack('Role', 'Destination', 'Ip', trim(@'\\s+', @'{DestinationIp}')))\n    | where ipv4_is_in_any_range(tostring(e.Ip), prefixes)\n    | project Role = tostring(e.Role), vnet = tolower(id), Subnet = tostring(s.name), Prefix = strcat_array(prefixes, ', '),\n        RouteTable = tolower(tostring(s.properties.routeTable.id)), SubnetNsg = tolower(tostring(s.properties.networkSecurityGroup.id))\n  ) on Role\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | mv-expand c = properties.ipConfigurations\n    | mv-expand e = pack_array(pack('Role', 'Source', 'Ip', trim(@'\\s+', @'{SourceIp}')), pack('Role', 'Destination', 'Ip', trim(@'\\s+', @'{DestinationIp}')))\n    | where tostring(c.properties.privateIPAddress) == tostring(e.Ip)\n    | project Role = tostring(e.Role), nic = tolower(id), Vm = tolower(tostring(properties.virtualMachine.id)),\n        NicNsg = tolower(tostring(properties.networkSecurityGroup.id)), IpForwarding = tostring(properties.enableIPForwarding)\n  ) on Role\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.network/vpnsites', 'microsoft.network/localnetworkgateways')\n    | extend space = iff(type =~ 'microsoft.network/vpnsites', properties.addressSpace.addressPrefixes,\n        properties.localNetworkAddressSpace.addressPrefixes)\n    | mv-expand e = pack_array(pack('Role', 'Source', 'Ip', trim(@'\\s+', @'{SourceIp}')), pack('Role', 'Destination', 'Ip', trim(@'\\s+', @'{DestinationIp}')))\n    | where ipv4_is_in_any_range(tostring(e.Ip), space)\n    | summarize Site = strcat_array(make_set(name), ', ') by Role = tostring(e.Role)\n  ) on Role\n| project Role, Ip, Where = case(isempty(Ip), 'Not given', isnotempty(vnet), 'Azure virtual network',\n        isnotempty(Site), strcat('On-premises (', Site, ')'),\n        ipv4_is_private(Ip), 'Private, but not in any network here: on-premises, or another subscription', 'Internet'),\n    vnet, Subnet, Prefix, RouteTable, SubnetNsg, nic, NicNsg, Vm, IpForwarding,\n    EffectiveRoutes = iff(isnotempty(nic), strcat('https://portal.azure.com/#@/resource', nic, '/effectiveRoutes'), ''),\n    EffectiveRules = iff(isnotempty(nic), strcat('https://portal.azure.com/#@/resource', nic, '/effectiveSecurityRules'), '')\n| order by Role desc",
+        "size": 0,
+        "title": "Where the two addresses are",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "vnet",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "RouteTable",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "SubnetNsg",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "nic",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "NicNsg",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Vm",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Where",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Azure virtual network",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Private, but not in any network here: on-premises, or another subscription",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Internet",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "EffectiveRoutes",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "Url",
+                "linkLabel": "Open"
+              }
+            },
+            {
+              "columnMatch": "EffectiveRules",
+              "formatter": 7,
+              "formatOptions": {
+                "linkTarget": "Url",
+                "linkLabel": "Open"
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Ip",
+              "label": "IP"
+            },
+            {
+              "columnId": "vnet",
+              "label": "Virtual network"
+            },
+            {
+              "columnId": "Prefix",
+              "label": "Subnet range"
+            },
+            {
+              "columnId": "RouteTable",
+              "label": "Route table"
+            },
+            {
+              "columnId": "SubnetNsg",
+              "label": "Subnet NSG"
+            },
+            {
+              "columnId": "nic",
+              "label": "Network interface"
+            },
+            {
+              "columnId": "NicNsg",
+              "label": "NIC NSG"
+            },
+            {
+              "columnId": "Vm",
+              "label": "VM"
+            },
+            {
+              "columnId": "IpForwarding",
+              "label": "IP forwarding"
+            },
+            {
+              "columnId": "EffectiveRoutes",
+              "label": "Effective routes"
+            },
+            {
+              "columnId": "EffectiveRules",
+              "label": "Effective security rules"
+            }
+          ]
+        }
+      },
+      "name": "rt-endpoints",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "SourceIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "DestinationIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/routetables' and tolower(id) in ('{SrcRouteTable}', '{DstRouteTable}')\n| mv-expand d = pack_array(\n    iff(tolower(id) == '{SrcRouteTable}', pack('Direction', 'Forward', 'Target', trim(@'\\s+', @'{DestinationIp}')), dynamic(null)),\n    iff(tolower(id) == '{DstRouteTable}', pack('Direction', 'Return', 'Target', trim(@'\\s+', @'{SourceIp}')), dynamic(null)))\n| where isnotnull(d)\n| extend Direction = tostring(d.Direction), Target = tostring(d.Target)\n| mv-expand r = properties.routes limit 2000\n| extend Prefix = tostring(r.properties.addressPrefix)\n| extend Match = ipv4_is_in_range(Target, Prefix)\n| where Match == true or isnull(Match)\n| project Direction, Target, Prefix, Len = toint(iff(isnull(Match), -1, toint(split(Prefix, '/')[1]))), Origin = 'User route',\n    NextHop = tostring(r.properties.nextHopType), NextHopIp = tostring(r.properties.nextHopIpAddress),\n    Via = strcat(tostring(r.name), ' in ', name),\n    Note = case(isnull(Match), 'Service tag prefix: not checked here',\n        tobool(properties.disableBgpRoutePropagation), 'Gateway route propagation off', '')\n| union (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks' and tolower(id) in ('{SrcVnet}', '{DstVnet}')\n    | mv-expand d = pack_array(\n        iff(tolower(id) == '{SrcVnet}', pack('Direction', 'Forward', 'Target', trim(@'\\s+', @'{DestinationIp}')), dynamic(null)),\n        iff(tolower(id) == '{DstVnet}', pack('Direction', 'Return', 'Target', trim(@'\\s+', @'{SourceIp}')), dynamic(null)))\n    | where isnotnull(d)\n    | extend Direction = tostring(d.Direction), Target = tostring(d.Target)\n    | mv-expand p = array_concat(\n        pack_array(pack('name', 'Address space of this network', 'kind', 'VnetLocal', 'remote', properties.addressSpace.addressPrefixes)),\n        iff(array_length(properties.virtualNetworkPeerings) > 0, properties.virtualNetworkPeerings, dynamic([])),\n        dynamic([{\"name\": \"Azure default route\", \"kind\": \"Internet\", \"remote\": [\"0.0.0.0/0\"]}, {\"name\": \"Azure default: private range not in any connected network\", \"kind\": \"None\", \"remote\": [\"10.0.0.0/8\", \"172.16.0.0/12\", \"192.168.0.0/16\", \"100.64.0.0/10\"]}])) limit 2000\n    | extend remoteVnet = tolower(tostring(p.properties.remoteVirtualNetwork.id))\n    | extend NextHop = coalesce(tostring(p.kind), iff(remoteVnet contains '/virtualnetworks/hv_', 'Virtual WAN hub', 'VNetPeering')),\n        Remote = iff(isnotnull(p.remote), p.remote, p.properties.remoteAddressSpace.addressPrefixes),\n        Via = iff(isnotnull(p.remote), tostring(p.name), strcat('Peering ', tostring(p.name), ' to ', tostring(split(remoteVnet, '/')[8]))),\n        Note = iff(isnotnull(p.remote), '', strcat('Peering ', tostring(p.properties.peeringState),\n            iff(tobool(p.properties.allowForwardedTraffic), '', ', forwarded traffic not allowed'),\n            iff(tobool(p.properties.useRemoteGateways), ', uses the remote gateway', '')))\n    | mv-expand prefix = Remote limit 2000\n    | extend Prefix = tostring(prefix)\n    | where ipv4_is_in_range(Target, Prefix)\n    | project Direction, Target, Prefix, Len = toint(split(Prefix, '/')[1]), Origin = 'System route', NextHop, NextHopIp = '', Via, Note)\n// Longest prefix wins; on a tie a user route beats a system route.\n| extend Score = Len * 10 + iff(Origin == 'User route', 2, 1)\n| where Len >= 0\n| summarize arg_max(Score, Prefix, Origin, NextHop, NextHopIp, Via, Note, Target) by Direction\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/azurefirewalls'\n    | extend hubIp = tostring(properties.hubIPAddresses.privateIPAddress)\n    | mv-expand c = iff(isnotempty(hubIp), pack_array(hubIp), properties.ipConfigurations)\n    | project NextHopIp = iff(isnotempty(hubIp), hubIp, tostring(c.properties.privateIPAddress)), Appliance = tolower(id), Kind = 'Azure Firewall'\n    | union (\n        resources\n        | where type =~ 'microsoft.network/networkinterfaces'\n        | mv-expand c = properties.ipConfigurations\n        | project NextHopIp = tostring(c.properties.privateIPAddress), Appliance = tolower(coalesce(tostring(properties.virtualMachine.id), id)),\n            Kind = iff(tobool(properties.enableIPForwarding), 'Appliance (IP forwarding on)', 'VM with IP forwarding OFF: it drops forwarded traffic'))\n    | union (\n        resources\n        | where type =~ 'microsoft.network/loadbalancers'\n        | mv-expand f = properties.frontendIPConfigurations\n        | where isnotempty(tostring(f.properties.privateIPAddress))\n        | project NextHopIp = tostring(f.properties.privateIPAddress), Appliance = tolower(id), Kind = 'Internal load balancer (in front of appliances)')\n    | where isnotempty(NextHopIp)\n  ) on NextHopIp\n| extend Hop = case(NextHop =~ 'VirtualAppliance', strcat('appliance ', NextHopIp), NextHop =~ 'None', 'dropped', NextHop)\n| summarize Forward = take_anyif(Hop, Direction == 'Forward'), Return = take_anyif(Hop, Direction == 'Return'),\n    FwdIp = take_anyif(NextHopIp, Direction == 'Forward'), RetIp = take_anyif(NextHopIp, Direction == 'Return'),\n    FwdType = take_anyif(NextHop, Direction == 'Forward'), RetType = take_anyif(NextHop, Direction == 'Return')\n| extend Verdict = case(\n    FwdType =~ 'None', 'No route to the destination in configuration: dropped, unless a gateway or Virtual WAN hub supplies one',\n    RetType =~ 'None', 'No route back to the source in configuration: the reply is dropped, unless a gateway or Virtual WAN hub supplies one',\n    isempty(RetType), 'Return path not in Azure here (on-premises, internet or another subscription): check the other side',\n    FwdType =~ 'VirtualAppliance' and RetType =~ 'VirtualAppliance' and FwdIp == RetIp, 'Symmetric: both ways through the same appliance',\n    FwdType =~ 'VirtualAppliance' and RetType =~ 'VirtualAppliance', 'Through different appliance addresses each way: fine only if they are one cluster behind a load balancer',\n    FwdType =~ 'VirtualAppliance' or RetType =~ 'VirtualAppliance', 'Asymmetric: one direction skips the appliance, so a stateful firewall drops the session',\n    FwdType has 'Virtual WAN hub' or RetType has 'Virtual WAN hub', 'Through the Virtual WAN hub: see its routing intent below',\n    'Direct: no appliance in the path')\n| project Forward, Return, Verdict",
+        "size": 0,
+        "title": "The path",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "Neither address is in a virtual network in the selected subscriptions.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Verdict",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Symmetric: both ways through the same appliance",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Direct: no appliance in the path",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Through different appliance addresses each way: fine only if they are one cluster behind a load balancer",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Through the Virtual WAN hub: see its routing intent below",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Return path not in Azure here (on-premises, internet or another subscription): check the other side",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No route to the destination in configuration: dropped, unless a gateway or Virtual WAN hub supplies one",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No route back to the source in configuration: the reply is dropped, unless a gateway or Virtual WAN hub supplies one",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Asymmetric: one direction skips the appliance, so a stateful firewall drops the session",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true
+        }
+      },
+      "name": "rt-verdict",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "SourceIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "DestinationIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/routetables' and tolower(id) in ('{SrcRouteTable}', '{DstRouteTable}')\n| mv-expand d = pack_array(\n    iff(tolower(id) == '{SrcRouteTable}', pack('Direction', 'Forward', 'Target', trim(@'\\s+', @'{DestinationIp}')), dynamic(null)),\n    iff(tolower(id) == '{DstRouteTable}', pack('Direction', 'Return', 'Target', trim(@'\\s+', @'{SourceIp}')), dynamic(null)))\n| where isnotnull(d)\n| extend Direction = tostring(d.Direction), Target = tostring(d.Target)\n| mv-expand r = properties.routes limit 2000\n| extend Prefix = tostring(r.properties.addressPrefix)\n| extend Match = ipv4_is_in_range(Target, Prefix)\n| where Match == true or isnull(Match)\n| project Direction, Target, Prefix, Len = toint(iff(isnull(Match), -1, toint(split(Prefix, '/')[1]))), Origin = 'User route',\n    NextHop = tostring(r.properties.nextHopType), NextHopIp = tostring(r.properties.nextHopIpAddress),\n    Via = strcat(tostring(r.name), ' in ', name),\n    Note = case(isnull(Match), 'Service tag prefix: not checked here',\n        tobool(properties.disableBgpRoutePropagation), 'Gateway route propagation off', '')\n| union (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks' and tolower(id) in ('{SrcVnet}', '{DstVnet}')\n    | mv-expand d = pack_array(\n        iff(tolower(id) == '{SrcVnet}', pack('Direction', 'Forward', 'Target', trim(@'\\s+', @'{DestinationIp}')), dynamic(null)),\n        iff(tolower(id) == '{DstVnet}', pack('Direction', 'Return', 'Target', trim(@'\\s+', @'{SourceIp}')), dynamic(null)))\n    | where isnotnull(d)\n    | extend Direction = tostring(d.Direction), Target = tostring(d.Target)\n    | mv-expand p = array_concat(\n        pack_array(pack('name', 'Address space of this network', 'kind', 'VnetLocal', 'remote', properties.addressSpace.addressPrefixes)),\n        iff(array_length(properties.virtualNetworkPeerings) > 0, properties.virtualNetworkPeerings, dynamic([])),\n        dynamic([{\"name\": \"Azure default route\", \"kind\": \"Internet\", \"remote\": [\"0.0.0.0/0\"]}, {\"name\": \"Azure default: private range not in any connected network\", \"kind\": \"None\", \"remote\": [\"10.0.0.0/8\", \"172.16.0.0/12\", \"192.168.0.0/16\", \"100.64.0.0/10\"]}])) limit 2000\n    | extend remoteVnet = tolower(tostring(p.properties.remoteVirtualNetwork.id))\n    | extend NextHop = coalesce(tostring(p.kind), iff(remoteVnet contains '/virtualnetworks/hv_', 'Virtual WAN hub', 'VNetPeering')),\n        Remote = iff(isnotnull(p.remote), p.remote, p.properties.remoteAddressSpace.addressPrefixes),\n        Via = iff(isnotnull(p.remote), tostring(p.name), strcat('Peering ', tostring(p.name), ' to ', tostring(split(remoteVnet, '/')[8]))),\n        Note = iff(isnotnull(p.remote), '', strcat('Peering ', tostring(p.properties.peeringState),\n            iff(tobool(p.properties.allowForwardedTraffic), '', ', forwarded traffic not allowed'),\n            iff(tobool(p.properties.useRemoteGateways), ', uses the remote gateway', '')))\n    | mv-expand prefix = Remote limit 2000\n    | extend Prefix = tostring(prefix)\n    | where ipv4_is_in_range(Target, Prefix)\n    | project Direction, Target, Prefix, Len = toint(split(Prefix, '/')[1]), Origin = 'System route', NextHop, NextHopIp = '', Via, Note)\n// Longest prefix wins; on a tie a user route beats a system route.\n| extend Score = Len * 10 + iff(Origin == 'User route', 2, 1)\n| where Len >= 0\n| summarize arg_max(Score, Prefix, Origin, NextHop, NextHopIp, Via, Note, Target) by Direction\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/azurefirewalls'\n    | extend hubIp = tostring(properties.hubIPAddresses.privateIPAddress)\n    | mv-expand c = iff(isnotempty(hubIp), pack_array(hubIp), properties.ipConfigurations)\n    | project NextHopIp = iff(isnotempty(hubIp), hubIp, tostring(c.properties.privateIPAddress)), Appliance = tolower(id), Kind = 'Azure Firewall'\n    | union (\n        resources\n        | where type =~ 'microsoft.network/networkinterfaces'\n        | mv-expand c = properties.ipConfigurations\n        | project NextHopIp = tostring(c.properties.privateIPAddress), Appliance = tolower(coalesce(tostring(properties.virtualMachine.id), id)),\n            Kind = iff(tobool(properties.enableIPForwarding), 'Appliance (IP forwarding on)', 'VM with IP forwarding OFF: it drops forwarded traffic'))\n    | union (\n        resources\n        | where type =~ 'microsoft.network/loadbalancers'\n        | mv-expand f = properties.frontendIPConfigurations\n        | where isnotempty(tostring(f.properties.privateIPAddress))\n        | project NextHopIp = tostring(f.properties.privateIPAddress), Appliance = tolower(id), Kind = 'Internal load balancer (in front of appliances)')\n    | where isnotempty(NextHopIp)\n  ) on NextHopIp\n| project Direction, Target, Prefix, Origin, NextHop, NextHopIp, Appliance, Kind, Via, Note\n| order by Direction asc",
+        "size": 0,
+        "title": "The route each side picks",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "Neither address is in a virtual network in the selected subscriptions.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Appliance",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "NextHop",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "VnetLocal",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "VNetPeering",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "VirtualAppliance",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Virtual WAN hub",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "VirtualNetworkGateway",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Internet",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "None",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Kind",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Azure Firewall",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Appliance (IP forwarding on)",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Internal load balancer (in front of appliances)",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "VM with IP forwarding OFF: it drops forwarded traffic",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Target",
+              "label": "Towards"
+            },
+            {
+              "columnId": "NextHop",
+              "label": "Next hop"
+            },
+            {
+              "columnId": "NextHopIp",
+              "label": "Next hop IP"
+            },
+            {
+              "columnId": "Kind",
+              "label": "Next hop is"
+            }
+          ]
+        }
+      },
+      "name": "rt-chosen",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "SourceIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "DestinationIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/routetables' and tolower(id) in ('{SrcRouteTable}', '{DstRouteTable}')\n| mv-expand d = pack_array(\n    iff(tolower(id) == '{SrcRouteTable}', pack('Direction', 'Forward', 'Target', trim(@'\\s+', @'{DestinationIp}')), dynamic(null)),\n    iff(tolower(id) == '{DstRouteTable}', pack('Direction', 'Return', 'Target', trim(@'\\s+', @'{SourceIp}')), dynamic(null)))\n| where isnotnull(d)\n| extend Direction = tostring(d.Direction), Target = tostring(d.Target)\n| mv-expand r = properties.routes limit 2000\n| extend Prefix = tostring(r.properties.addressPrefix)\n| extend Match = ipv4_is_in_range(Target, Prefix)\n| where Match == true or isnull(Match)\n| project Direction, Target, Prefix, Len = toint(iff(isnull(Match), -1, toint(split(Prefix, '/')[1]))), Origin = 'User route',\n    NextHop = tostring(r.properties.nextHopType), NextHopIp = tostring(r.properties.nextHopIpAddress),\n    Via = strcat(tostring(r.name), ' in ', name),\n    Note = case(isnull(Match), 'Service tag prefix: not checked here',\n        tobool(properties.disableBgpRoutePropagation), 'Gateway route propagation off', '')\n| union (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks' and tolower(id) in ('{SrcVnet}', '{DstVnet}')\n    | mv-expand d = pack_array(\n        iff(tolower(id) == '{SrcVnet}', pack('Direction', 'Forward', 'Target', trim(@'\\s+', @'{DestinationIp}')), dynamic(null)),\n        iff(tolower(id) == '{DstVnet}', pack('Direction', 'Return', 'Target', trim(@'\\s+', @'{SourceIp}')), dynamic(null)))\n    | where isnotnull(d)\n    | extend Direction = tostring(d.Direction), Target = tostring(d.Target)\n    | mv-expand p = array_concat(\n        pack_array(pack('name', 'Address space of this network', 'kind', 'VnetLocal', 'remote', properties.addressSpace.addressPrefixes)),\n        iff(array_length(properties.virtualNetworkPeerings) > 0, properties.virtualNetworkPeerings, dynamic([])),\n        dynamic([{\"name\": \"Azure default route\", \"kind\": \"Internet\", \"remote\": [\"0.0.0.0/0\"]}, {\"name\": \"Azure default: private range not in any connected network\", \"kind\": \"None\", \"remote\": [\"10.0.0.0/8\", \"172.16.0.0/12\", \"192.168.0.0/16\", \"100.64.0.0/10\"]}])) limit 2000\n    | extend remoteVnet = tolower(tostring(p.properties.remoteVirtualNetwork.id))\n    | extend NextHop = coalesce(tostring(p.kind), iff(remoteVnet contains '/virtualnetworks/hv_', 'Virtual WAN hub', 'VNetPeering')),\n        Remote = iff(isnotnull(p.remote), p.remote, p.properties.remoteAddressSpace.addressPrefixes),\n        Via = iff(isnotnull(p.remote), tostring(p.name), strcat('Peering ', tostring(p.name), ' to ', tostring(split(remoteVnet, '/')[8]))),\n        Note = iff(isnotnull(p.remote), '', strcat('Peering ', tostring(p.properties.peeringState),\n            iff(tobool(p.properties.allowForwardedTraffic), '', ', forwarded traffic not allowed'),\n            iff(tobool(p.properties.useRemoteGateways), ', uses the remote gateway', '')))\n    | mv-expand prefix = Remote limit 2000\n    | extend Prefix = tostring(prefix)\n    | where ipv4_is_in_range(Target, Prefix)\n    | project Direction, Target, Prefix, Len = toint(split(Prefix, '/')[1]), Origin = 'System route', NextHop, NextHopIp = '', Via, Note)\n// Longest prefix wins; on a tie a user route beats a system route.\n| extend Score = Len * 10 + iff(Origin == 'User route', 2, 1)\n| order by Direction asc, Score desc\n| project Direction, Target, Prefix, Origin, NextHop, NextHopIp, Via, Note",
+        "size": 0,
+        "title": "Every route that covers the other address",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No routes: neither address is in a virtual network in the selected subscriptions.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Target",
+              "label": "Towards"
+            },
+            {
+              "columnId": "NextHop",
+              "label": "Next hop"
+            },
+            {
+              "columnId": "NextHopIp",
+              "label": "Next hop IP"
+            }
+          ]
+        }
+      },
+      "name": "rt-routes",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "SourceIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "DestinationIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Network security groups"
+      },
+      "name": "rt-nsg-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| take 1\n| mv-expand pos = pack_array(\n    pack('Order', 1, 'Position', '1. Source NIC (outbound)', 'Nsg', '{SrcNicNsg}'),\n    pack('Order', 2, 'Position', '2. Source subnet (outbound)', 'Nsg', '{SrcSubnetNsg}'),\n    pack('Order', 3, 'Position', '3. Destination subnet (inbound)', 'Nsg', '{DstSubnetNsg}'),\n    pack('Order', 4, 'Position', '4. Destination NIC (inbound)', 'Nsg', '{DstNicNsg}'))\n| project Order = toint(pos.Order), Position = tostring(pos.Position), Nsg = tostring(pos.Nsg)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networksecuritygroups'\n    | where tolower(id) in ('{SrcNicNsg}', '{SrcSubnetNsg}', '{DstSubnetNsg}', '{DstNicNsg}')\n    | mv-expand pos = pack_array(\n        iff(tolower(id) == '{SrcNicNsg}', pack('Order', 1, 'Position', '1. Source NIC (outbound)', 'Direction', 'Outbound'), dynamic(null)),\n        iff(tolower(id) == '{SrcSubnetNsg}', pack('Order', 2, 'Position', '2. Source subnet (outbound)', 'Direction', 'Outbound'), dynamic(null)),\n        iff(tolower(id) == '{DstSubnetNsg}', pack('Order', 3, 'Position', '3. Destination subnet (inbound)', 'Direction', 'Inbound'), dynamic(null)),\n        iff(tolower(id) == '{DstNicNsg}', pack('Order', 4, 'Position', '4. Destination NIC (inbound)', 'Direction', 'Inbound'), dynamic(null)))\n    | where isnotnull(pos)\n    | mv-expand r = array_concat(properties.securityRules, properties.defaultSecurityRules) limit 2000\n    | where tostring(r.properties.direction) =~ tostring(pos.Direction)\n    | extend rp = r.properties\n    | extend SrcList = iff(array_length(rp.sourceAddressPrefixes) > 0, rp.sourceAddressPrefixes, pack_array(rp.sourceAddressPrefix)),\n        DstList = iff(array_length(rp.destinationAddressPrefixes) > 0, rp.destinationAddressPrefixes, pack_array(rp.destinationAddressPrefix)),\n        PortList = iff(array_length(rp.destinationPortRanges) > 0, rp.destinationPortRanges, pack_array(rp.destinationPortRange))\n    | mv-expand sp = SrcList limit 400\n    | mv-expand dp = DstList limit 400\n    | mv-expand pp = PortList limit 400\n    | extend sp = tostring(sp), dp = tostring(dp), pp = tostring(pp)\n    | extend lo = toint(extract('^([0-9]+)', 1, pp)), hi = toint(extract('-([0-9]+)$', 1, pp)), Port = toint(trim(@'\\s+', '{Port}'))\n    | extend SrcS = iff(array_length(rp.sourceApplicationSecurityGroups) > 0, 1, case(sp in ('*', '0.0.0.0/0') or sp =~ 'any', 3,\n            isnotnull(ipv4_is_in_range(trim(@'\\s+', @'{SourceIp}'), sp)), iff(ipv4_is_in_range(trim(@'\\s+', @'{SourceIp}'), sp), 3, 0),\n            sp =~ 'VirtualNetwork', case('{SrcVnet}' != 'none', 3, ipv4_is_private(trim(@'\\s+', @'{SourceIp}')), 2, 0),\n            sp =~ 'Internet', case('{SrcVnet}' != 'none', 0, ipv4_is_private(trim(@'\\s+', @'{SourceIp}')), 0, 3),\n            sp =~ 'AzureLoadBalancer', iff(trim(@'\\s+', @'{SourceIp}') == '168.63.129.16', 3, 0),\n            1)),\n        DstS = iff(array_length(rp.destinationApplicationSecurityGroups) > 0, 1, case(dp in ('*', '0.0.0.0/0') or dp =~ 'any', 3,\n            isnotnull(ipv4_is_in_range(trim(@'\\s+', @'{DestinationIp}'), dp)), iff(ipv4_is_in_range(trim(@'\\s+', @'{DestinationIp}'), dp), 3, 0),\n            dp =~ 'VirtualNetwork', case('{DstVnet}' != 'none', 3, ipv4_is_private(trim(@'\\s+', @'{DestinationIp}')), 2, 0),\n            dp =~ 'Internet', case('{DstVnet}' != 'none', 0, ipv4_is_private(trim(@'\\s+', @'{DestinationIp}')), 0, 3),\n            dp =~ 'AzureLoadBalancer', iff(trim(@'\\s+', @'{DestinationIp}') == '168.63.129.16', 3, 0),\n            1)),\n        PortS = case(pp == '*', 3, isnull(Port), 2, Port >= lo and Port <= coalesce(hi, lo), 3, 0),\n        ProtoS = case(tostring(rp.protocol) == '*', 3, '{Protocol}' == 'Any', 2, tostring(rp.protocol) =~ '{Protocol}', 3, 0)\n    | summarize SrcS = max(SrcS), DstS = max(DstS), PortS = max(PortS), ProtoS = max(ProtoS)\n        by Order = toint(pos.Order), Position = tostring(pos.Position), Nsg = tolower(id), Rule = tostring(r.name),\n        Priority = toint(rp.priority), Access = tostring(rp.access), Protocol = tostring(rp.protocol),\n        Source = strcat_array(SrcList, ', '), Destination = strcat_array(DstList, ', '), Ports = strcat_array(PortList, ', ')\n    | extend Score = min_of(SrcS, DstS, PortS, ProtoS)\n    | where Score > 0\n    \n    | where Score >= 2\n    | summarize arg_min(Priority, Rule, Access, Score) by Order\n  ) on Order\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networksecuritygroups'\n    | where tolower(id) in ('{SrcNicNsg}', '{SrcSubnetNsg}', '{DstSubnetNsg}', '{DstNicNsg}')\n    | mv-expand pos = pack_array(\n        iff(tolower(id) == '{SrcNicNsg}', pack('Order', 1, 'Position', '1. Source NIC (outbound)', 'Direction', 'Outbound'), dynamic(null)),\n        iff(tolower(id) == '{SrcSubnetNsg}', pack('Order', 2, 'Position', '2. Source subnet (outbound)', 'Direction', 'Outbound'), dynamic(null)),\n        iff(tolower(id) == '{DstSubnetNsg}', pack('Order', 3, 'Position', '3. Destination subnet (inbound)', 'Direction', 'Inbound'), dynamic(null)),\n        iff(tolower(id) == '{DstNicNsg}', pack('Order', 4, 'Position', '4. Destination NIC (inbound)', 'Direction', 'Inbound'), dynamic(null)))\n    | where isnotnull(pos)\n    | mv-expand r = array_concat(properties.securityRules, properties.defaultSecurityRules) limit 2000\n    | where tostring(r.properties.direction) =~ tostring(pos.Direction)\n    | extend rp = r.properties\n    | extend SrcList = iff(array_length(rp.sourceAddressPrefixes) > 0, rp.sourceAddressPrefixes, pack_array(rp.sourceAddressPrefix)),\n        DstList = iff(array_length(rp.destinationAddressPrefixes) > 0, rp.destinationAddressPrefixes, pack_array(rp.destinationAddressPrefix)),\n        PortList = iff(array_length(rp.destinationPortRanges) > 0, rp.destinationPortRanges, pack_array(rp.destinationPortRange))\n    | mv-expand sp = SrcList limit 400\n    | mv-expand dp = DstList limit 400\n    | mv-expand pp = PortList limit 400\n    | extend sp = tostring(sp), dp = tostring(dp), pp = tostring(pp)\n    | extend lo = toint(extract('^([0-9]+)', 1, pp)), hi = toint(extract('-([0-9]+)$', 1, pp)), Port = toint(trim(@'\\s+', '{Port}'))\n    | extend SrcS = iff(array_length(rp.sourceApplicationSecurityGroups) > 0, 1, case(sp in ('*', '0.0.0.0/0') or sp =~ 'any', 3,\n            isnotnull(ipv4_is_in_range(trim(@'\\s+', @'{SourceIp}'), sp)), iff(ipv4_is_in_range(trim(@'\\s+', @'{SourceIp}'), sp), 3, 0),\n            sp =~ 'VirtualNetwork', case('{SrcVnet}' != 'none', 3, ipv4_is_private(trim(@'\\s+', @'{SourceIp}')), 2, 0),\n            sp =~ 'Internet', case('{SrcVnet}' != 'none', 0, ipv4_is_private(trim(@'\\s+', @'{SourceIp}')), 0, 3),\n            sp =~ 'AzureLoadBalancer', iff(trim(@'\\s+', @'{SourceIp}') == '168.63.129.16', 3, 0),\n            1)),\n        DstS = iff(array_length(rp.destinationApplicationSecurityGroups) > 0, 1, case(dp in ('*', '0.0.0.0/0') or dp =~ 'any', 3,\n            isnotnull(ipv4_is_in_range(trim(@'\\s+', @'{DestinationIp}'), dp)), iff(ipv4_is_in_range(trim(@'\\s+', @'{DestinationIp}'), dp), 3, 0),\n            dp =~ 'VirtualNetwork', case('{DstVnet}' != 'none', 3, ipv4_is_private(trim(@'\\s+', @'{DestinationIp}')), 2, 0),\n            dp =~ 'Internet', case('{DstVnet}' != 'none', 0, ipv4_is_private(trim(@'\\s+', @'{DestinationIp}')), 0, 3),\n            dp =~ 'AzureLoadBalancer', iff(trim(@'\\s+', @'{DestinationIp}') == '168.63.129.16', 3, 0),\n            1)),\n        PortS = case(pp == '*', 3, isnull(Port), 2, Port >= lo and Port <= coalesce(hi, lo), 3, 0),\n        ProtoS = case(tostring(rp.protocol) == '*', 3, '{Protocol}' == 'Any', 2, tostring(rp.protocol) =~ '{Protocol}', 3, 0)\n    | summarize SrcS = max(SrcS), DstS = max(DstS), PortS = max(PortS), ProtoS = max(ProtoS)\n        by Order = toint(pos.Order), Position = tostring(pos.Position), Nsg = tolower(id), Rule = tostring(r.name),\n        Priority = toint(rp.priority), Access = tostring(rp.access), Protocol = tostring(rp.protocol),\n        Source = strcat_array(SrcList, ', '), Destination = strcat_array(DstList, ', '), Ports = strcat_array(PortList, ', ')\n    | extend Score = min_of(SrcS, DstS, PortS, ProtoS)\n    | where Score > 0\n    \n    | where Score == 1\n    | project Order, Before = Priority\n  ) on Order\n| summarize Uncertain = countif(isnotnull(Before) and Before < coalesce(Priority, 100000))\n    by Order, Position, Nsg, Rule, Priority, Access, Score\n| project Position, Nsg = iff(Nsg == 'none', '', Nsg),\n    Decision = case(Order <= 2 and '{SrcVnet}' == 'none', 'Source not in a network here',\n        Order >= 3 and '{DstVnet}' == 'none', 'Destination not in a network here',\n        Nsg == 'none', 'No NSG: allowed', isempty(Access), 'No rule matched',\n        Score == 2, iff(Access =~ 'Allow', 'Probably allowed', 'Probably denied'), iff(Access =~ 'Allow', 'Allowed', 'Denied')),\n    Rule, Priority, CheckFirst = iff(Uncertain > 0, strcat(Uncertain, ' rule(s) before it might match'), '')\n| order by Position asc",
+        "size": 0,
+        "title": "Decision at each NSG on the path",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Nsg",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Decision",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No NSG: allowed",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Probably allowed",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Probably denied",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No rule matched",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Denied",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Source not in a network here",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Destination not in a network here",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Nsg",
+              "label": "NSG"
+            },
+            {
+              "columnId": "CheckFirst",
+              "label": "Check first"
+            }
+          ]
+        }
+      },
+      "name": "rt-nsg-verdict",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "SourceIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "DestinationIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resources\n| where type =~ 'microsoft.network/networksecuritygroups'\n| where tolower(id) in ('{SrcNicNsg}', '{SrcSubnetNsg}', '{DstSubnetNsg}', '{DstNicNsg}')\n| mv-expand pos = pack_array(\n    iff(tolower(id) == '{SrcNicNsg}', pack('Order', 1, 'Position', '1. Source NIC (outbound)', 'Direction', 'Outbound'), dynamic(null)),\n    iff(tolower(id) == '{SrcSubnetNsg}', pack('Order', 2, 'Position', '2. Source subnet (outbound)', 'Direction', 'Outbound'), dynamic(null)),\n    iff(tolower(id) == '{DstSubnetNsg}', pack('Order', 3, 'Position', '3. Destination subnet (inbound)', 'Direction', 'Inbound'), dynamic(null)),\n    iff(tolower(id) == '{DstNicNsg}', pack('Order', 4, 'Position', '4. Destination NIC (inbound)', 'Direction', 'Inbound'), dynamic(null)))\n| where isnotnull(pos)\n| mv-expand r = array_concat(properties.securityRules, properties.defaultSecurityRules) limit 2000\n| where tostring(r.properties.direction) =~ tostring(pos.Direction)\n| extend rp = r.properties\n| extend SrcList = iff(array_length(rp.sourceAddressPrefixes) > 0, rp.sourceAddressPrefixes, pack_array(rp.sourceAddressPrefix)),\n    DstList = iff(array_length(rp.destinationAddressPrefixes) > 0, rp.destinationAddressPrefixes, pack_array(rp.destinationAddressPrefix)),\n    PortList = iff(array_length(rp.destinationPortRanges) > 0, rp.destinationPortRanges, pack_array(rp.destinationPortRange))\n| mv-expand sp = SrcList limit 400\n| mv-expand dp = DstList limit 400\n| mv-expand pp = PortList limit 400\n| extend sp = tostring(sp), dp = tostring(dp), pp = tostring(pp)\n| extend lo = toint(extract('^([0-9]+)', 1, pp)), hi = toint(extract('-([0-9]+)$', 1, pp)), Port = toint(trim(@'\\s+', '{Port}'))\n| extend SrcS = iff(array_length(rp.sourceApplicationSecurityGroups) > 0, 1, case(sp in ('*', '0.0.0.0/0') or sp =~ 'any', 3,\n        isnotnull(ipv4_is_in_range(trim(@'\\s+', @'{SourceIp}'), sp)), iff(ipv4_is_in_range(trim(@'\\s+', @'{SourceIp}'), sp), 3, 0),\n        sp =~ 'VirtualNetwork', case('{SrcVnet}' != 'none', 3, ipv4_is_private(trim(@'\\s+', @'{SourceIp}')), 2, 0),\n        sp =~ 'Internet', case('{SrcVnet}' != 'none', 0, ipv4_is_private(trim(@'\\s+', @'{SourceIp}')), 0, 3),\n        sp =~ 'AzureLoadBalancer', iff(trim(@'\\s+', @'{SourceIp}') == '168.63.129.16', 3, 0),\n        1)),\n    DstS = iff(array_length(rp.destinationApplicationSecurityGroups) > 0, 1, case(dp in ('*', '0.0.0.0/0') or dp =~ 'any', 3,\n        isnotnull(ipv4_is_in_range(trim(@'\\s+', @'{DestinationIp}'), dp)), iff(ipv4_is_in_range(trim(@'\\s+', @'{DestinationIp}'), dp), 3, 0),\n        dp =~ 'VirtualNetwork', case('{DstVnet}' != 'none', 3, ipv4_is_private(trim(@'\\s+', @'{DestinationIp}')), 2, 0),\n        dp =~ 'Internet', case('{DstVnet}' != 'none', 0, ipv4_is_private(trim(@'\\s+', @'{DestinationIp}')), 0, 3),\n        dp =~ 'AzureLoadBalancer', iff(trim(@'\\s+', @'{DestinationIp}') == '168.63.129.16', 3, 0),\n        1)),\n    PortS = case(pp == '*', 3, isnull(Port), 2, Port >= lo and Port <= coalesce(hi, lo), 3, 0),\n    ProtoS = case(tostring(rp.protocol) == '*', 3, '{Protocol}' == 'Any', 2, tostring(rp.protocol) =~ '{Protocol}', 3, 0)\n| summarize SrcS = max(SrcS), DstS = max(DstS), PortS = max(PortS), ProtoS = max(ProtoS)\n    by Order = toint(pos.Order), Position = tostring(pos.Position), Nsg = tolower(id), Rule = tostring(r.name),\n    Priority = toint(rp.priority), Access = tostring(rp.access), Protocol = tostring(rp.protocol),\n    Source = strcat_array(SrcList, ', '), Destination = strcat_array(DstList, ', '), Ports = strcat_array(PortList, ', ')\n| extend Score = min_of(SrcS, DstS, PortS, ProtoS)\n| where Score > 0\n| project Position, Priority, Rule, Access, Match = case(Score == 3, 'Matches', Score == 2, 'Probably matches',\n    'Cannot tell (service tag or application security group)'), Source, Destination, Ports, Protocol, Nsg, Order\n| order by Order asc, Priority asc",
+        "size": 0,
+        "title": "Rules that match, or might, in the order they apply",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No NSG on the path.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Nsg",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Access",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Allow",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Deny",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Match",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Matches",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Probably matches",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Cannot tell (service tag or application security group)",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Order",
+              "formatter": 5
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Nsg",
+              "label": "NSG"
+            }
+          ]
+        }
+      },
+      "name": "rt-nsg-rules",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "SourceIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "DestinationIp",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "*Probably matches*: the rule uses the **VirtualNetwork** or **Internet** tag for an address that is not in a network here, judged by whether it is private (VirtualNetwork also covers peered and on-premises ranges). *Cannot tell*: another service tag or an application security group, which only the effective security rules can resolve. Without a port, a rule limited to certain ports shows as *Probably matches*.",
+        "style": "info"
+      },
+      "name": "rt-nsg-note"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Virtual WAN hub"
+      },
+      "name": "rt-vwan-h"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "A network connected to a Virtual WAN hub learns its routes from the hub. With **routing intent**, private traffic (and internet traffic, if set) goes to the hub firewall in both directions. Without it, the connection's associated and propagated route tables decide.",
+        "style": "info"
+      },
+      "name": "rt-vwan-note"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "55ec5f2a-4af0-59b3-9076-12d8e5c2e577",
+            "version": "KqlParameterItem/1.0",
+            "name": "Hub",
+            "label": "Virtual WAN hub",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": false,
+            "query": "resources\n| where type =~ 'microsoft.network/virtualhubs'\n| project id, hub = tolower(name)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks' and tolower(id) in ('{SrcVnet}', '{DstVnet}')\n    | mv-expand p = properties.virtualNetworkPeerings\n    | extend hub = tolower(extract(@'(?i)/virtualnetworks/HV_(.+)_[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$', 1,\n        tostring(p.properties.remoteVirtualNetwork.id)))\n    | where isnotempty(hub)\n    | summarize Connected = count() by hub\n  ) on hub\n| order by Connected desc, hub asc\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::1"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::1",
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Starts with a hub the source or destination network is connected to, if any."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "rt-hub-params"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Hub}/routingIntent\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-09-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value[*].properties.routingPolicies[*]\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Policy\"}, {\"path\": \"$.destinations\", \"columnid\": \"Traffic\"}, {\"path\": \"$.nextHop\", \"columnid\": \"Next hop\"}]}}]}",
+        "size": 0,
+        "title": "Routing intent",
+        "queryType": 12,
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        },
+        "noDataMessage": "No routing intent on this hub."
+      },
+      "name": "rt-intent",
+      "customWidth": "40",
+      "conditionalVisibility": {
+        "parameterName": "Hub",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Hub}/hubVirtualNetworkConnections\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-09-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Connection\"}, {\"path\": \"$.properties.remoteVirtualNetwork.id\", \"columnid\": \"Network\"}, {\"path\": \"$.properties.routingConfiguration.associatedRouteTable.id\", \"columnid\": \"Associated route table\"}, {\"path\": \"$.properties.routingConfiguration.propagatedRouteTables.ids[*].id\", \"columnid\": \"Propagates to\"}, {\"path\": \"$.properties.enableInternetSecurity\", \"columnid\": \"Internet via hub\"}, {\"path\": \"$.properties.provisioningState\", \"columnid\": \"State\"}]}}]}",
+        "size": 0,
+        "title": "Network connections",
+        "queryType": 12,
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        },
+        "noDataMessage": "No networks connected to this hub."
+      },
+      "name": "rt-connections",
+      "customWidth": "60",
+      "conditionalVisibility": {
+        "parameterName": "Hub",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Hub}/hubRouteTables\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-09-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Route table\"}, {\"path\": \"$.properties.labels\", \"columnid\": \"Labels\"}, {\"path\": \"$.properties.routes\", \"columnid\": \"Routes\"}, {\"path\": \"$.properties.associatedConnections\", \"columnid\": \"Associated connections\"}, {\"path\": \"$.properties.propagatingConnections\", \"columnid\": \"Propagating connections\"}]}}]}",
+        "size": 0,
+        "title": "Hub route tables",
+        "queryType": 12,
+        "visualization": "table",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        },
+        "noDataMessage": "No route tables on this hub."
+      },
+      "name": "rt-hub-tables",
+      "conditionalVisibility": {
+        "parameterName": "Hub",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

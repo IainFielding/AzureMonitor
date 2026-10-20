@@ -1,0 +1,1349 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Azure Virtual Desktop: one user's sessions\nWhy is this user's session failing, slow to start, or laggy? Their connections and how each ended, the errors and their likely cause, sign-in time by stage, network quality, and the health and load of the session hosts they used."
+      },
+      "name": "avdu-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "0e178877-514a-5746-ab6a-be7329c313dd",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "1e6d0f1c-e7cb-5006-8fb6-e929487b96d0",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace your host pools, session hosts and Entra ID sign-in logs send to.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "7eb25af5-7d23-5cb1-9d17-e9352d4e47d0",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "e01a4cb9-c9f6-57b7-b261-7028a5efa752",
+            "version": "KqlParameterItem/1.0",
+            "name": "User",
+            "label": "User",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "The user's sign-in name, or part of it, e.g. jane.smith@contoso.com."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "avdu-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select the **Log Analytics workspace** your host pools send their diagnostics to.",
+        "style": "info"
+      },
+      "name": "avdu-ws-hint",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Enter a **user** to begin.",
+        "style": "info"
+      },
+      "name": "avdu-user-hint",
+      "conditionalVisibility": {
+        "parameterName": "User",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Enter the user's sign-in name (or part of it). Every panel follows the connections that user made in the time\nrange: when, from which client, to which session host, how they ended, and why.\n\n**Reading it.** *Never connected* attempts carry the error: *Side* says whether Azure Virtual Desktop itself failed\nor the host, its configuration or the client did, and *Likely cause* explains the common codes. A slow sign-in\nshows in *Time to the desktop* with its slowest Windows stages: *Profile* is usually FSLogix (see the profile\nevents), *GroupPolicy* is policy processing, *Shell* is the desktop starting. A laggy session is usually the\nnetwork (round-trip time above about 150 ms, or low bandwidth) or the host (high CPU, low free memory, input delay).\n\nNeeds the host pool's and workspace's diagnostic settings (`WVDConnections`, `WVDErrors`, `WVDCheckpoints`,\n`WVDConnectionNetworkData`, `WVDAgentHealthStatus`). Host load needs the hosts' performance counters (`Perf`) or VM\ninsights (`InsightsMetrics`); profile events need the FSLogix and User Profile Service event logs collected\n(`Event`); sign-ins need the Entra ID sign-in logs (`SigninLogs`) in the same workspace.",
+        "style": "info"
+      },
+      "name": "avdu-howto",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nlet Rtt = union isfuzzy=true (datatable(TimeGenerated: datetime, CorrelationId: string)[]), (WVDConnectionNetworkData)\n    | where TimeGenerated {TimeRange}\n    | where CorrelationId in (Ids)\n    | summarize P50 = percentile(toreal(column_ifexists('EstRoundTripTimeInMs', real(null))), 50);\nlet Errors = WVDErrors | where TimeGenerated {TimeRange} | where isnotempty(User) and UserName contains User | count;\nConnections\n| summarize Attempts = count(), Connected = countif(isnotnull(ConnectedAt)), Hosts = dcount(Host)\n| extend Rtt = toscalar(Rtt), Errors = toscalar(Errors)\n| extend rows = pack_array(\n    pack('Signal', 'Connection attempts', 'Value', Attempts, 'Detail', strcat('to ', Hosts, ' session hosts'), 'State', 'Unknown'),\n    pack('Signal', 'Never connected', 'Value', Attempts - Connected, 'Detail', strcat('of ', Attempts),\n        'State', iff(Attempts - Connected > 0, 'Unavailable', 'Available')),\n    pack('Signal', 'Errors', 'Value', Errors, 'Detail', 'logged for this user', 'State', iff(Errors > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Median round-trip time', 'Value', round(Rtt), 'Detail', 'ms',\n        'State', case(isnull(Rtt), 'Unknown', Rtt > 200, 'Unavailable', Rtt > 100, 'Degraded', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toreal(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)",
+        "size": 3,
+        "title": "",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "tiles",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No connections for this user in the time range.",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Signal",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "State",
+            "formatter": 18,
+            "formatOptions": {
+              "thresholdsOptions": "icons",
+              "thresholdsGrid": [
+                {
+                  "operator": "==",
+                  "thresholdValue": "Available",
+                  "representation": "success",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Degraded",
+                  "representation": "2",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unavailable",
+                  "representation": "4",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unknown",
+                  "representation": "unknown",
+                  "text": "​"
+                },
+                {
+                  "operator": "Default",
+                  "thresholdValue": null,
+                  "representation": "Blank",
+                  "text": "​"
+                }
+              ]
+            }
+          },
+          "rightContent": {
+            "columnMatch": "Value",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            }
+          },
+          "showBorder": true,
+          "secondaryContent": {
+            "columnMatch": "Detail",
+            "formatter": 1
+          }
+        }
+      },
+      "name": "avdu-tiles",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nlet Err = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CorrelationId in (Ids)\n    | summarize Errors = strcat_array(make_set(CodeSymbolic, 3), ', ') by CorrelationId;\nlet Net = union isfuzzy=true (datatable(TimeGenerated: datetime, CorrelationId: string)[]), (WVDConnectionNetworkData)\n    | where TimeGenerated {TimeRange}\n    | where CorrelationId in (Ids)\n    | extend Rtt = toreal(column_ifexists('EstRoundTripTimeInMs', real(null))), Kbps = toreal(column_ifexists('EstAvailableBandwidthKBps', real(null)))\n    | summarize RttP50 = round(percentile(Rtt, 50)), RttP95 = round(percentile(Rtt, 95)), BandwidthMbps = round(percentile(Kbps, 50) * 8 / 1000, 1)\n        by CorrelationId;\nlet Ready = union isfuzzy=true (datatable(TimeGenerated: datetime, CorrelationId: string, Name: string)[]), (WVDCheckpoints)\n    | where TimeGenerated {TimeRange}\n    | where CorrelationId in (Ids)\n    | where Name =~ 'ShellReady' or Name =~ 'RdpShellAppExecuted'\n        or (Name =~ 'LaunchExecutable' and tostring(column_ifexists('Parameters', dynamic(null)).connectionStage) == 'RdpShellAppExecuted')\n    | summarize Ready = min(TimeGenerated) by CorrelationId;\nConnections\n| join kind=leftouter Err on CorrelationId\n| join kind=leftouter Net on CorrelationId\n| join kind=leftouter Ready on CorrelationId\n| project Started, Outcome, Errors, Host, HostPoolId, Minutes = round((coalesce(Ended, LastSeen) - Started) / 1m, 0),\n    SignInSec = round((Ready - Started) / 1s), RttP50, RttP95, BandwidthMbps, Client = strcat(ClientType, ' ', ClientVersion),\n    ClientOS, ClientIp, GatewayRegion, UdpUse, ConnectionType, UserName, CorrelationId\n| order by Started desc\n| take 500",
+        "size": 0,
+        "title": "Connection attempts",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No connections for this user in the time range. Check the name, or widen the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Outcome",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Connected, then ended",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Success",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Connected (still on, or end not logged)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "In progress or abandoned",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Never connected",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failure",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "HostPoolId",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "SignInSec",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "120",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "60",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "RttP50",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "200",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "100",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "RttP95",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "300",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "150",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "HostPoolId",
+              "label": "Host pool"
+            },
+            {
+              "columnId": "Minutes",
+              "label": "Duration (min)"
+            },
+            {
+              "columnId": "SignInSec",
+              "label": "To desktop (s)"
+            },
+            {
+              "columnId": "RttP50",
+              "label": "RTT p50 (ms)"
+            },
+            {
+              "columnId": "RttP95",
+              "label": "RTT p95 (ms)"
+            },
+            {
+              "columnId": "BandwidthMbps",
+              "label": "Bandwidth (Mbps)"
+            },
+            {
+              "columnId": "ClientOS",
+              "label": "Client OS"
+            },
+            {
+              "columnId": "ClientIp",
+              "label": "Client IP"
+            },
+            {
+              "columnId": "GatewayRegion",
+              "label": "Gateway region"
+            },
+            {
+              "columnId": "UdpUse",
+              "label": "UDP use"
+            },
+            {
+              "columnId": "ConnectionType",
+              "label": "Type"
+            },
+            {
+              "columnId": "UserName",
+              "label": "User"
+            },
+            {
+              "columnId": "CorrelationId",
+              "label": "Correlation id"
+            }
+          ]
+        }
+      },
+      "name": "avdu-sessions",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nWVDErrors\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| extend Text = strcat(CodeSymbolic, ' ', Message)\n| project Time = TimeGenerated, Source, Operation = tostring(column_ifexists('Operation', '')), Code = CodeSymbolic,\n    Side = iff(tobool(ServiceError), 'Azure Virtual Desktop service', 'Host, configuration or client'),\n    LikelyCause = case(\n    Text matches regex @'(?i)(NoHealthyRdsh|NoHealthyRdshAvailable|SessionHostNotAvailable|NoAvailableSessionHost)',\n        'No session host available: all full, in drain mode, unhealthy or shut down',\n    Text matches regex @'(?i)(UserNotAuthorized|NotAuthorized|UserNotAssigned|NotInAppGroup|AuthorizationFailed)',\n        'Not assigned to an application group, or (Entra ID joined hosts) no Virtual Machine User Login role',\n    Text matches regex @'(?i)(TrustedRelationshipFailure|TrustRelationship)', 'The session host has lost its domain trust: rejoin it',\n    Text matches regex @'(?i)(LogonFailure|PasswordExpired|PasswordMustChange|AccountLockedOut|AccountDisabled|AccountRestriction)',\n        'Windows sign-in on the host failed: password, locked or disabled account, or a Kerberos or SSO problem',\n    Text matches regex @'(?i)(Timeout|TimedOut|StackTimeout|ReverseConnectTimeout)',\n        'The host did not answer in time: agent or RD stack unhealthy, or the host overloaded',\n    Text matches regex @'(?i)(ClientDisconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed)',\n        'The network dropped between client and host (or the user closed the client)',\n    Text matches regex @'(?i)(FSLogix|Profile|ProfileLoad)', 'The user profile failed to load: see the profile events below',\n    Text matches regex @'(?i)(Licensing|License)', 'Remote Desktop licensing problem on the host',\n    ''), Message, CorrelationId\n| order by Time desc\n| take 500",
+        "size": 0,
+        "title": "Errors and their likely cause",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No errors logged for this user.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Side",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Host, configuration or client",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Azure Virtual Desktop service",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "LikelyCause",
+              "label": "Likely cause"
+            },
+            {
+              "columnId": "CorrelationId",
+              "label": "Correlation id"
+            }
+          ]
+        }
+      },
+      "name": "avdu-errors",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nlet Checkpoints = union isfuzzy=true (datatable(TimeGenerated: datetime, CorrelationId: string, Name: string)[]), (WVDCheckpoints)\n    | where TimeGenerated {TimeRange}\n    | where CorrelationId in (Ids)\n    | extend Parameters = column_ifexists('Parameters', dynamic(null));\nlet Stages = Checkpoints\n    | where Name == 'LogonDelay'\n    | extend stages = bag_remove_keys(Parameters, dynamic(['LogonType', 'WinLogonPid']))\n    | mv-expand bagexpansion=array stages\n    | extend Stage = tostring(stages[0]), Seconds = toreal(stages[1]) / 1000\n    | where Stage startswith 'WinLogon_Logon_'\n    | summarize Seconds = round(sum(Seconds), 1) by CorrelationId, Stage = substring(Stage, strlen('WinLogon_Logon_'))\n    | order by Seconds desc\n    | summarize WindowsSignInSec = round(sum(Seconds), 1), SlowestStages = strcat_array(make_list(strcat(Stage, ' ', Seconds, 's'), 4), ' · ')\n        by CorrelationId;\nlet Prompt = Checkpoints\n    | where Name in~ ('OnCredentialsAcquisitionCompleted', 'SSOTokenRetrieval')\n    | summarize PromptSec = sum(tolong(Parameters.DurationMS)) / 1000.0 by CorrelationId;\nlet Ready = Checkpoints\n    | where Name =~ 'ShellReady' or Name =~ 'RdpShellAppExecuted'\n        or (Name =~ 'LaunchExecutable' and tostring(Parameters.connectionStage) == 'RdpShellAppExecuted')\n    | summarize Ready = min(TimeGenerated) by CorrelationId;\nConnections\n| join kind=inner Ready on CorrelationId\n| join kind=leftouter Prompt on CorrelationId\n| join kind=leftouter Stages on CorrelationId\n| project Started, Host, ToDesktopSec = round((Ready - Started) / 1s - coalesce(PromptSec, 0.0)), AtPromptSec = round(PromptSec),\n    WindowsSignInSec, SlowestStages, CorrelationId\n| order by Started desc",
+        "size": 0,
+        "title": "Time to the desktop, and the slowest Windows sign-in stages",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No new sessions in the time range (reconnects to an existing session have no sign-in).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "ToDesktopSec",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "120",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "60",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "WindowsSignInSec",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "60",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "30",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ToDesktopSec",
+              "label": "To desktop (s)"
+            },
+            {
+              "columnId": "AtPromptSec",
+              "label": "At credential prompt (s)"
+            },
+            {
+              "columnId": "WindowsSignInSec",
+              "label": "Windows sign-in (s)"
+            },
+            {
+              "columnId": "SlowestStages",
+              "label": "Slowest stages"
+            },
+            {
+              "columnId": "CorrelationId",
+              "label": "Correlation id"
+            }
+          ]
+        }
+      },
+      "name": "avdu-logon",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nunion isfuzzy=true (datatable(TimeGenerated: datetime, CorrelationId: string)[]), (WVDConnectionNetworkData)\n| where TimeGenerated {TimeRange}\n| where CorrelationId in (Ids)\n| join kind=inner (Connections | project CorrelationId, Host) on CorrelationId\n| summarize RttMs = round(avg(toreal(column_ifexists('EstRoundTripTimeInMs', real(null))))) by bin(TimeGenerated, {TimeRange:grain}), Host",
+        "size": 0,
+        "title": "Round-trip time by session host (ms)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No network data (WVDConnectionNetworkData)."
+      },
+      "name": "avdu-rtt",
+      "customWidth": "50",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nunion isfuzzy=true (datatable(TimeGenerated: datetime, CorrelationId: string)[]), (WVDConnectionNetworkData)\n| where TimeGenerated {TimeRange}\n| where CorrelationId in (Ids)\n| join kind=inner (Connections | project CorrelationId, Host) on CorrelationId\n| summarize Mbps = round(avg(toreal(column_ifexists('EstAvailableBandwidthKBps', real(null)))) * 8 / 1000, 1)\n    by bin(TimeGenerated, {TimeRange:grain}), Host",
+        "size": 0,
+        "title": "Available bandwidth by session host (Mbps)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No network data (WVDConnectionNetworkData)."
+      },
+      "name": "avdu-bandwidth",
+      "customWidth": "50",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### The session hosts they used"
+      },
+      "name": "avdu-hosts-h",
+      "conditionalVisibility": {
+        "parameterName": "User",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nWVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| extend HostShort = tolower(tostring(split(SessionHostName, '.')[0]))\n| where HostShort in (Hosts)\n| summarize arg_max(TimeGenerated, *) by SessionHostName\n| extend Status = iff(TimeGenerated < ago(30m), 'Offline', Status)\n| mv-expand check = iff(isempty(tostring(column_ifexists('SessionHostHealthCheckResult', ''))), dynamic([null]),\n    parse_json(tostring(column_ifexists('SessionHostHealthCheckResult', ''))))\n| extend Failed = iff(isnotempty(tostring(check.HealthCheckResult)) and tostring(check.HealthCheckResult) !~ 'HealthCheckSucceeded',\n    strcat(tostring(check.HealthCheckName), ': ', tostring(check.AdditionalFailureDetails.Message)), '')\n| summarize FailingChecks = strcat_array(make_set_if(Failed, isnotempty(Failed)), ' · '),\n    arg_max(TimeGenerated, Status, LastReport = TimeGenerated, AllowNewSessions = tostring(column_ifexists('AllowNewSessions', '')),\n        ActiveSessions = toint(column_ifexists('ActiveSessions', int(null))), InactiveSessions = toint(column_ifexists('InactiveSessions', int(null))),\n        AgentVersion = tostring(column_ifexists('AgentVersion', '')), HostPoolId = tolower(_ResourceId))\n    by SessionHostName\n| project SessionHostName, Status, FailingChecks, AllowNewSessions, ActiveSessions, InactiveSessions, AgentVersion, LastReport, HostPoolId",
+        "size": 0,
+        "title": "Session host health (latest report)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No agent health reports for these hosts (WVDAgentHealthStatus).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Available",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Upgrading",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NeedsAssistance",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Unavailable",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "UpgradeFailed",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "NoHeartbeat",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Offline",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Shutdown",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "AllowNewSessions",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "true",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "True",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "false",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "False",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "HostPoolId",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "SessionHostName",
+              "label": "Session host"
+            },
+            {
+              "columnId": "FailingChecks",
+              "label": "Failing health checks"
+            },
+            {
+              "columnId": "AllowNewSessions",
+              "label": "Allows new sessions"
+            },
+            {
+              "columnId": "ActiveSessions",
+              "label": "Active sessions"
+            },
+            {
+              "columnId": "InactiveSessions",
+              "label": "Disconnected sessions"
+            },
+            {
+              "columnId": "AgentVersion",
+              "label": "Agent"
+            },
+            {
+              "columnId": "LastReport",
+              "label": "Last report"
+            },
+            {
+              "columnId": "HostPoolId",
+              "label": "Host pool"
+            }
+          ]
+        }
+      },
+      "name": "avdu-host-health",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nlet Perf_ = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)\n    | where TimeGenerated {TimeRange}\n    | extend HostShort = tolower(tostring(split(Computer, '.')[0]))\n    | where HostShort in (Hosts)\n    | extend Object = tostring(column_ifexists('ObjectName', '')), Counter = tostring(column_ifexists('CounterName', '')),\n        Instance = tostring(column_ifexists('InstanceName', '')), Value = toreal(column_ifexists('CounterValue', real(null)))\n    | extend Metric = case(Object in ('Processor', 'Processor Information') and Counter == '% Processor Time' and Instance == '_Total', 'CpuPct',\n        Object == 'Memory' and Counter == 'Available MBytes', 'FreeMemoryMB',\n        Object == 'User Input Delay per Session' and Counter == 'Max Input Delay', 'InputDelayMs', '')\n    | where isnotempty(Metric)),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)\n    | where TimeGenerated {TimeRange}\n    | extend HostShort = tolower(tostring(split(Computer, '.')[0]))\n    | where HostShort in (Hosts)\n    | extend Namespace = tostring(column_ifexists('Namespace', '')), Name = tostring(column_ifexists('Name', '')),\n        Value = toreal(column_ifexists('Val', real(null)))\n    | extend Metric = case(Namespace == 'Processor' and Name == 'UtilizationPercentage', 'CpuPct',\n        Namespace == 'Memory' and Name == 'AvailableMB', 'FreeMemoryMB', '')\n    | where isnotempty(Metric));\nPerf_\n| summarize CpuP95 = round(percentile(iff(Metric == 'CpuPct', Value, real(null)), 95)), CpuMax = round(maxif(Value, Metric == 'CpuPct')),\n    FreeMemoryMinMB = round(minif(Value, Metric == 'FreeMemoryMB')), InputDelayMaxMs = round(maxif(Value, Metric == 'InputDelayMs'))\n    by Host = HostShort\n| order by CpuP95 desc",
+        "size": 0,
+        "title": "Host load over the time range",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No performance counters from these hosts (Perf or InsightsMetrics).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "CpuP95",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "95",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "80",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "CpuMax",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "100",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "90",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "InputDelayMaxMs",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "500",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "200",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "CpuP95",
+              "label": "CPU p95 %"
+            },
+            {
+              "columnId": "CpuMax",
+              "label": "CPU max %"
+            },
+            {
+              "columnId": "FreeMemoryMinMB",
+              "label": "Lowest free memory (MB)"
+            },
+            {
+              "columnId": "InputDelayMaxMs",
+              "label": "Worst input delay (ms)"
+            }
+          ]
+        }
+      },
+      "name": "avdu-host-load",
+      "customWidth": "45",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nlet Perf_ = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)\n    | where TimeGenerated {TimeRange}\n    | extend HostShort = tolower(tostring(split(Computer, '.')[0]))\n    | where HostShort in (Hosts)\n    | extend Object = tostring(column_ifexists('ObjectName', '')), Counter = tostring(column_ifexists('CounterName', '')),\n        Instance = tostring(column_ifexists('InstanceName', '')), Value = toreal(column_ifexists('CounterValue', real(null)))\n    | extend Metric = case(Object in ('Processor', 'Processor Information') and Counter == '% Processor Time' and Instance == '_Total', 'CpuPct',\n        Object == 'Memory' and Counter == 'Available MBytes', 'FreeMemoryMB',\n        Object == 'User Input Delay per Session' and Counter == 'Max Input Delay', 'InputDelayMs', '')\n    | where isnotempty(Metric)),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)\n    | where TimeGenerated {TimeRange}\n    | extend HostShort = tolower(tostring(split(Computer, '.')[0]))\n    | where HostShort in (Hosts)\n    | extend Namespace = tostring(column_ifexists('Namespace', '')), Name = tostring(column_ifexists('Name', '')),\n        Value = toreal(column_ifexists('Val', real(null)))\n    | extend Metric = case(Namespace == 'Processor' and Name == 'UtilizationPercentage', 'CpuPct',\n        Namespace == 'Memory' and Name == 'AvailableMB', 'FreeMemoryMB', '')\n    | where isnotempty(Metric));\nPerf_\n| where Metric == 'CpuPct'\n| summarize CpuPct = round(avg(Value)) by bin(TimeGenerated, {TimeRange:grain}), HostShort",
+        "size": 0,
+        "title": "Host CPU % over time",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No CPU counters from these hosts."
+      },
+      "name": "avdu-host-cpu",
+      "customWidth": "55",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nlet Sam = tolower(tostring(split(User, '@')[0]));\nunion isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Event)\n| where TimeGenerated {TimeRange}\n| extend HostShort = tolower(tostring(split(Computer, '.')[0]))\n| where HostShort in (Hosts)\n| extend Source = tostring(column_ifexists('Source', '')), Level = tostring(column_ifexists('EventLevelName', '')),\n    EventId = toint(column_ifexists('EventID', int(null))), Description = tostring(column_ifexists('RenderedDescription', ''))\n| where Source has 'FSLogix' or Source has 'frx' or Source == 'Microsoft-Windows-User Profile Service'\n    or (Source == 'User Profile Service' and EventId in (1500, 1508, 1511, 1515, 1521, 1530))\n| where Level in ('Error', 'Warning')\n| project Time = TimeGenerated, Host = HostShort, Source, EventId, Level,\n    ThisUser = iff(isnotempty(Sam) and tolower(Description) contains Sam, 'Yes', ''), Description = substring(Description, 0, 400)\n| order by ThisUser desc, Time desc\n| take 300",
+        "size": 0,
+        "title": "Profile (FSLogix) and User Profile Service errors on those hosts",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No profile errors or warnings on these hosts (or the FSLogix and User Profile Service event logs are not collected).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Level",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Warning",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Error",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "ThisUser",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Yes",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "EventId",
+              "label": "Event"
+            },
+            {
+              "columnId": "ThisUser",
+              "label": "Names this user"
+            }
+          ]
+        }
+      },
+      "name": "avdu-profile",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName contains User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nunion isfuzzy=true (datatable(TimeGenerated: datetime)[]), (SigninLogs)\n| where TimeGenerated {TimeRange}\n| extend Upn = tostring(column_ifexists('UserPrincipalName', '')), App = tostring(column_ifexists('AppDisplayName', '')),\n    Resource = tostring(column_ifexists('ResourceDisplayName', ''))\n| where isnotempty(User) and Upn contains User\n| where App has_any ('Virtual Desktop', 'Remote Desktop', 'Windows 365', 'Windows Cloud Login')\n    or Resource has_any ('Virtual Desktop', 'Windows Cloud Login', 'Microsoft Remote Desktop')\n| extend Result = tostring(column_ifexists('ResultType', '')), Status = column_ifexists('Status', dynamic(null)),\n    Device = column_ifexists('DeviceDetail', dynamic(null)), Location = column_ifexists('LocationDetails', dynamic(null))\n| project Time = TimeGenerated, App, Resource, Outcome = iff(Result == '0', 'Success', 'Failure'), Result,\n    Reason = tostring(Status.failureReason), ConditionalAccess = tostring(column_ifexists('ConditionalAccessStatus', '')),\n    ClientApp = tostring(column_ifexists('ClientAppUsed', '')), Ip = tostring(column_ifexists('IPAddress', '')),\n    Os = tostring(Device.operatingSystem), Where = strcat_delim(', ', tostring(Location.city), tostring(Location.countryOrRegion))\n| order by Time desc\n| take 200",
+        "size": 0,
+        "title": "Entra ID sign-ins to Azure Virtual Desktop",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No Azure Virtual Desktop sign-ins for this user (or SigninLogs is not in this workspace).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Outcome",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Connected, then ended",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Success",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Connected (still on, or end not logged)",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "In progress or abandoned",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Never connected",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failure",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "ConditionalAccess",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "success",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "notApplied",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "failure",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ConditionalAccess",
+              "label": "Conditional Access"
+            },
+            {
+              "columnId": "ClientApp",
+              "label": "Client app"
+            }
+          ]
+        }
+      },
+      "name": "avdu-signins",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

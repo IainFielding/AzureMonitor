@@ -1,17 +1,127 @@
-# Enterprise Scale Platform Health workbook
+# Azure Monitor workbooks for an Enterprise Scale platform team
 
-An Azure Monitor workbook showing the health, capacity and throughput of the shared
-platform services in an Enterprise Scale (Azure Landing Zone) deployment.
+Azure Monitor workbooks (and Grafana dashboards) for the team that runs the shared platform of an
+Enterprise Scale (Azure Landing Zone) deployment. They are built for a **Virtual WAN** based landing zone.
 
-## Import
+There are two kinds of workbook:
+
+- **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health* and
+  *Backup & Recovery*.
+- **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
+  id) and they work out the rest. They are for tickets and incidents.
+
+## The workbooks
+
+| Workbook | Kind | Use it to answer | Main users |
+|---|---|---|---|
+| [Platform health](workbook/alz-platform-health.workbook.json) | Dashboard | Is the platform healthy, and where are the problems? Covers health, capacity, throughput, governance, security and monitoring coverage across 19 tabs | Whole platform team; the daily check |
+| [Backup & Recovery](workbook/backup-recovery.workbook.json) | Dashboard | Is everything that should be protected backed up or replicated, and could it be restored? | Platform operations, BC/DR owners |
+| [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
+| [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
+| [DNS and private endpoints](workbook/dns-troubleshoot.workbook.json) | Troubleshooter | Why does this name not resolve, or resolve to the wrong address? | Network team, application teams |
+| [What changed?](workbook/changes.workbook.json) | Troubleshooter | What changed here, who did it, and what else happened at the same time? | Anyone running an incident |
+| [Why was this request refused?](workbook/policy-denials.workbook.json) | Troubleshooter | Which policy (or missing permission, lock or quota) refused this deployment, and how do I get past it? | Governance owners, application teams |
+| [Azure Virtual Desktop: one user](workbook/avd-user.workbook.json) | Troubleshooter | Why is this user's session failing, slow to start, or laggy? | End-user computing, service desk |
+| [Log Analytics: cost and noise](workbook/log-cost.workbook.json) | Troubleshooter | Where is ingestion going, and what could we stop paying for? | Monitoring owners, FinOps |
+| [Grafana dashboards](#grafana-dashboards) | Dashboard | The platform health view in Azure Managed Grafana or Azure Monitor dashboards with Grafana | NOC screens, teams that work in Grafana |
+
+## Which workbook for which problem
+
+Start from the symptom:
+
+| Symptom | Start with | Then |
+|---|---|---|
+| "Something is down or slow" (no specific lead) | **Platform health**: Overview, Issues board | The tab it points to; **What changed?** for the affected resource group |
+| "It worked yesterday" | **What changed?**, scoped to the resource group, over the window since it last worked | **Why was this request refused?** if a change failed |
+| "I can't connect from A to B" | **DNS and private endpoints**, if the target is a name | **Routing** for the path and NSGs, then **Firewalls** for the rule that blocked it |
+| "My private endpoint resolves to a public IP" | **DNS and private endpoints** | The zone links, or the on-premises conditional forwarder it flags |
+| "Connections time out but the firewall allowed them" | **Routing**, for asymmetric routing | **Firewalls**: *Allowed but no reply* and out-of-state drops |
+| "My deployment failed with RequestDisallowedByPolicy / AuthorizationFailed / ScopeLocked" | **Why was this request refused?** with the correlation id | Create a policy exemption, or grant the role it names |
+| "A user can't get onto (or is slow on) virtual desktop" | **Azure Virtual Desktop: one user** | **Platform health**: AVD and Storage (FSLogix) tabs for the host pool as a whole |
+| "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
+| "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
+
+For a connectivity ticket, work in this order: **DNS** (does the name resolve to the right address?),
+**Routing** (does the traffic go the right way, both ways, and do the NSGs allow it?), **Firewalls** (which rule
+decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a missing return route.
+
+## Suggested routine
+
+| When | What |
+|---|---|
+| **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery: the Overview tiles |
+| **Weekly** | What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
+| **Monthly** | Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
+| **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
+
+## Setting up
+
+### Import a workbook
 
 1. Azure portal → **Monitor** → **Workbooks** → **+ New**.
 2. Open the **Advanced Editor** (`</>` on the toolbar), choose **Gallery Template**.
-3. Paste the contents of [workbook/alz-platform-health.workbook.json](workbook/alz-platform-health.workbook.json) → **Apply** → **Save**.
+3. Paste the contents of the workbook's JSON file from [workbook/](workbook/) → **Apply** → **Save**.
 
-## Tabs
+Save the workbooks as **shared** workbooks in one resource group in the platform management subscription, so the
+whole team sees one copy and an update reaches everyone. To update a workbook, open it, choose **Edit** → Advanced
+Editor, paste the new JSON over the old and save. Pin the panels you look at every day to an Azure dashboard,
+or use the Grafana dashboards for a NOC screen.
 
-Built for a **Virtual WAN** based landing zone.
+### Permissions
+
+Workbooks run every query **as the person viewing them**, so each person sees only what they have access to.
+For the full picture, the platform team needs:
+
+| Access | For | Typical role |
+|---|---|---|
+| Read on the management group root (or every landing zone subscription) | Resource Graph and Resource Manager panels (inventory, configuration, policy, changes, routing) | Reader |
+| Read on the central Log Analytics workspace | Every log panel | Log Analytics Reader |
+| Read on resource metrics | Metric charts | Monitoring Reader (included in Reader) |
+| Save shared workbooks in the management resource group | Importing and updating the workbooks | Workbook Contributor |
+
+Application teams can use the troubleshooters (DNS, What changed?, Why was this request refused?) with Reader on
+their own subscriptions. They see their own resources, plus whatever shared networking they can read.
+
+### Logs to collect
+
+Every workbook runs without a workspace, but the log panels need data in the **central platform workspace**.
+Configure these once, preferably through Azure Policy (the Azure Landing Zone diagnostic policies cover most of
+them) so new resources are included automatically:
+
+| Logs | Sent from | Used by |
+|---|---|---|
+| Activity log (`AzureActivity`) | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health |
+| Azure Firewall, resource-specific (`AZFW*`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Firewalls, DNS, Platform health |
+| Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
+| VNet flow logs with Traffic Analytics (`NTANetAnalytics`) | Network Watcher | Firewalls (NSG decisions), Platform health (Connectivity) |
+| DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints |
+| Azure Virtual Desktop (`WVD*`) | Each host pool's and AVD workspace's diagnostic setting | Azure Virtual Desktop: one user, Platform health |
+| Session host performance (`Perf` or `InsightsMetrics`) and FSLogix / User Profile Service events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user |
+| Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity) |
+| Query audit (`LAQueryLogs`) | The workspace's own diagnostic setting, category *Audit* | Log Analytics: cost and noise (*Who reads it*) |
+| Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
+
+The Platform health workbook's *Monitoring* tab lists platform resources that are not logging, and the cost
+workbook shows what each of these costs once it is flowing.
+
+### Good to know
+
+- **Resource Graph keeps 14 days** of resource changes and health transitions. For longer history, select a
+  workspace in What changed? to add the activity log, which keeps as long as the workspace retains it.
+- **The troubleshooters read configuration, not live traffic,** except where they say they read logs. Routing in
+  particular cannot see routes learned over BGP; its effective-routes link gives the definitive answer.
+- **Multi-tenant or Azure Lighthouse:** the subscription picker lists every subscription the viewer can see, across
+  tenants, so a managed-service team can use one copy.
+- **Customising:** the workbooks are generated from the scripts in [src/](src/). Change a script and regenerate (see
+  [Editing](#editing)) rather than editing a workbook in the portal, or the next import overwrites your change.
+
+## Platform health workbook
+
+The health, capacity and throughput of every shared platform service, one tab per area, with an Overview that
+gathers every problem the other tabs find into one Issues board.
+[workbook/alz-platform-health.workbook.json](workbook/alz-platform-health.workbook.json).
+
+### Tabs
 
 | Tab | Data source | What it shows |
 |---|---|---|
@@ -43,7 +153,7 @@ Sentinel incidents and health (`SecurityIncident`, `SentinelHealth`),
 Windows event logs and security events from domain controllers,
 Azure Monitor Agent / VM insights on build agents).
 
-## Parameters
+### Parameters
 
 - **Subscriptions** – defaults to all you can see.
 - **Time range** – applies to metrics and log panels.
@@ -51,7 +161,7 @@ Azure Monitor Agent / VM insights on build agents).
 - **Domain controller name pattern** – regex matched against virtual machine and computer names to identify domain controllers.
 - **Build agent name pattern** – regex matched against scale set names to identify build agent pools.
 
-## Health signal
+### Health signal
 
 Overview status uses Azure Resource Health where Resource Graph has a record for the resource; otherwise
 it falls back to configuration state (provisioning state, hub routing state, ExpressRoute circuit/provider
@@ -68,9 +178,9 @@ began before the time range (or more than 14 days ago) is not counted.
 
 ## Firewall troubleshooting workbook
 
-A second, single-page workbook for one question: **is a firewall blocking this connection, and which rule did
-it?** It covers Azure Firewall, Palo Alto, Check Point and NSGs side by side. Import
-[workbook/firewall-troubleshoot.workbook.json](workbook/firewall-troubleshoot.workbook.json) the same way as above.
+A single-page workbook for one question: **is a firewall blocking this connection, and which rule did it?** It
+covers Azure Firewall, Palo Alto, Check Point and NSGs side by side.
+[workbook/firewall-troubleshoot.workbook.json](workbook/firewall-troubleshoot.workbook.json).
 
 Pick the workspace your firewalls log to, then fill in whatever you know. Every filter is optional:
 
@@ -118,9 +228,8 @@ route table and NSG over the time range.
 
 ## Backup & Recovery workbook
 
-A third workbook: **is everything that should be backed up or replicated protected, is it working, and could it
-be restored?** Import [workbook/backup-recovery.workbook.json](workbook/backup-recovery.workbook.json) the same way
-as above. It runs on Resource Graph without a workspace; pick one for job history and Site Recovery RPO trends.
+**Is everything that should be backed up or replicated protected, is it working, and could it be restored?**
+[workbook/backup-recovery.workbook.json](workbook/backup-recovery.workbook.json). It runs on Resource Graph without a workspace; pick one for job history and Site Recovery RPO trends.
 
 | Tab | Data source | What it shows |
 |---|---|---|
@@ -135,6 +244,122 @@ as above. It runs on Resource Graph without a workspace; pick one for job histor
 
 Two thresholds at the top: when a backup counts as stale (default 26 hours) and when a test failover is due
 (default 180 days).
+
+## More troubleshooting workbooks
+
+Like the firewall workbook, each of these is a single page that answers one question. See
+[Which workbook for which problem](#which-workbook-for-which-problem) for when to use each.
+
+| Workbook | Question | Needs a workspace? |
+|---|---|---|
+| [DNS and private endpoints](workbook/dns-troubleshoot.workbook.json) | Why does this name not resolve, or resolve to the wrong address? | Optional: adds what the DNS servers answered |
+| [What changed?](workbook/changes.workbook.json) | What changed in this resource group or resource, who changed it, and what else happened at the same time? | Optional: adds the activity log |
+| [Why was this request refused?](workbook/policy-denials.workbook.json) | Which policy denied my deployment, and how do I get past it? | Yes for refused requests; the policy panels work without one |
+| [Azure Virtual Desktop: one user](workbook/avd-user.workbook.json) | Why is this user's session failing, slow to start, or laggy? | Yes |
+| [Log Analytics: cost and noise](workbook/log-cost.workbook.json) | Where is ingestion going, and what could we stop paying for? | Yes (the one being analysed) |
+| [Routing](workbook/routing.workbook.json) | What path does traffic from A to B take, and does the reply come back the same way? | No |
+
+### DNS and private endpoints
+
+Type the name (`mystg.blob.core.windows.net`, or a URL) and, optionally, the client's IP or the DNS server it uses.
+It follows the name the way Azure DNS does:
+
+- **The private endpoint** serving the name: whether it is approved, whether it has a DNS zone group (so its record
+  is written into the zone), and the address the name should resolve to.
+- **The private DNS zones** that can answer it (the `privatelink.` zone and any parent zone), how many copies of each
+  exist, whether one is linked to the network the lookup is made from, and whether *internet fallback* is on.
+- **The client's DNS servers** and where each looks names up: Azure-provided DNS (the client's own network), a DNS
+  Private Resolver inbound endpoint (the resolver's network), Azure Firewall DNS proxy (the firewall's network, or
+  the servers its policy forwards to) or a DNS server VM. Enter a forwarder's address as the DNS server to follow
+  the next hop.
+- **The records** in a chosen zone and the **forwarding rules** of a chosen resolver ruleset, from Resource Manager.
+- **What the DNS servers answered** (with a workspace): lookups for the name from Azure Firewall DNS proxy
+  (`AZFWDnsQuery`), DNS security policy (`DNSQueryLogs`) and Windows DNS servers (`DnsEvents` or
+  `ASimDnsActivityLogs`), flagging answers that returned a public address, which means the private zone was not used.
+
+### What changed?
+
+Narrow it down by resource group, part of a resource name or id, and who made the change. From Resource Graph
+(14 days): the number of changes, creates, deletes and people; changes over time; who changed things and with which
+tools; the most changed resources (select one to filter); and **every change, property by property, with its
+value before and after**. Platform bookkeeping (etags, provisioning state) is hidden unless *Show* is set to *All
+changes*. Alongside: Resource Health transitions, alerts fired, Service Health events, role assignments created and
+policy assignments or exemptions changed in the same window. With a workspace receiving the activity log
+(`AzureActivity`): events by category, failed operations, deployments with duration and error, role assignments
+added and removed, and every operation with its final status.
+
+### Why was this request refused?
+
+Paste a correlation id, a resource or deployment name, or a caller into *Search*, or leave it empty for everything.
+From the activity log, every refused request is sorted by reason: **policy**, Azure restriction (region or
+service), **permissions** (with the action and scope that were missing), **resource lock**, quota or capacity,
+template or request errors, or conflicts. For each **policy denial** it names the assignment, the policy and its
+initiative, and **why**: the field, its value and what the policy expected (`location = westeurope (NotIn
+["uksouth"])`).
+
+Select a denial, or a row of *Policies that deny*, or pick an assignment, to see from Resource Graph: its scope,
+excluded scopes, enforcement mode, effect overrides and non-compliance message; **every policy in it and the effect
+each resolves to** (through the initiative's and assignment's parameters); its exemptions and when they expire; and
+the resources it finds non-compliant. Locks are listed too. The page explains the ways round a denial, from
+changing the request to an exemption.
+
+### Azure Virtual Desktop: one user
+
+Enter a user's sign-in name. For their connections over the time range:
+
+- **Connection attempts**: when, which host and host pool, how each ended, time to the desktop, round-trip time,
+  bandwidth, client, client IP and gateway region.
+- **Errors and their likely cause**: whether Azure Virtual Desktop failed or the host, configuration or client
+  did, with a plain explanation of the common codes (no host available, not assigned, broken domain trust, sign-in
+  failed, timed out, network dropped, profile failed).
+- **Time to the desktop**, less any time at a credential prompt, and the slowest Windows sign-in stages (profile,
+  group policy, shell).
+- **Round-trip time and bandwidth** over time, per host.
+- **The session hosts they used**: latest health report and failing health checks, drain mode and sessions; CPU,
+  free memory and input delay; FSLogix and User Profile Service errors on those hosts, flagging ones that name the
+  user.
+- **Entra ID sign-ins** to Azure Virtual Desktop, with Conditional Access results.
+
+Needs the host pool and workspace diagnostic settings (`WVD*` tables). Host load, profile events and sign-ins use
+`Perf` or `InsightsMetrics`, `Event` and `SigninLogs` when they are in the same workspace.
+
+### Log Analytics: cost and noise
+
+Pick one workspace and set *Price per GB* to what you pay for Analytics logs, in your currency (default 2.30). It
+shows the workspace's plan, commitment tier, retention and daily cap; billable GB, the average per day and an
+estimated monthly cost; GB per day for the ten biggest tables; and per table its share, cost and change over the
+last 7 days. **Select a table** to see its biggest sources and what inside it makes it big: the diagnostic category,
+event ID, performance counter, syslog facility, firewall vendor or app. Also:
+
+- **Spikes**: days at least twice a table's normal volume.
+- **Who reads it**: each table against the queries run on the workspace (`LAQueryLogs`, from the workspace's own
+  *Audit* diagnostic setting), flagging tables nobody queries.
+- **Who sends it**: the biggest resources and computers across every table, behind a button because it reads every
+  table.
+- **Collected twice**: machines reporting through both the Azure Monitor Agent and the legacy agent, or sending
+  counters to both `Perf` and `InsightsMetrics`.
+- **Ingestion warnings** (daily cap, dropped or throttled data), and every table's plan and retention from
+  Resource Manager.
+
+### Routing
+
+Enter a source and a destination IP, and optionally a port and protocol. From configuration in Resource Graph:
+
+- **Where the addresses are**: virtual network, subnet, route table, NSGs, network interface and VM, or the VPN site
+  or local network gateway that covers them, with links to the interface's *effective routes* and *effective
+  security rules* in the portal.
+- **The route each side picks** for the other, longest prefix first: user routes, the network's own address space,
+  peerings (a peering to `HV_…` is a Virtual WAN hub), Azure's default internet route, and the private ranges Azure
+  drops. The next hop is identified: Azure Firewall, an appliance (flagging one with IP forwarding off) or an
+  internal load balancer.
+- **The verdict**: direct, symmetric through the same appliance, or **asymmetric** (one direction skips the
+  firewall, which drops the session), or no route.
+- **Every NSG on the path** in the order Azure applies them (source NIC and subnet outbound, destination subnet and
+  NIC inbound), the rule that decides at each, and the rules that might match first.
+- **Virtual WAN**: the routing intent, network connections and route tables of the hub the networks are connected to.
+
+Routes a network learns over BGP (ExpressRoute, VPN, Virtual WAN, Route Server) are not in Resource Graph, so where
+they apply the answer is an approximation; the *effective routes* link gives the definitive one.
 
 ## Grafana dashboards
 
@@ -174,16 +399,23 @@ reload the page to reset it.
 
 ## Editing
 
-The JSON is generated by [src/build_workbook.py](src/build_workbook.py). Edit the script and regenerate:
+The JSON is generated: each workbook by its own script in [src/](src/), all built from the helpers in
+[src/build_workbook.py](src/build_workbook.py). Edit the scripts and regenerate:
 
 ```sh
 python src/build_workbook.py
 python src/build_firewall_troubleshoot.py
 python src/build_backup.py
+python src/build_dns_troubleshoot.py
+python src/build_changes.py
+python src/build_policy_denials.py
+python src/build_avd_user.py
+python src/build_log_cost.py
+python src/build_routing.py
 python src/build_grafana.py
 ```
 
-Commit the scripts and all five generated JSON files. A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (nine workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence

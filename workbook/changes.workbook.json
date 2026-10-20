@@ -1,0 +1,1313 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# What changed?\nEvery change to the resources in scope over the time range: what changed, each property before and after, who changed it and with what tool, with the health transitions, alerts, Service Health events and access changes from the same window alongside."
+      },
+      "name": "chg-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "a4e3f40a-75ef-501b-9f31-356a7988a8b5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "5fed1b0d-a818-5a1a-bebf-156834a58008",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "Resource Graph keeps 14 days of changes. Longer ranges need the activity log in a workspace."
+          },
+          {
+            "id": "27568f88-83e3-5360-a842-bd77ed298680",
+            "version": "KqlParameterItem/1.0",
+            "name": "ResourceGroups",
+            "label": "Resource groups",
+            "type": 2,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions/resourcegroups'\n| summarize by name = tolower(name)\n| order by name asc\n| project value = name, label = name",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "value": [],
+            "typeSettings": {
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Optional. Leave empty for all."
+          },
+          {
+            "id": "ea1f6027-3464-5c71-8234-7e6da07051b1",
+            "version": "KqlParameterItem/1.0",
+            "name": "Resource",
+            "label": "Resource",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. Part of a resource name or id, e.g. a VM name or 'microsoft.network/routetables'."
+          },
+          {
+            "id": "784517f5-6b4b-5119-9190-929f435650e5",
+            "version": "KqlParameterItem/1.0",
+            "name": "ChangedBy",
+            "label": "Changed by",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. Part of a sign-in name or application id."
+          },
+          {
+            "id": "da39dd77-f29c-5a5a-b6e2-b2a4254febec",
+            "version": "KqlParameterItem/1.0",
+            "name": "Kinds",
+            "label": "Show",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"user\", \"label\": \"Changes people and tools made\"}, {\"value\": \"all\", \"label\": \"All changes\"}]",
+            "value": "user",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "Platform changes (etags, provisioning state, timestamps) are hidden unless set to All changes."
+          },
+          {
+            "id": "e98783c8-db2a-566e-96a5-0393d5a2f9eb",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Optional. The workspace the activity log is sent to. Adds failed operations, deployments and role assignment removals, and history beyond 14 days.",
+            "quote": "'",
+            "delimiter": ","
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "chg-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Narrow it down with any of the boxes (all optional): resource groups, part of a resource name or id, and who\nmade the change (a user's sign-in name, or a service principal's application id). *Show* hides the platform's\nown changes (etags, provisioning state, timestamps) unless set to *All changes*.\n\nResource Graph keeps **14 days** of changes. Select a workspace that receives the subscriptions' activity log\n(`AzureActivity`) for anything older, and for failed operations, deployments and role assignment removals, which\nResource Graph does not record. *Changed by* in Resource Graph is the sign-in name or the application id; the\nactivity log's *Caller* is the same.",
+        "style": "info"
+      },
+      "name": "chg-howto"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcechanges\n| union (resourcecontainerchanges)\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)), Changes = properties.changes,\n    ChangeType = tostring(properties.changeType), ChangedBy = tostring(properties.changeAttributes.changedBy),\n    ByType = tostring(properties.changeAttributes.changedByType), Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| extend ResourceGroup = tostring(split(id, '/')[4]),\n    Type = iff(array_length(split(id, '/')) > 8, strcat(tostring(split(id, '/')[6]), '/', tostring(split(id, '/')[7])),\n        iff(array_length(split(id, '/')) > 4, 'resource group', 'subscription')),\n    UserChange = ChangeType != 'Update' or tostring(Changes) contains '\"changeCategory\":\"User\"'\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or ChangedBy contains trim(@'\\s+', @'{ChangedBy}')\n| where '{Kinds}' == 'all' or UserChange\n| summarize Changes = count(), Resources = dcount(id), Created = countif(ChangeType == 'Create'),\n    Deleted = countif(ChangeType == 'Delete'), People = dcount(ChangedBy)\n| extend rows = pack_array(\n    pack('Signal', 'Changes', 'Value', Changes, 'Detail', strcat('to ', Resources, ' resources')),\n    pack('Signal', 'Created', 'Value', Created, 'Detail', 'resources'),\n    pack('Signal', 'Deleted', 'Value', Deleted, 'Detail', 'resources'),\n    pack('Signal', 'Changed by', 'Value', People, 'Detail', 'people and identities'))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toint(r.Value), Detail = tostring(r.Detail),\n    State = case(tostring(r.Signal) == 'Deleted' and toint(r.Value) > 0, 'Degraded', 'Unknown')",
+        "size": 3,
+        "title": "",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "tiles",
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Signal",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "State",
+            "formatter": 18,
+            "formatOptions": {
+              "thresholdsOptions": "icons",
+              "thresholdsGrid": [
+                {
+                  "operator": "==",
+                  "thresholdValue": "Available",
+                  "representation": "success",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Degraded",
+                  "representation": "2",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unavailable",
+                  "representation": "4",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unknown",
+                  "representation": "unknown",
+                  "text": "​"
+                },
+                {
+                  "operator": "Default",
+                  "thresholdValue": null,
+                  "representation": "Blank",
+                  "text": "​"
+                }
+              ]
+            }
+          },
+          "rightContent": {
+            "columnMatch": "Value",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            }
+          },
+          "showBorder": true,
+          "secondaryContent": {
+            "columnMatch": "Detail",
+            "formatter": 1
+          }
+        }
+      },
+      "name": "chg-tiles"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcechanges\n| union (resourcecontainerchanges)\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)), Changes = properties.changes,\n    ChangeType = tostring(properties.changeType), ChangedBy = tostring(properties.changeAttributes.changedBy),\n    ByType = tostring(properties.changeAttributes.changedByType), Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| extend ResourceGroup = tostring(split(id, '/')[4]),\n    Type = iff(array_length(split(id, '/')) > 8, strcat(tostring(split(id, '/')[6]), '/', tostring(split(id, '/')[7])),\n        iff(array_length(split(id, '/')) > 4, 'resource group', 'subscription')),\n    UserChange = ChangeType != 'Update' or tostring(Changes) contains '\"changeCategory\":\"User\"'\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or ChangedBy contains trim(@'\\s+', @'{ChangedBy}')\n| where '{Kinds}' == 'all' or UserChange\n| summarize Changes = count() by bin(Time, {TimeRange:grain}), ChangeType",
+        "size": 0,
+        "title": "Changes over time",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "barchart",
+        "noDataMessage": "No changes in the time range."
+      },
+      "name": "chg-timeline"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcechanges\n| union (resourcecontainerchanges)\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)), Changes = properties.changes,\n    ChangeType = tostring(properties.changeType), ChangedBy = tostring(properties.changeAttributes.changedBy),\n    ByType = tostring(properties.changeAttributes.changedByType), Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| extend ResourceGroup = tostring(split(id, '/')[4]),\n    Type = iff(array_length(split(id, '/')) > 8, strcat(tostring(split(id, '/')[6]), '/', tostring(split(id, '/')[7])),\n        iff(array_length(split(id, '/')) > 4, 'resource group', 'subscription')),\n    UserChange = ChangeType != 'Update' or tostring(Changes) contains '\"changeCategory\":\"User\"'\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or ChangedBy contains trim(@'\\s+', @'{ChangedBy}')\n| where '{Kinds}' == 'all' or UserChange\n| summarize Changes = count(), Resources = dcount(id), Created = countif(ChangeType == 'Create'),\n    Deleted = countif(ChangeType == 'Delete'), Tools = strcat_array(make_set(Client, 5), ', '),\n    First = min(Time), Last = max(Time) by ChangedBy, ByType\n| order by Changes desc\n| take 100",
+        "size": 0,
+        "title": "Who changed things",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No changes.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "ChangedBy",
+              "label": "Changed by"
+            },
+            {
+              "columnId": "ByType",
+              "label": "Type"
+            },
+            {
+              "columnId": "Tools",
+              "label": "Tools"
+            }
+          ]
+        }
+      },
+      "name": "chg-who",
+      "customWidth": "50"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcechanges\n| union (resourcecontainerchanges)\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)), Changes = properties.changes,\n    ChangeType = tostring(properties.changeType), ChangedBy = tostring(properties.changeAttributes.changedBy),\n    ByType = tostring(properties.changeAttributes.changedByType), Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| extend ResourceGroup = tostring(split(id, '/')[4]),\n    Type = iff(array_length(split(id, '/')) > 8, strcat(tostring(split(id, '/')[6]), '/', tostring(split(id, '/')[7])),\n        iff(array_length(split(id, '/')) > 4, 'resource group', 'subscription')),\n    UserChange = ChangeType != 'Update' or tostring(Changes) contains '\"changeCategory\":\"User\"'\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or ChangedBy contains trim(@'\\s+', @'{ChangedBy}')\n| where '{Kinds}' == 'all' or UserChange\n| summarize Changes = count(), People = strcat_array(make_set(ChangedBy, 5), ', '), Last = max(Time),\n    Kinds = strcat_array(make_set(ChangeType), ', ') by id, Type\n| order by Changes desc\n| take 100",
+        "size": 0,
+        "title": "Most changed resources",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No changes.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "id",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Resource"
+            },
+            {
+              "columnId": "Kinds",
+              "label": "Change types"
+            }
+          ]
+        },
+        "exportFieldName": "id",
+        "exportParameterName": "Resource",
+        "exportDefaultValue": ""
+      },
+      "name": "chg-most",
+      "customWidth": "50"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "resourcechanges\n| union (resourcecontainerchanges)\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.targetResourceId)), Changes = properties.changes,\n    ChangeType = tostring(properties.changeType), ChangedBy = tostring(properties.changeAttributes.changedBy),\n    ByType = tostring(properties.changeAttributes.changedByType), Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation)\n| extend ResourceGroup = tostring(split(id, '/')[4]),\n    Type = iff(array_length(split(id, '/')) > 8, strcat(tostring(split(id, '/')[6]), '/', tostring(split(id, '/')[7])),\n        iff(array_length(split(id, '/')) > 4, 'resource group', 'subscription')),\n    UserChange = ChangeType != 'Update' or tostring(Changes) contains '\"changeCategory\":\"User\"'\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or ChangedBy contains trim(@'\\s+', @'{ChangedBy}')\n| where '{Kinds}' == 'all' or UserChange\n| mv-expand c = iff(array_length(bag_keys(Changes)) > 0, Changes, pack('(whole resource)', pack('changeCategory', 'User')))\n| extend Property = tostring(bag_keys(c)[0])\n| extend v = c[Property]\n| extend Category = tostring(v.changeCategory)\n| where '{Kinds}' == 'all' or Category != 'System'\n| project Time, id, ChangeType, Property, Before = tostring(v.previousValue), After = tostring(v.newValue),\n    ChangedBy, Client, Operation, Category\n| order by Time desc\n| take 1000",
+        "size": 0,
+        "title": "Changes, property by property (latest 1,000)",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No changes in the time range. Widen it (up to 14 days), or set Show to All changes.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "id",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Resource"
+            },
+            {
+              "columnId": "ChangeType",
+              "label": "Change"
+            },
+            {
+              "columnId": "ChangedBy",
+              "label": "Changed by"
+            }
+          ]
+        }
+      },
+      "name": "chg-detail"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select a row in *Most changed resources* or paste part of a resource id into *Resource* to see just that\nresource. *Client* is the tool the change came from: Azure Portal, Azure CLI, Azure PowerShell, ARM template\ndeployments (*Arm Template*), Terraform (*Terraform* or *Go SDK*) or another SDK; *Operation* is the Resource Manager\noperation behind it. A change made by policy (*Microsoft.Authorization/policies/...* or a managed identity of a\npolicy assignment) is a remediation or a modify effect.",
+        "style": "info"
+      },
+      "name": "chg-detail-note"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Around the same time"
+      },
+      "name": "chg-context-h"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "healthresourcechanges\n| where tostring(properties.targetResourceType) =~ 'microsoft.resourcehealth/availabilitystatuses'\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend state = properties.changes['properties.availabilityState']\n| where isnotempty(tostring(state.newValue))\n| extend id = tostring(split(tolower(tostring(properties.targetResourceId)), '/providers/microsoft.resourcehealth/')[0])\n| extend ResourceGroup = tostring(split(id, '/')[4])\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| project Time, id, Previous = tostring(state.previousValue), Health = tostring(state.newValue)\n| order by Time desc\n| take 500",
+        "size": 0,
+        "title": "Health transitions",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Resource Health transitions in scope.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "id",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Health",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Available",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Degraded",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Unavailable",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Unknown",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Previous",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Available",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Degraded",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Unavailable",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Unknown",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Resource"
+            }
+          ]
+        }
+      },
+      "name": "chg-health",
+      "customWidth": "50"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "alertsmanagementresources\n| where type =~ 'microsoft.alertsmanagement/alerts'\n| extend e = properties.essentials\n| extend Fired = todatetime(e.startDateTime)\n| where Fired >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(e.targetResource)), ResourceGroup = tolower(tostring(e.targetResourceGroup))\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| project Fired, Severity = tostring(e.severity), Alert = name, id, Condition = tostring(e.monitorCondition),\n    State = tostring(e.alertState), Signal = tostring(e.signalType), Resolved = todatetime(e.monitorConditionResolvedDateTime),\n    Rule = tostring(e.alertRule)\n| order by Fired desc\n| take 500",
+        "size": 0,
+        "title": "Alerts fired",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No alerts fired in scope.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "id",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Condition",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Resolved",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Fired",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Severity",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Sev2",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Sev3",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Sev0",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Sev1",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Sev4",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Resource"
+            }
+          ]
+        }
+      },
+      "name": "chg-alerts",
+      "customWidth": "50"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| extend ImpactStart = todatetime(tolong(properties.ImpactStartTime)), LastUpdate = todatetime(tolong(properties.LastUpdateTime)),\n    ImpactEnd = todatetime(tolong(properties.ImpactMitigationTime))\n| where LastUpdate >= todatetime('{TimeRange:startISO}') or ImpactStart >= todatetime('{TimeRange:startISO}')\n| project Title = tostring(properties.Title), EventType = tostring(properties.EventType), Status = tostring(properties.Status),\n    Level = tostring(properties.Level), ImpactStart, ImpactEnd, LastUpdate, TrackingId = tostring(properties.TrackingId),\n    SubscriptionId = subscriptionId\n| summarize Subscriptions = dcount(SubscriptionId), ImpactStart = min(ImpactStart), ImpactEnd = max(ImpactEnd),\n    LastUpdate = max(LastUpdate) by Title, EventType, Status, Level, TrackingId\n| order by ImpactStart desc",
+        "size": 0,
+        "title": "Service Health events (selected subscriptions)",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No Service Health events in the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Resolved",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Active",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "EventType",
+              "label": "Type"
+            },
+            {
+              "columnId": "ImpactStart",
+              "label": "Impact start"
+            },
+            {
+              "columnId": "ImpactEnd",
+              "label": "Mitigated"
+            },
+            {
+              "columnId": "LastUpdate",
+              "label": "Last update"
+            },
+            {
+              "columnId": "TrackingId",
+              "label": "Tracking id"
+            }
+          ]
+        }
+      },
+      "name": "chg-servicehealth"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend Created = todatetime(properties.createdOn), Updated = todatetime(properties.updatedOn)\n| where Created >= todatetime('{TimeRange:startISO}') or Updated >= todatetime('{TimeRange:startISO}')\n| extend id = tolower(tostring(properties.scope)), roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1]))\n| extend ResourceGroup = tostring(split(id, '/')[4])\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| join kind=leftouter (\n    authorizationresources\n    | where type =~ 'microsoft.authorization/roledefinitions'\n    | project roleId = tolower(name), Role = tostring(properties.roleName)\n  ) on roleId\n| project Created, Updated, Role, Scope = id, PrincipalType = tostring(properties.principalType),\n    PrincipalId = tostring(properties.principalId), CreatedBy = tostring(properties.createdBy)\n| order by Created desc",
+        "size": 0,
+        "title": "Role assignments created or updated",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No role assignments created or updated in scope.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Role",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Owner",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "User Access Administrator",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "PrincipalType",
+              "label": "Principal type"
+            },
+            {
+              "columnId": "PrincipalId",
+              "label": "Principal id"
+            },
+            {
+              "columnId": "CreatedBy",
+              "label": "Created by"
+            }
+          ]
+        }
+      },
+      "name": "chg-roles",
+      "customWidth": "50"
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "policyresources\n| where type in~ ('microsoft.authorization/policyassignments', 'microsoft.authorization/policyexemptions')\n| extend Created = todatetime(properties.metadata.createdOn), Updated = todatetime(properties.metadata.updatedOn)\n| where Created >= todatetime('{TimeRange:startISO}') or Updated >= todatetime('{TimeRange:startISO}')\n| project Updated = coalesce(Updated, Created), Created, Kind = iff(type endswith 'exemptions', 'Exemption', 'Assignment'),\n    Name = coalesce(tostring(properties.displayName), name), Scope = tostring(split(tolower(id), '/providers/microsoft.authorization/')[0]),\n    Enforcement = tostring(properties.enforcementMode), By = coalesce(tostring(properties.metadata.updatedBy), tostring(properties.metadata.createdBy))\n| order by Updated desc",
+        "size": 0,
+        "title": "Policy assignments and exemptions created or updated",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources",
+        "crossComponentResources": [
+          "{Subscription}"
+        ],
+        "visualization": "table",
+        "noDataMessage": "No policy assignments or exemptions changed in the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Scope",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Enforcement",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Default",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "DoNotEnforce",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Kind",
+              "label": "Type"
+            },
+            {
+              "columnId": "By",
+              "label": "Changed by"
+            }
+          ]
+        }
+      },
+      "name": "chg-policy",
+      "customWidth": "50"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "### Activity log"
+      },
+      "name": "chg-activity-h"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select a **Log Analytics workspace** that receives the activity log for failed operations, deployments, role assignment removals and history beyond 14 days.",
+        "style": "info"
+      },
+      "name": "chg-ws-hint",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| extend id = tolower(_ResourceId), ResourceGroup = tolower(ResourceGroup)\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or Caller contains trim(@'\\s+', @'{ChangedBy}')\n| summarize Events = count() by bin(TimeGenerated, {TimeRange:grain}), CategoryValue",
+        "size": 0,
+        "title": "Activity log events by category",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "barchart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        }
+      },
+      "name": "chg-activity-timeline",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| extend id = tolower(_ResourceId), ResourceGroup = tolower(ResourceGroup)\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or Caller contains trim(@'\\s+', @'{ChangedBy}')\n| where CategoryValue =~ 'Administrative'\n| summarize arg_max(TimeGenerated, ActivityStatusValue, Properties_d), Started = min(TimeGenerated)\n    by CorrelationId, OperationNameValue, id, Caller\n| extend Status = ActivityStatusValue, Error = substring(tostring(Properties_d.statusMessage), 0, 400)\n| where Status in~ ('Failure', 'Failed')\n| summarize Failures = count(), LastSeen = max(TimeGenerated), Error = take_any(Error) by Operation = OperationNameValue, id, Caller\n| order by LastSeen desc\n| take 200",
+        "size": 0,
+        "title": "Failed operations",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No failed operations in scope.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "id",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "id",
+              "label": "Resource"
+            },
+            {
+              "columnId": "LastSeen",
+              "label": "Last seen"
+            }
+          ]
+        }
+      },
+      "name": "chg-failed",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| extend id = tolower(_ResourceId), ResourceGroup = tolower(ResourceGroup)\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or Caller contains trim(@'\\s+', @'{ChangedBy}')\n| where CategoryValue =~ 'Administrative'\n| summarize arg_max(TimeGenerated, ActivityStatusValue, Properties_d), Started = min(TimeGenerated)\n    by CorrelationId, OperationNameValue, id, Caller\n| extend Status = ActivityStatusValue, Error = substring(tostring(Properties_d.statusMessage), 0, 400)\n| where OperationNameValue =~ 'MICROSOFT.RESOURCES/DEPLOYMENTS/WRITE'\n| project Started, Finished = TimeGenerated, Minutes = round((TimeGenerated - Started) / 1m, 1), Status,\n    Deployment = tostring(split(id, '/')[-1]), Scope = tostring(split(id, '/providers/microsoft.resources/deployments/')[0]),\n    Caller, Error, CorrelationId\n| order by Started desc\n| take 200",
+        "size": 0,
+        "title": "Deployments",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No deployments in scope.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Success",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Succeeded",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Accept",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Accepted",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Start",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Started",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failure",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Scope",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Minutes",
+              "label": "Duration (min)"
+            },
+            {
+              "columnId": "CorrelationId",
+              "label": "Correlation id"
+            }
+          ]
+        }
+      },
+      "name": "chg-deployments",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| extend id = tolower(_ResourceId), ResourceGroup = tolower(ResourceGroup)\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or Caller contains trim(@'\\s+', @'{ChangedBy}')\n| where OperationNameValue in~ ('MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/WRITE', 'MICROSOFT.AUTHORIZATION/ROLEASSIGNMENTS/DELETE')\n| summarize arg_max(TimeGenerated, ActivityStatusValue, Properties_d) by CorrelationId, OperationNameValue, id, Caller\n| extend body = strcat(tostring(Properties_d.requestbody), tostring(Properties_d.responseBody))\n| extend roleId = extract(@'roleDefinitions/([0-9a-fA-F-]{36})', 1, body), Principal = extract(@'\"principalId\\\\?\"\\s*:\\s*\\\\?\"([0-9a-fA-F-]{36})', 1, body)\n| project Time = TimeGenerated, Change = iff(OperationNameValue endswith 'DELETE', 'Removed', 'Added'), Status = ActivityStatusValue,\n    Role = case(roleId =~ '8e3af657-a8ff-443c-a75c-2fe8c4bcb635', 'Owner', roleId =~ 'b24988ac-6180-42a0-ab88-20f7382dd24c', 'Contributor',\n        roleId =~ 'acdd72a7-3385-48ef-bd42-f6fba25ec5c3', 'Reader', roleId =~ '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'User Access Administrator',\n        roleId =~ 'f58310d9-a9f6-439a-9e8d-f62e7b41a168', 'Role Based Access Control Administrator', roleId),\n    Principal, Scope = tostring(split(id, '/providers/microsoft.authorization/roleassignments/')[0]), Caller\n| order by Time desc\n| take 200",
+        "size": 0,
+        "title": "Role assignments added and removed",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No role assignment changes in scope.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Status",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Success",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Succeeded",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Accept",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Accepted",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Start",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Started",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failure",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Failed",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Scope",
+              "formatter": 13,
+              "formatOptions": {
+                "linkTarget": "Resource",
+                "showIcon": true
+              }
+            },
+            {
+              "columnMatch": "Change",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Added",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Removed",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true
+        }
+      },
+      "name": "chg-rbac",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| extend id = tolower(_ResourceId), ResourceGroup = tolower(ResourceGroup)\n| where array_length(dynamic([{ResourceGroups}])) == 0 or set_has_element(dynamic([{ResourceGroups}]), ResourceGroup)\n| where isempty(trim(@'\\s+', @'{Resource}')) or id contains tolower(trim(@'\\s+', @'{Resource}'))\n| where isempty(trim(@'\\s+', @'{ChangedBy}')) or Caller contains trim(@'\\s+', @'{ChangedBy}')\n| where CategoryValue =~ 'Administrative'\n| summarize arg_max(TimeGenerated, ActivityStatusValue, Properties_d), Started = min(TimeGenerated)\n    by CorrelationId, OperationNameValue, id, Caller\n| extend Status = ActivityStatusValue, Error = substring(tostring(Properties_d.statusMessage), 0, 400)\n| where '{Kinds}' == 'all' or not(OperationNameValue has_any ('listKeys', 'MICROSOFT.RESOURCEHEALTH', 'getAccessToken'))\n| project Time = TimeGenerated, Status, Operation = OperationNameValue, id, Caller, Error, CorrelationId\n| order by Time desc\n| take 500",
+              "size": 0,
+              "title": "Operations (latest 500, final status of each)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No operations in scope.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Accept",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Accepted",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Start",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Started",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failure",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "CorrelationId",
+                    "label": "Correlation id"
+                  }
+                ]
+              }
+            },
+            "name": "chg-operations",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ],
+        "loadType": "explicit",
+        "loadButtonText": "Show every operation"
+      },
+      "name": "chg-ops"
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
