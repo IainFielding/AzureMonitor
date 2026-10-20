@@ -25,10 +25,12 @@ HOUR_MS = 3600000
 
 PLATFORMS = ["Azure Firewall", "Palo Alto", "Check Point", "NSG"]
 
-# Names the vendor of a CommonSecurityLog row, or '' for anything else. Vendor strings vary a little between
-# versions and connectors, so match loosely.
-NVA_PLATFORM = ("case(DeviceVendor has 'Palo Alto', 'Palo Alto', "
-                "DeviceVendor has_any ('Check Point', 'CheckPoint'), 'Check Point', '')")
+# CommonSecurityLog rows from the two NVA vendors. An exact list rather than a word search, because the table
+# is large (tens of millions of rows a day) and `in~` on the vendor column is far cheaper.
+NVA_VENDORS = ("DeviceVendor in~ ('Palo Alto Networks', 'Check Point', 'CheckPoint', "
+               "'Check Point Software Technologies')")
+# Names the platform of a row that NVA_VENDORS kept.
+NVA_PLATFORM = "iff(DeviceVendor startswith 'Palo', 'Palo Alto', 'Check Point')"
 
 
 def cs_field(has, has_not=()):
@@ -71,11 +73,27 @@ let Devices = dynamic([{Device}]);
 # and the equivalent wording other versions use.
 NOT_SYN = "has_any (\"isn't SYN\", 'not SYN', 'non-SYN', 'out of state', 'out-of-state')"
 
-# Every panel starts from this. It folds the Azure Firewall log tables and the NVA CEF logs into one shape
-# and applies the filters. Sources and destinations accept IPs or CIDR ranges; destinations also accept
-# FQDNs, matched as whole words against the FQDN or host name ("contoso.com" matches "www.contoso.com").
-# Azure Firewall application rule logs carry no destination IP, so an IP filter finds them only when the
-# client asked for the IP rather than a name.
+def leg_filters(platform, device, src, dst_ip, dst_names, port):
+    """The filter boxes as `where` clauses on one log source's own columns.
+
+    Each source is filtered before anything else is worked out for its rows, so the expensive columns (rule name,
+    host name, session state) are only computed for rows that survive. That matters for CommonSecurityLog, where an
+    unfiltered hour can be millions of rows.
+    """
+    dst = " or ".join([f"ipv4_is_in_any_range({dst_ip}, DstList) == true"] + [f"{n} has_any (DstList)" for n in dst_names])
+    return f"""
+    | where array_length(Platforms) == 0 or {platform} in (Platforms)
+    | where array_length(Devices) == 0 or {device}
+    | where isempty(SrcText) or ipv4_is_in_any_range({src}, SrcList) == true
+    | where isempty(DstText) or {dst}
+    | where isempty(PortText) or {port} in (PortSet)"""
+
+
+# Every panel starts from this. It folds the Azure Firewall log tables, the NVA CEF logs and NSG flow logs into one
+# shape, each filtered first. Sources and destinations accept IPs or CIDR ranges; destinations also accept FQDNs,
+# matched as whole words against the FQDN, host name or URL ("contoso.com" matches "www.contoso.com"). Azure
+# Firewall application rule logs carry no destination IP, so an IP filter finds them only when the client asked
+# for the IP rather than a name.
 BASE = FILTERS + r"""let Flows = union isfuzzy=true
     (union isfuzzy=true
         (AZFWNetworkRule | where TimeGenerated {TimeRange}
@@ -95,6 +113,7 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
         DestinationIp = column_ifexists('DestinationIp', ''),
         Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),
         RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')
+    AZFW_FILTERS
     | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]),
         DeviceId = tolower(_ResourceId), Source, Action,
         SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,
@@ -102,16 +121,18 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
     // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;
     // ReceivedBytes is what came back from the destination.
     (CommonSecurityLog | where TimeGenerated {TimeRange}
+    | where NVA_VENDORS
     | extend Platform = NVA_PLATFORM
-    | where isnotempty(Platform)
+    NVA_FILTERS
+    // Only Check Point drops can be out-of-state drops, so the text search runs on those alone.
+    | extend NotSyn = Platform == 'Check Point' and DeviceAction in~ ('Drop', 'Reject') and (Reason NOT_SYN or Message NOT_SYN)
     | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer), DeviceId = '',
         Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),
         Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,
-        Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),
+        Fqdn = iff(isnotempty(DestinationHostName), DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),
         DestinationPort, Protocol, TargetUrl = RequestURL,
         Policy = CS_POLICY, RuleCollectionGroup = '', RuleCollection = CS_LAYER, Rule = CS_RULE,
-        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes,
-        NotSyn = Reason NOT_SYN or Message NOT_SYN),
+        Reason = strcat_delim(' · ', Reason, DeviceEventClassID), ReplyBytes = ReceivedBytes, NotSyn),
     // NSG decisions from VNet flow logs (Traffic Analytics). Each row is a flow summed over the logging interval.
     (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)
     | where TimeGenerated {TimeRange}
@@ -126,12 +147,8 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
         Protocol = case(L4 == 'T', 'TCP', L4 == 'U', 'UDP', L4), TargetUrl = '',
         Policy = tostring(split(AclGroup, '/')[-1]), RuleCollectionGroup = '', RuleCollection = '',
         Rule = tostring(column_ifexists('AclRule', '')), Reason = case(Direction == 'I', 'Inbound', Direction == 'O', 'Outbound', Direction),
-        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false)
-| where array_length(Platforms) == 0 or Platform in (Platforms)
-| where array_length(Devices) == 0 or Device in~ (Devices)
-| where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true
-| where isempty(DstText) or ipv4_is_in_any_range(DestinationIp, DstList) == true or Fqdn has_any (DstList)
-| where isempty(PortText) or DestinationPort in (PortSet)
+        ReplyBytes = tolong(column_ifexists('BytesDestToSrc', long(null))), NotSyn = false
+    NSG_FILTERS)
 // Azure Firewall: Deny. Palo Alto: deny, drop, reset-*, block-*, sinkhole. Check Point: Drop, Reject, Block, Prevent.
 // NSG: Denied.
 | extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',
@@ -146,7 +163,15 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
     // An allowed TCP session that got nothing back: the reply went another way, or the destination never answered.
     NoReply = not(Blocked) and Protocol in~ ('tcp', '6') and ReplyBytes == 0;
 let Shown = Flows | where '{Show}' == 'all' or ('{Show}' == 'blocked') == Blocked;
-""".replace("NVA_PLATFORM", NVA_PLATFORM) \
+""".replace("AZFW_FILTERS", leg_filters("'Azure Firewall'", "tostring(split(_ResourceId, '/')[-1]) in~ (Devices)",
+                                        "SourceIp", "DestinationIp", ["Fqdn"], "DestinationPort").strip()) \
+   .replace("NVA_FILTERS", leg_filters("Platform", "DeviceName in~ (Devices) or Computer in~ (Devices)",
+                                       "SourceIP", "DestinationIP", ["DestinationHostName", "RequestURL"],
+                                       "DestinationPort").strip()) \
+   .replace("NSG_FILTERS", leg_filters("'NSG'", "Device in~ (Devices)", "SourceIp", "DestinationIp", [],
+                                       "DestinationPort").strip()) \
+   .replace("NVA_VENDORS", NVA_VENDORS) \
+   .replace("NVA_PLATFORM", NVA_PLATFORM) \
    .replace("NOT_SYN", NOT_SYN) \
    .replace("CS_POLICY", cs_field("policy", NOT_AN_ID)) \
    .replace("CS_LAYER", cs_field("layer")) \
@@ -188,9 +213,8 @@ union isfuzzy=true
         | summarize by Device = tostring(split(_ResourceId, '/')[-1]), Platform = 'Azure Firewall'),
     (CommonSecurityLog
         | where TimeGenerated {TimeRange}
-        | extend Platform = NVA_PLATFORM
-        | where isnotempty(Platform)
-        | summarize by Device = coalesce(DeviceName, Computer), Platform),
+        | where NVA_VENDORS
+        | summarize by Device = coalesce(DeviceName, Computer), Platform = NVA_PLATFORM),
     (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (NTANetAnalytics)
         | where TimeGenerated {TimeRange}
         | where column_ifexists('SubType', '') == 'FlowLog'
@@ -198,8 +222,9 @@ union isfuzzy=true
 | where isnotempty(Device)
 | where array_length(Platforms) == 0 or Platform in (Platforms)
 | order by Platform asc, Device asc
-| project value = Device, label = strcat(Device, ' (', Platform, ')'), selected = false
-""".replace("NVA_PLATFORM", NVA_PLATFORM)
+| project value = strcat("@'", replace_string(Device, "'", "''"), "'"), label = strcat(Device, ' (', Platform, ')'),
+    selected = false
+""".replace("NVA_VENDORS", NVA_VENDORS).replace("NVA_PLATFORM", NVA_PLATFORM)
 
 
 # Every Azure Firewall in the selected subscriptions, so the logging check lists the ones that send nothing too.
@@ -273,7 +298,7 @@ def parameters():
             "label": "Time range",
             "type": 4,
             "isRequired": True,
-            "value": {"durationMs": 4 * HOUR_MS},
+            "value": {"durationMs": HOUR_MS},
             "typeSettings": {
                 "selectableValues": [{"durationMs": ms} for ms in
                                      (900000, 1800000, HOUR_MS, 4 * HOUR_MS, 12 * HOUR_MS, DAY_MS, 3 * DAY_MS, 7 * DAY_MS)],
@@ -303,7 +328,8 @@ def parameters():
             "type": 2,
             "isRequired": False,
             "multiSelect": True,
-            "quote": "'",
+            # Each value is already a quoted verbatim string; see DEVICES_Q.
+            "quote": "",
             "delimiter": ",",
             "query": DEVICES_Q.strip(),
             "crossComponentResources": ["{Workspace}"],
@@ -818,6 +844,8 @@ def workbook():
                        "LastFlowTrace": "Last flow trace", "LastRuleLog": "Last rule log"},
                no_data="No Azure Firewalls in the selected subscriptions."),
             text("fwts-logging-note", LOGGING_NOTE, "info", visible_when=WORKSPACE_SET),
+            # Each panel runs the whole shared query again, so the secondary ones wait behind a button.
+            group("fwts-more", [
             fw("fwts-timeline", "Events over time", TIMELINE_Q, vis="timechart"),
             fw("fwts-verdicts", "Verdict per flow (latest decision by each firewall, blocked and allowed)", VERDICTS_Q,
                formatters=[LAST_ACTION, low_is_good("Blocked", 1, 1), resource_link("DeviceId")],
@@ -834,6 +862,7 @@ def workbook():
                labels={"SourceIp": "Source IP", "LastSeen": "Last seen"}),
             fw("fwts-top-destinations", "Top destinations", TOP_DESTINATIONS_Q, width=50,
                labels={"LastSeen": "Last seen"}),
+            ], load_button="Show timeline, verdict per flow, rules and top talkers"),
             fw("fwts-events", "Events (latest 500)", EVENTS_Q, formatters=[VERDICT, resource_link("DeviceId")],
                labels={"TimeGenerated": "Time", "Device": "Firewall", "DeviceId": "Azure resource", "Source": "Log", "SourceIp": "Source IP",
                        "SourcePort": "Source port", "DestinationPort": "Port", "TargetUrl": "URL",
