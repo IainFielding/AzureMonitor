@@ -95,7 +95,8 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
         DestinationIp = column_ifexists('DestinationIp', ''),
         Policy = column_ifexists('Policy', ''), RuleCollectionGroup = column_ifexists('RuleCollectionGroup', ''),
         RuleCollection = column_ifexists('RuleCollection', ''), Rule = column_ifexists('Rule', '')
-    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]), Source, Action,
+    | project TimeGenerated, Platform = 'Azure Firewall', Device = tostring(split(_ResourceId, '/')[-1]),
+        DeviceId = tolower(_ResourceId), Source, Action,
         SourceIp, SourcePort, DestinationIp, Fqdn, DestinationPort, Protocol, TargetUrl,
         Policy, RuleCollectionGroup, RuleCollection, Rule, Reason, ReplyBytes = long(null), NotSyn = false),
     // Palo Alto and Check Point, sent as CEF. The rule name and policy layer come from labelled custom strings;
@@ -103,7 +104,7 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
     (CommonSecurityLog | where TimeGenerated {TimeRange}
     | extend Platform = NVA_PLATFORM
     | where isnotempty(Platform)
-    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer),
+    | project TimeGenerated, Platform, Device = coalesce(DeviceName, Computer), DeviceId = '',
         Source = iff(Platform == 'Palo Alto', strcat('Palo Alto ', tolower(coalesce(Activity, 'log'))), strcat('Check Point ', DeviceProduct)),
         Action = DeviceAction, SourceIp = SourceIP, SourcePort, DestinationIp = DestinationIP,
         Fqdn = coalesce(DestinationHostName, extract(@'^(?:[A-Za-z]+://)?([^/:?]+)', 1, RequestURL)),
@@ -117,7 +118,8 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
     | where column_ifexists('SubType', '') == 'FlowLog'
     | extend AclGroup = tostring(column_ifexists('AclGroup', '')), L4 = tostring(column_ifexists('L4Protocol', '')),
         Direction = tostring(column_ifexists('FlowDirection', ''))
-    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]), Source = 'NSG flow log',
+    | project TimeGenerated, Platform = 'NSG', Device = tostring(split(AclGroup, '/')[-1]),
+        DeviceId = iff(AclGroup startswith '/subscriptions/', tolower(AclGroup), ''), Source = 'NSG flow log',
         Action = tostring(column_ifexists('FlowStatus', '')), SourceIp = tostring(column_ifexists('SrcIp', '')),
         SourcePort = toint(column_ifexists('SrcPort', int(null))), DestinationIp = tostring(column_ifexists('DestIp', '')),
         Fqdn = '', DestinationPort = toint(column_ifexists('DestPort', int(null))),
@@ -134,7 +136,7 @@ BASE = FILTERS + r"""let Flows = union isfuzzy=true
 // NSG: Denied.
 | extend Blocked = Action in~ ('deny', 'drop', 'drop-icmp', 'drop-all-packets', 'reject', 'reset-client', 'reset-server',
     'reset-both', 'block', 'block-url', 'block-ip', 'block-continue', 'sinkhole', 'prevent', 'blocked', 'denied')
-| project TimeGenerated, Platform, Device, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,
+| project TimeGenerated, Platform, Device, DeviceId, Verdict = iff(Blocked, 'Blocked', 'Allowed'), Blocked, Source, Action,
     SourceIp, SourcePort, Destination = coalesce(Fqdn, DestinationIp), DestinationIp, DestinationPort, Protocol, TargetUrl,
     Policy, RuleCollectionGroup, RuleCollection,
     RuleName = case(isnotempty(Rule), Rule,
@@ -200,6 +202,15 @@ union isfuzzy=true
 """.replace("NVA_PLATFORM", NVA_PLATFORM)
 
 
+# Every Azure Firewall in the selected subscriptions, so the logging check lists the ones that send nothing too.
+AZFW_IDS_Q = """
+resources
+| where type =~ 'microsoft.network/azurefirewalls'
+| summarize ids = make_list(tolower(id))
+| project value = strcat("'", strcat_array(ids, "','"), "'")
+"""
+
+
 def text_param(name, label, description):
     return {"id": gid("fwts-param-" + name), "version": "KqlParameterItem/1.0", "name": name, "label": label,
             "type": 1, "isRequired": False, "value": "", "description": description}
@@ -243,6 +254,17 @@ def parameters():
             "queryType": 1,
             "resourceType": "microsoft.resourcegraph/resources",
             "description": "The workspace (or workspaces) the firewalls log to.",
+        },
+        {
+            "id": gid("fwts-param-AzureFirewallIds"),
+            "version": "KqlParameterItem/1.0",
+            "name": "AzureFirewallIds",
+            "type": 1,
+            "query": AZFW_IDS_Q.strip(),
+            "crossComponentResources": ["{Subscription}"],
+            "isHiddenWhenLocked": True,
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
         },
         {
             "id": gid("fwts-param-TimeRange"),
@@ -359,8 +381,8 @@ Shown
 VERDICTS_Q = """
 Flows
 | summarize arg_max(TimeGenerated, Action, Source, RuleName, Reason), Blocked = countif(Blocked), Allowed = countif(not(Blocked)),
-    FirstSeen = min(TimeGenerated) by SourceIp, Destination, DestinationPort, Protocol, Platform, Device
-| project LastSeen = TimeGenerated, SourceIp, Destination, DestinationPort, Protocol, Device, Blocked, Allowed,
+    FirstSeen = min(TimeGenerated), DeviceId = max(DeviceId) by SourceIp, Destination, DestinationPort, Protocol, Platform, Device
+| project LastSeen = TimeGenerated, SourceIp, Destination, DestinationPort, Protocol, Device, DeviceId, Blocked, Allowed,
     Action, Source, RuleName, Reason, FirstSeen
 | order by Blocked desc, Allowed desc
 | take 250
@@ -378,7 +400,7 @@ let BySource = '{HopMatch}' == 'source';
 Flows
 | extend SourceKey = iff(BySource, SourceIp, '(any source)'), DestinationKey = coalesce(DestinationIp, Destination)
 | summarize Blocked = countif(Blocked), Allowed = countif(not(Blocked)), NoReply = countif(NoReply), OutOfState = countif(NotSyn),
-    arg_max(TimeGenerated, RuleName), Devices = strcat_array(make_set(Device, 5), ', ')
+    arg_max(TimeGenerated, RuleName), Devices = strcat_array(make_set(Device, 5), ', '), DeviceId = max(DeviceId)
     by SourceKey, DestinationKey, DestinationPort, Platform
 | extend Hop = case(
         Blocked > 0 and Blocked == OutOfState, 'Out of state',
@@ -389,9 +411,10 @@ Flows
     Rule = strcat(RuleName, ' (', Blocked, ' blocked, ', Allowed, ' allowed)')
 | summarize LastSeen = max(TimeGenerated),
     AzureFirewall = take_anyif(Hop, Platform == 'Azure Firewall'), AzureFirewallRule = take_anyif(Rule, Platform == 'Azure Firewall'),
+    AzureFirewallId = take_anyif(DeviceId, Platform == 'Azure Firewall'),
     PaloAlto = take_anyif(Hop, Platform == 'Palo Alto'), PaloAltoRule = take_anyif(Rule, Platform == 'Palo Alto'),
     CheckPoint = take_anyif(Hop, Platform == 'Check Point'), CheckPointRule = take_anyif(Rule, Platform == 'Check Point'),
-    Nsg = take_anyif(Hop, Platform == 'NSG'), NsgRule = take_anyif(Rule, Platform == 'NSG'),
+    Nsg = take_anyif(Hop, Platform == 'NSG'), NsgRule = take_anyif(Rule, Platform == 'NSG'), NsgId = take_anyif(DeviceId, Platform == 'NSG'),
     Firewalls = strcat_array(make_set(Devices), ', ')
     by SourceKey, DestinationKey, DestinationPort
 | extend AzureFirewall = coalesce(AzureFirewall, 'Not seen'), PaloAlto = coalesce(PaloAlto, 'Not seen'),
@@ -414,8 +437,8 @@ Flows
     StoppedAt startswith 'Asymmetric' or StoppedAt startswith 'No reply', 1, StoppedAt has 'some attempts', 2, 3)
 | order by Rank asc, LastSeen desc
 | take 250
-| project SourceKey, DestinationKey, DestinationPort, StoppedAt, AzureFirewall, AzureFirewallRule, PaloAlto, PaloAltoRule,
-    CheckPoint, CheckPointRule, Nsg, NsgRule, Firewalls, LastSeen
+| project SourceKey, DestinationKey, DestinationPort, StoppedAt, AzureFirewall, AzureFirewallRule, AzureFirewallId,
+    PaloAlto, PaloAltoRule, CheckPoint, CheckPointRule, Nsg, NsgRule, NsgId, Firewalls, LastSeen
 """
 
 HOP_FORMATTERS = [status_fmt(col, good=["Allowed"], warn=["Mixed", "No reply", "Out of state"], bad=["Blocked"],
@@ -448,6 +471,41 @@ Check Point, then the NSG (from VNet flow logs). *Stopped at* names the first ho
 *No reply* needs byte counts, which Palo Alto, Check Point and VNet flow logs carry and Azure Firewall rule logs
 do not. Azure Firewall application rules log only the FQDN, so to follow web traffic put both the FQDN and the IP
 in *Destination*."""
+
+# Each Azure Firewall in the selected subscriptions, whether its rule logs reach this workspace, and whether flow
+# trace logs (AZFWFlowTrace) do. Records arriving is the proof: a ticked diagnostic category sends nothing until
+# flow trace is also enabled for the firewall's subscription.
+LOGGING_Q = """
+let Firewalls = print FirewallId = dynamic([{AzureFirewallIds}])
+    | mv-expand FirewallId to typeof(string)
+    | where isnotempty(FirewallId);
+let RuleLogs = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string)[]),
+        AZFWNetworkRule, AZFWApplicationRule, AZFWNatRule
+    | where TimeGenerated {TimeRange}
+    | summarize LastRuleLog = max(TimeGenerated) by FirewallId = tolower(_ResourceId);
+let Trace = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string)[]), AZFWFlowTrace
+    | where TimeGenerated {TimeRange}
+    | summarize FlowTraceRecords = count(), Invalid = countif(tostring(column_ifexists('Flag', '')) =~ 'INVALID'),
+        LastFlowTrace = max(TimeGenerated) by FirewallId = tolower(_ResourceId);
+Firewalls
+| join kind=leftouter RuleLogs on FirewallId
+| join kind=leftouter Trace on FirewallId
+| project FirewallId,
+    RuleLogs = iff(isnull(LastRuleLog), 'None in this workspace', 'Arriving'),
+    FlowTrace = case(FlowTraceRecords > 0, 'On', isnull(LastRuleLog), 'Unknown', 'Off'),
+    FlowTraceRecords = coalesce(FlowTraceRecords, 0), Invalid = coalesce(Invalid, 0), LastFlowTrace, LastRuleLog
+| order by case(FlowTrace == 'Off', 0, FlowTrace == 'Unknown', 1, 2) asc, FirewallId asc
+"""
+
+LOGGING_NOTE = """**Off** means the firewall's rule logs reach this workspace but no flow trace records do. Flow trace needs both:
+1. **AZFWFlowTrace** ticked in the firewall's diagnostic setting (resource-specific mode), and
+2. flow trace enabled for the subscription: `Register-AzProviderFeature -FeatureName AFWEnableTcpConnectionLogging
+   -ProviderNamespace Microsoft.Network`, then `Register-AzResourceProvider -ProviderNamespace Microsoft.Network`.
+   Registration can take a while to apply.
+
+Flow trace logs every SYN-ACK, FIN, RST and invalid packet, so they are high-volume and add ingestion cost. Many
+teams turn them on while troubleshooting and off again afterwards. **Unknown** means the firewall sends no rule
+logs to this workspace either; it may log to another workspace, or have no diagnostic setting."""
 
 # Sessions a firewall let through that never got an answer, and drops of packets that did not open a session.
 # Both point at the return path rather than a rule. Azure Firewall's version is the INVALID flag in the optional
@@ -504,18 +562,22 @@ Shown
 EVENTS_Q = """
 Shown
 | top 500 by TimeGenerated desc
-| project TimeGenerated, Verdict, Device, Source, Action, SourceIp, SourcePort, Destination, DestinationPort, Protocol,
+| project TimeGenerated, Verdict, Device, DeviceId, Source, Action, SourceIp, SourcePort, Destination, DestinationPort, Protocol,
     TargetUrl, Policy, RuleCollectionGroup, RuleCollection, RuleName, Reason
 """
 
 # DNS failures look like a block from the client side. Azure Firewall only (DNS proxy); the port filter
-# does not apply.
+# does not apply. Both DNS tables exist only once a firewall has written to them, so each is read through an
+# empty placeholder table and column_ifexists, the same way as the rule logs.
 DNS_Q = FILTERS + r"""
-AZFWDnsQuery
+union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWDnsQuery)
 | where TimeGenerated {TimeRange}
+| extend QueryName = tostring(column_ifexists('QueryName', '')), QueryType = tostring(column_ifexists('QueryType', '')),
+    ResponseCode = tostring(column_ifexists('ResponseCode', '')), SourceIp = tostring(column_ifexists('SourceIp', '')),
+    Device = tostring(split(tostring(column_ifexists('_ResourceId', '')), '/')[-1])
 | where ResponseCode !~ 'NOERROR'
 | where array_length(Platforms) == 0 or 'Azure Firewall' in (Platforms)
-| where array_length(Devices) == 0 or tostring(split(_ResourceId, '/')[-1]) in~ (Devices)
+| where array_length(Devices) == 0 or Device in~ (Devices)
 | where isempty(SrcText) or ipv4_is_in_any_range(SourceIp, SrcList) == true
 | where isempty(DstText) or QueryName has_any (DstList)
 | summarize Queries = count(), Sources = dcount(SourceIp), LastSeen = max(TimeGenerated) by QueryName, QueryType, ResponseCode
@@ -524,10 +586,13 @@ AZFWDnsQuery
 
 # A network rule written with FQDNs needs DNS proxy to resolve them; when that fails, the rule never matches.
 FQDN_FAIL_Q = FILTERS + r"""
-AZFWFqdnResolveFailure
+union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWFqdnResolveFailure)
 | where TimeGenerated {TimeRange}
+| extend Fqdn = tostring(column_ifexists('Fqdn', '')), ServerIp = tostring(column_ifexists('ServerIp', '')),
+    ServerPort = toint(column_ifexists('ServerPort', int(null))), Error = tostring(column_ifexists('Error', '')),
+    Device = tostring(split(tostring(column_ifexists('_ResourceId', '')), '/')[-1])
 | where array_length(Platforms) == 0 or 'Azure Firewall' in (Platforms)
-| where array_length(Devices) == 0 or tostring(split(_ResourceId, '/')[-1]) in~ (Devices)
+| where array_length(Devices) == 0 or Device in~ (Devices)
 | where isempty(DstText) or Fqdn has_any (DstList)
 | summarize Failures = count(), LastSeen = max(TimeGenerated) by Fqdn, ServerIp, ServerPort, Error
 | top 50 by Failures desc
@@ -728,12 +793,13 @@ def workbook():
             fw("fwts-summary", "Events by verdict and log source", SUMMARY_Q, vis="tiles", tiles=VERDICT_TILES,
                no_data="No matching firewall events. Try *Blocked and allowed*, a longer time range, or fewer filters."),
             fw("fwts-path", "Path through the firewalls: where does each flow stop?", PATH_Q,
-               formatters=HOP_FORMATTERS + [STOPPED_AT],
+               formatters=HOP_FORMATTERS + [STOPPED_AT, resource_link("AzureFirewallId"), resource_link("NsgId")],
                labels={"SourceKey": "Source IP", "DestinationKey": "Destination", "DestinationPort": "Port",
                        "StoppedAt": "Stopped at", "AzureFirewall": "Azure Firewall", "AzureFirewallRule": "Azure Firewall rule",
                        "PaloAlto": "Palo Alto", "PaloAltoRule": "Palo Alto rule", "CheckPoint": "Check Point",
                        "CheckPointRule": "Check Point rule", "Nsg": "NSG", "NsgRule": "NSG rule",
-                       "LastSeen": "Last seen"},
+                       "AzureFirewallId": "Azure Firewall resource", "NsgId": "NSG resource",
+                       "Firewalls": "Devices", "LastSeen": "Last seen"},
                no_data="No matching flows. Try a longer time range or fewer filters."),
             text("fwts-path-note", PATH_NOTE, "info", visible_when=WORKSPACE_SET),
             fw("fwts-noreply", "Allowed but no reply, and out-of-state drops (return path problems)", NO_REPLY_Q,
@@ -742,12 +808,22 @@ def workbook():
                                            "Packet outside a known session (flow trace INVALID)"])],
                labels={"Device": "Firewall", "SourceIp": "Source IP", "DestinationPort": "Port", "LastSeen": "Last seen"},
                no_data="No unanswered sessions or out-of-state drops. Azure Firewall needs flow trace logs "
-                       "(AZFWFlowTrace) turned on to appear here."),
+                       "(AZFWFlowTrace) turned on to appear here: see *Azure Firewall logging* below."),
+            la("fwts-logging", "Azure Firewall logging: rule logs and flow trace, per firewall", LOGGING_Q,
+               formatters=[resource_link("FirewallId"),
+                           status_fmt("RuleLogs", good=["Arriving"], bad=["None in this workspace"]),
+                           status_fmt("FlowTrace", good=["On"], warn=["Off"], neutral=["Unknown"])],
+               labels={"FirewallId": "Azure Firewall", "RuleLogs": "Rule logs", "FlowTrace": "Flow trace",
+                       "FlowTraceRecords": "Flow trace records", "Invalid": "Invalid packets",
+                       "LastFlowTrace": "Last flow trace", "LastRuleLog": "Last rule log"},
+               no_data="No Azure Firewalls in the selected subscriptions."),
+            text("fwts-logging-note", LOGGING_NOTE, "info", visible_when=WORKSPACE_SET),
             fw("fwts-timeline", "Events over time", TIMELINE_Q, vis="timechart"),
             fw("fwts-verdicts", "Verdict per flow (latest decision by each firewall, blocked and allowed)", VERDICTS_Q,
-               formatters=[LAST_ACTION, low_is_good("Blocked", 1, 1)],
+               formatters=[LAST_ACTION, low_is_good("Blocked", 1, 1), resource_link("DeviceId")],
                labels={"LastSeen": "Last seen", "SourceIp": "Source IP", "DestinationPort": "Port", "Device": "Firewall",
-                       "Action": "Last action", "Source": "Decided by", "RuleName": "Rule", "FirstSeen": "First seen"},
+                       "Action": "Last action", "Source": "Decided by", "RuleName": "Rule", "FirstSeen": "First seen",
+                       "DeviceId": "Azure resource"},
                no_data="No matching flows."),
             fw("fwts-rules", "Rules that matched", RULES_Q, formatters=[VERDICT],
                labels={"Source": "Log", "RuleCollectionGroup": "Rule collection group",
@@ -758,8 +834,8 @@ def workbook():
                labels={"SourceIp": "Source IP", "LastSeen": "Last seen"}),
             fw("fwts-top-destinations", "Top destinations", TOP_DESTINATIONS_Q, width=50,
                labels={"LastSeen": "Last seen"}),
-            fw("fwts-events", "Events (latest 500)", EVENTS_Q, formatters=[VERDICT],
-               labels={"TimeGenerated": "Time", "Device": "Firewall", "Source": "Log", "SourceIp": "Source IP",
+            fw("fwts-events", "Events (latest 500)", EVENTS_Q, formatters=[VERDICT, resource_link("DeviceId")],
+               labels={"TimeGenerated": "Time", "Device": "Firewall", "DeviceId": "Azure resource", "Source": "Log", "SourceIp": "Source IP",
                        "SourcePort": "Source port", "DestinationPort": "Port", "TargetUrl": "URL",
                        "RuleCollectionGroup": "Rule collection group", "RuleCollection": "Rule collection / layer",
                        "RuleName": "Rule"},
