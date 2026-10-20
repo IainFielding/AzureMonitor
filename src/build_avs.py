@@ -41,7 +41,7 @@ CLOUDS = f"""
 resources
 | where type =~ '{NS}'
 | project id = tolower(id), Sku = tostring(sku.name),
-    MgmtHosts = toint(properties.managementCluster.clusterSize),
+    MgmtHosts = coalesce(toint(properties.managementCluster.clusterSize), array_length(properties.managementCluster.hosts)),
     Availability = tostring(properties.availability.strategy),
     Internet = tostring(properties.internet),
     Encryption = tostring(properties.encryption.status),
@@ -230,7 +230,18 @@ resources
     Encryption = tostring(properties.encryption.status), Identity = tostring(identity.type)
 """
 
-CLOUD_CONNECTIONS_Q = HUB_CONNECTIONS + """
+# The management cluster is part of the private cloud resource, not one of its /clusters, so it comes from here.
+MGMT_CLUSTER_Q = """
+resources
+| where id =~ '{Cloud}'
+| extend mc = properties.managementCluster
+| project ClusterId = toint(mc.clusterId), HostType = tostring(sku.name),
+    Hosts = coalesce(toint(mc.clusterSize), array_length(mc.hosts)),
+    Provisioning = coalesce(tostring(mc.provisioningState), tostring(properties.provisioningState)),
+    VsanDatastore = tostring(mc.vsanDatastoreName), HostNames = strcat_array(mc.hosts, ', ')
+"""
+
+CLOUD_CONNECTIONS_Q =HUB_CONNECTIONS + """
 | where id =~ '{Cloud}'
 | project Connection, Gateway, State = iff(isempty(Connection), 'Not connected', ConnectionState), RoutingWeight
 """
@@ -451,14 +462,17 @@ def cloud_tab():
             labels={"NsxManager": "NSX Manager", "HcxManager": "HCX Cloud Manager", "NetworkBlock": "Network block",
                     "ExtendedBlocks": "Extended network blocks", "DnsZoneType": "DNS zone type",
                     "SecondaryZone": "Secondary zone", "Encryption": "Customer-managed keys"}),
-        arm(f"{P}-clusters", "Clusters", "{Cloud}/clusters", API, [
+        arg(f"{P}-mgmt-cluster", "Management cluster", MGMT_CLUSTER_Q, width=50, formatters=[PROVISIONING],
+            labels={"ClusterId": "Cluster id", "HostType": "Host type", "VsanDatastore": "vSAN datastore",
+                    "HostNames": "Hosts (names)"}),
+        arm(f"{P}-clusters", "Other clusters", "{Cloud}/clusters", API, [
             ("Cluster", "$.name", None), ("Host type", "$.sku.name", None), ("Hosts", "$.properties.clusterSize", None),
             ("Provisioning", "$.properties.provisioningState", None)],
-            formatters=[PROVISIONING], width=50, no_data="No clusters returned."),
+            formatters=[PROVISIONING], width=50, no_data="No clusters besides the management cluster."),
         arm(f"{P}-addons", "Add-ons (HCX, SRM, vSphere Replication, Arc)", "{Cloud}/addons", API, [
             ("Add-on", "$.properties.addonType", None), ("Name", "$.name", None),
             ("Provisioning", "$.properties.provisioningState", None)],
-            formatters=[PROVISIONING], width=50, no_data="No add-ons."),
+            formatters=[PROVISIONING], no_data="No add-ons."),
         text(f"{P}-net-h", "### Connectivity"),
         arg(f"{P}-hub", "ExpressRoute connections that use this private cloud's circuit", CLOUD_CONNECTIONS_Q,
             formatters=[resource_link("Gateway"), STATE], labels={"RoutingWeight": "Routing weight"}),

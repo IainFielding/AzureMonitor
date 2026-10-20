@@ -198,7 +198,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.avs/privateclouds'\n| project id = tolower(id), Sku = tostring(sku.name),\n    MgmtHosts = toint(properties.managementCluster.clusterSize),\n    Availability = tostring(properties.availability.strategy),\n    Internet = tostring(properties.internet),\n    Encryption = tostring(properties.encryption.status),\n    NetworkBlock = tostring(properties.networkBlock),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | where tolower(id) has '/microsoft.avs/privateclouds/'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        RhHealth = tostring(properties.availabilityState), Reason = tostring(properties.summary)\n  ) on id\n| project-away id1\n| extend Health = case(isnotempty(RhHealth), RhHealth, Provisioning =~ 'Failed', 'Unavailable',\n        Provisioning =~ 'Succeeded', 'Available', 'Degraded'),\n    Reason = iff(isempty(RhHealth), strcat('Provisioning: ', Provisioning), Reason)\n| project-away RhHealth\n| summarize Total = count(), Hosts = sum(MgmtHosts),\n    Unavailable = countif(Health =~ 'Unavailable'), Degraded = countif(Health !~ 'Available' and Health !~ 'Unavailable')\n| project Signal = 'Private clouds', Value = Total,\n    Detail = strcat(Unavailable + Degraded, ' unhealthy · ', Hosts, ' management hosts'),\n    State = case(Total == 0, 'Unknown', Unavailable > 0, 'Unavailable', Degraded > 0, 'Degraded', 'Available')",
+              "query": "resources\n| where type =~ 'microsoft.avs/privateclouds'\n| project id = tolower(id), Sku = tostring(sku.name),\n    MgmtHosts = coalesce(toint(properties.managementCluster.clusterSize), array_length(properties.managementCluster.hosts)),\n    Availability = tostring(properties.availability.strategy),\n    Internet = tostring(properties.internet),\n    Encryption = tostring(properties.encryption.status),\n    NetworkBlock = tostring(properties.networkBlock),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | where tolower(id) has '/microsoft.avs/privateclouds/'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        RhHealth = tostring(properties.availabilityState), Reason = tostring(properties.summary)\n  ) on id\n| project-away id1\n| extend Health = case(isnotempty(RhHealth), RhHealth, Provisioning =~ 'Failed', 'Unavailable',\n        Provisioning =~ 'Succeeded', 'Available', 'Degraded'),\n    Reason = iff(isempty(RhHealth), strcat('Provisioning: ', Provisioning), Reason)\n| project-away RhHealth\n| summarize Total = count(), Hosts = sum(MgmtHosts),\n    Unavailable = countif(Health =~ 'Unavailable'), Degraded = countif(Health !~ 'Available' and Health !~ 'Unavailable')\n| project Signal = 'Private clouds', Value = Total,\n    Detail = strcat(Unavailable + Degraded, ' unhealthy · ', Hosts, ' management hosts'),\n    State = case(Total == 0, 'Unknown', Unavailable > 0, 'Unavailable', Degraded > 0, 'Degraded', 'Available')",
               "size": 3,
               "title": "",
               "queryType": 1,
@@ -897,7 +897,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.avs/privateclouds'\n| project id = tolower(id), Sku = tostring(sku.name),\n    MgmtHosts = toint(properties.managementCluster.clusterSize),\n    Availability = tostring(properties.availability.strategy),\n    Internet = tostring(properties.internet),\n    Encryption = tostring(properties.encryption.status),\n    NetworkBlock = tostring(properties.networkBlock),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | where tolower(id) has '/microsoft.avs/privateclouds/'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        RhHealth = tostring(properties.availabilityState), Reason = tostring(properties.summary)\n  ) on id\n| project-away id1\n| extend Health = case(isnotempty(RhHealth), RhHealth, Provisioning =~ 'Failed', 'Unavailable',\n        Provisioning =~ 'Succeeded', 'Available', 'Degraded'),\n    Reason = iff(isempty(RhHealth), strcat('Provisioning: ', Provisioning), Reason)\n| project-away RhHealth\n| project id, Health, Reason, Sku, MgmtHosts, Availability, Internet, Encryption, NetworkBlock, Provisioning,\n    ResourceGroup, Location\n| order by case(Health =~ 'Unavailable', 0, Health =~ 'Available', 2, 1) asc, id asc",
+              "query": "resources\n| where type =~ 'microsoft.avs/privateclouds'\n| project id = tolower(id), Sku = tostring(sku.name),\n    MgmtHosts = coalesce(toint(properties.managementCluster.clusterSize), array_length(properties.managementCluster.hosts)),\n    Availability = tostring(properties.availability.strategy),\n    Internet = tostring(properties.internet),\n    Encryption = tostring(properties.encryption.status),\n    NetworkBlock = tostring(properties.networkBlock),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | where tolower(id) has '/microsoft.avs/privateclouds/'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        RhHealth = tostring(properties.availabilityState), Reason = tostring(properties.summary)\n  ) on id\n| project-away id1\n| extend Health = case(isnotempty(RhHealth), RhHealth, Provisioning =~ 'Failed', 'Unavailable',\n        Provisioning =~ 'Succeeded', 'Available', 'Degraded'),\n    Reason = iff(isempty(RhHealth), strcat('Provisioning: ', Provisioning), Reason)\n| project-away RhHealth\n| project id, Health, Reason, Sku, MgmtHosts, Availability, Internet, Encryption, NetworkBlock, Provisioning,\n    ResourceGroup, Location\n| order by case(Health =~ 'Unavailable', 0, Health =~ 'Available', 2, 1) asc, id asc",
               "size": 0,
               "title": "Private clouds",
               "queryType": 1,
@@ -2029,9 +2029,106 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
+              "query": "resources\n| where id =~ '{Cloud}'\n| extend mc = properties.managementCluster\n| project ClusterId = toint(mc.clusterId), HostType = tostring(sku.name),\n    Hosts = coalesce(toint(mc.clusterSize), array_length(mc.hosts)),\n    Provisioning = coalesce(tostring(mc.provisioningState), tostring(properties.provisioningState)),\n    VsanDatastore = tostring(mc.vsanDatastoreName), HostNames = strcat_array(mc.hosts, ', ')",
+              "size": 0,
+              "title": "Management cluster",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ClusterId",
+                    "label": "Cluster id"
+                  },
+                  {
+                    "columnId": "HostType",
+                    "label": "Host type"
+                  },
+                  {
+                    "columnId": "VsanDatastore",
+                    "label": "vSAN datastore"
+                  },
+                  {
+                    "columnId": "HostNames",
+                    "label": "Hosts (names)"
+                  }
+                ]
+              }
+            },
+            "name": "avsw-mgmt-cluster",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Cloud",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
               "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"{Cloud}/clusters\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2023-09-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.name\", \"columnid\": \"Cluster\"}, {\"path\": \"$.sku.name\", \"columnid\": \"Host type\"}, {\"path\": \"$.properties.clusterSize\", \"columnid\": \"Hosts\"}, {\"path\": \"$.properties.provisioningState\", \"columnid\": \"Provisioning\"}]}}]}",
               "size": 0,
-              "title": "Clusters",
+              "title": "Other clusters",
               "queryType": 12,
               "visualization": "table",
               "showExportToExcel": true,
@@ -2091,7 +2188,7 @@
                 ],
                 "filter": true
               },
-              "noDataMessage": "No clusters returned."
+              "noDataMessage": "No clusters besides the management cluster."
             },
             "name": "avsw-clusters",
             "customWidth": "50",
@@ -2170,7 +2267,6 @@
               "noDataMessage": "No add-ons."
             },
             "name": "avsw-addons",
-            "customWidth": "50",
             "conditionalVisibility": {
               "parameterName": "Cloud",
               "comparison": "isNotEqualTo",
