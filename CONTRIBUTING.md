@@ -22,6 +22,8 @@ python src/build_routing.py
 python src/build_avs.py
 python src/build_sentinel.py
 python src/build_privileged_access.py
+python src/build_expiry.py
+python src/build_availability.py
 python src/build_grafana.py
 ```
 

@@ -204,11 +204,14 @@ WORKSPACE_SET = {"parameterName": "Workspace", "comparison": "isNotEqualTo", "va
 WORKSPACE_UNSET = {"parameterName": "Workspace", "comparison": "isEqualTo", "value": ""}
 
 
-def la(name, title, query, **kw):
-    """Log Analytics query against the selected workspace(s); hidden until one is picked."""
+def la(name, title, query, time=True, **kw):
+    """Log Analytics query against the selected workspace(s); hidden until one is picked.
+
+    time=False leaves the time range to the query itself, for a query that sets its own window (a calendar month).
+    """
     kw.setdefault("visible_when", WORKSPACE_SET)
     return _query(name, title, query, query_type=0, resource_type="microsoft.operationalinsights/workspaces",
-                  resources=["{Workspace}"], time=True, **kw)
+                  resources=["{Workspace}"], time=time, **kw)
 
 
 def m(namespace, metric, agg, split=None, limit=10):

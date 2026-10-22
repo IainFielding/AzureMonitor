@@ -1,0 +1,2035 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Expiry and renewals\nEverything with a date the platform team has to act on before it passes: certificates, Key Vault objects, storage keys, AVD registration tokens, policy exemptions, service retirements, planned maintenance, reservations and savings plans."
+      },
+      "name": "exp-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "06960f38-6dae-58e8-ba31-f51b6d09d0a2",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "2f7e9003-b889-5314-ae1b-caf39cf257ee",
+            "version": "KqlParameterItem/1.0",
+            "name": "Days",
+            "label": "Due within",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"30\", \"label\": \"30 days\"}, {\"value\": \"60\", \"label\": \"60 days\"}, {\"value\": \"90\", \"label\": \"90 days\"}, {\"value\": \"180\", \"label\": \"180 days\"}, {\"value\": \"365\", \"label\": \"1 year\"}]",
+            "value": "90",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "How far ahead to count something as due."
+          },
+          {
+            "id": "d60b18b6-f770-5ca8-bbfb-d00bf027f87a",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Optional. The workspace that receives the Key Vault audit logs, for Key Vault's own near-expiry and expired events.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "8812a516-8081-58a6-b014-143bd9e19fd1",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 2592000000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 5184000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "How far back to look for Key Vault expiry events. Key Vault reports near expiry once, about 30 days ahead, so keep this at 30 days or more."
+          },
+          {
+            "id": "3415eb1d-a3cb-5176-8846-d845682fabf4",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "exp-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "be3f51ee-53e2-5957-bc56-e7de63896f99",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "7453eeb1-99b7-5828-834e-31721c97f1d7",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Certificates & secrets",
+            "subTarget": "certificates",
+            "style": "link"
+          },
+          {
+            "id": "677e1414-61ed-56fc-9326-065218fc92ad",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Exemptions & retirements",
+            "subTarget": "governance",
+            "style": "link"
+          },
+          {
+            "id": "69441e39-12d0-5165-b11d-cfd0ecd3b9a6",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Reservations",
+            "subTarget": "commitments",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "exp-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.web/certificates', 'microsoft.apimanagement/service', 'microsoft.aad/domainservices',\n    'microsoft.cdn/profiles/secrets', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts')\n| extend items = case(\n    type =~ 'microsoft.apimanagement/service', properties.hostnameConfigurations,\n    type =~ 'microsoft.storage/storageaccounts',\n        iff(isnull(properties.keyPolicy.keyExpirationPeriodInDays) or tostring(properties.allowSharedKeyAccess) =~ 'false',\n            dynamic([]), dynamic(['key1', 'key2'])),\n    pack_array(properties))\n| mv-expand item = items\n| extend Kind = case(\n        type =~ 'microsoft.web/certificates', 'App Service certificate',\n        type =~ 'microsoft.apimanagement/service', 'API Management certificate',\n        type =~ 'microsoft.aad/domainservices', 'Secure LDAP certificate',\n        type =~ 'microsoft.cdn/profiles/secrets', 'Front Door certificate',\n        type =~ 'microsoft.desktopvirtualization/hostpools', 'AVD registration token',\n        'Storage account key'),\n    Expires = case(\n        type =~ 'microsoft.web/certificates', todatetime(properties.expirationDate),\n        type =~ 'microsoft.apimanagement/service', todatetime(item.certificate.expiry),\n        type =~ 'microsoft.aad/domainservices',\n            iff(tostring(properties.ldapsSettings.ldaps) =~ 'Enabled', todatetime(properties.ldapsSettings.certificateNotAfter), datetime(null)),\n        type =~ 'microsoft.cdn/profiles/secrets', todatetime(properties.parameters.expirationDate),\n        type =~ 'microsoft.desktopvirtualization/hostpools', todatetime(properties.registrationInfo.expirationTime),\n        datetime_add('day', toint(properties.keyPolicy.keyExpirationPeriodInDays), todatetime(properties.keyCreationTime[tostring(item)])))\n| where isnotnull(Expires)\n| extend kvSecret = tostring(item.keyVaultId)\n| extend Item = case(\n        type =~ 'microsoft.web/certificates', coalesce(tostring(properties.subjectName), name),\n        type =~ 'microsoft.apimanagement/service', strcat(tostring(item.hostName), ' (', tostring(item.type), ')'),\n        type =~ 'microsoft.cdn/profiles/secrets', coalesce(tostring(properties.parameters.subject), name),\n        type =~ 'microsoft.storage/storageaccounts', strcat(name, ' ', tostring(item)),\n        name),\n    Renewal = case(\n        type =~ 'microsoft.cdn/profiles/secrets' and tostring(properties.parameters.type) =~ 'ManagedCertificate', 'Automatic',\n        type =~ 'microsoft.cdn/profiles/secrets' and tostring(properties.parameters.useLatestVersion) =~ 'true', 'From Key Vault',\n        type =~ 'microsoft.apimanagement/service' and isnotempty(kvSecret),\n            iff(kvSecret matches regex @'(?i)/secrets/[^/]+/[0-9a-f]{32}/?$', 'Key Vault, pinned version', 'From Key Vault'),\n        type =~ 'microsoft.web/certificates' and isnotempty(tostring(properties.keyVaultId)), 'From Key Vault',\n        type =~ 'microsoft.storage/storageaccounts', 'Rotate the key',\n        type =~ 'microsoft.desktopvirtualization/hostpools', 'New token when adding hosts',\n        'Manual'),\n    DaysLeft = datetime_diff('day', Expires, now())\n| extend State = case(\n        Kind == 'AVD registration token' and Expires < now(), 'No valid token',\n        Expires < now(), 'Expired',\n        DaysLeft <= {Days}, 'Due',\n        'Later')\n| project Item, Kind, Expires, DaysLeft, State, Renewal, id, ResourceGroup = resourceGroup\n| extend Group = case(Kind == 'Storage account key', 'Storage account keys',\n    Kind == 'AVD registration token', 'AVD registration tokens', 'Certificates on services')\n| summarize Due = countif(State == 'Due'), Expired = countif(State == 'Expired'), Total = count() by Group\n| join kind=rightouter (\n    datatable(Group: string) ['Certificates on services', 'Storage account keys', 'AVD registration tokens']\n  ) on Group\n| project Signal = Group1, Value = coalesce(Due, 0) + coalesce(Expired, 0),\n    Detail = strcat(coalesce(Expired, 0), ' expired · ', coalesce(Total, 0), ' tracked'),\n    State = case(Group1 == 'AVD registration tokens', iff(coalesce(Due, 0) > 0, 'Unknown', 'Available'),\n        coalesce(Expired, 0) > 0, 'Unavailable', coalesce(Due, 0) > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "exp-tile-resources",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "600px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/applicationgateways'\n| mv-expand cert = properties.sslCertificates\n| extend CertId = tolower(tostring(cert.id)), KvSecret = tostring(cert.properties.keyVaultSecretId)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/applicationgateways'\n    | mv-expand l = properties.httpListeners\n    | extend CertId = tolower(tostring(l.properties.sslCertificate.id))\n    | where isnotempty(CertId)\n    | summarize Listeners = strcat_array(make_set(tostring(l.name)), ', '),\n        HostNames = strcat_array(make_set(coalesce(tostring(l.properties.hostName), tostring(l.properties.hostNames[0]))), ', ')\n        by CertId\n  ) on CertId\n| extend Source = case(isempty(KvSecret), 'Uploaded', KvSecret matches regex @'(?i)/secrets/[^/]+/[0-9a-f]{32}/?$', 'Key Vault, pinned version',\n    'Key Vault, latest version')\n| summarize Total = count(), Manual = countif(Source != 'Key Vault, latest version')\n| project Signal = 'App Gateway certificates renewed by hand', Value = Manual,\n    Detail = strcat('of ', Total, ' listener certificates'), State = iff(Manual > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "exp-tile-appgw",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| where tostring(properties.resourceType) startswith 'Microsoft.KeyVault.Data/'\n| where tostring(properties.complianceState) =~ 'NonCompliant'\n| extend definitionId = tolower(tostring(properties.policyDefinitionId)), rid = tostring(properties.resourceId)\n| join kind=leftouter (\n    policyresources\n    | where type =~ 'microsoft.authorization/policydefinitions'\n    | project definitionId = tolower(id), Policy = tostring(properties.displayName)\n  ) on definitionId\n| where isempty(Policy) or Policy has_any ('expir', 'validity')\n| extend Problem = case(Policy has_any ('not expire within', 'more than the specified number of days'), 'Expires soon',\n        Policy has 'expiration date', 'No expiry date', Policy has 'validity', 'Validity too long', 'Non-compliant'),\n    Kind = case(rid has '/certificates/', 'Certificate', rid has '/secrets/', 'Secret', rid has '/keys/', 'Key', 'Other'),\n    Vault = extract(@'(?i)/vaults/([^/]+)', 1, rid),\n    Object = tostring(split(trim_end('/', rid), '/')[-1])\n| summarize Soon = dcountif(rid, Problem == 'Expires soon'), NoExpiry = dcountif(rid, Problem == 'No expiry date'),\n    Vaults = dcount(Vault)\n| project Signal = 'Key Vault objects expiring soon (Policy)', Value = Soon,\n    Detail = strcat(NoExpiry, ' with no expiry date · ', Vaults, ' vaults'),\n    State = iff(Soon > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "exp-tile-kv-policy",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (AzureDiagnostics | where TimeGenerated {TimeRange} | where ResourceProvider =~ 'MICROSOFT.KEYVAULT'\n        | project TimeGenerated, OperationName, Vault = tolower(Resource), Object = column_ifexists('id_s', '')),\n    (AZKVAuditLogs | where TimeGenerated {TimeRange}\n        | project TimeGenerated, OperationName, Vault = tolower(tostring(split(_ResourceId, '/')[8])), Object = column_ifexists('Id', ''))\n| where OperationName contains 'NearExpiry' or OperationName contains 'Expired'\n| extend Kind = case(OperationName startswith 'Certificate', 'Certificate', OperationName startswith 'Secret', 'Secret',\n        OperationName startswith 'Key', 'Key', 'Other'),\n    State = iff(OperationName contains 'NearExpiry', 'Near expiry', 'Expired')\n| summarize LastSeen = max(TimeGenerated) by Vault, Kind, Object, State\n| summarize Near = dcountif(Object, State == 'Near expiry'), Expired = dcountif(Object, State == 'Expired'),\n    Vaults = dcount(Vault)\n| project Signal = 'Key Vault expiry events (logs)', Value = Near + Expired,\n    Detail = strcat(Expired, ' expired · ', Vaults, ' vaults'),\n    State = case(Expired > 0, 'Unavailable', Near > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "exp-tile-kv-events",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.authorization/policyexemptions'\n| extend Expires = todatetime(properties.expiresOn),\n    Scope = tostring(split(tolower(id), '/providers/microsoft.authorization/policyexemptions/')[0])\n| extend DaysLeft = datetime_diff('day', Expires, now())\n| extend Status = case(isnull(Expires), 'No expiry', Expires < now(), 'Expired', DaysLeft <= {Days}, 'Due', 'Later')\n| summarize Due = countif(Status == 'Due'), Expired = countif(Status == 'Expired'), Never = countif(Status == 'No expiry')\n| project Signal = 'Policy exemptions expiring', Value = Due,\n    Detail = strcat(Expired, ' already expired · ', Never, ' never expire'),\n    State = case(Expired > 0 or Due > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "exp-tile-exemptions",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend RetirementDate = todatetime(properties.extendedProperties.retirementDate),\n    Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), tostring(properties.shortDescription.problem)),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId))\n| extend DaysLeft = datetime_diff('day', RetirementDate, now())\n| summarize Features = dcountif(Retiring, DaysLeft <= {Days}), Resources = dcountif(rid, DaysLeft <= {Days})\n| project Signal = 'Service retirements', Value = Features, Detail = strcat(Resources, ' resources affected'),\n    State = iff(Features > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "exp-tile-retirements",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| extend EventType = tostring(properties.EventType), Title = tostring(properties.Title)\n| where EventType =~ 'PlannedMaintenance' or tostring(properties.EventSubType) =~ 'Retirement' or Title contains 'retir'\n| extend Kind = iff(EventType =~ 'PlannedMaintenance', 'Planned maintenance', 'Retirement'),\n    Starts = todatetime(tolong(properties.ImpactStartTime)), Ends = todatetime(tolong(properties.ImpactMitigationTime))\n| summarize Maintenance = dcountif(tostring(properties.TrackingId), Kind == 'Planned maintenance'),\n    Notices = dcountif(tostring(properties.TrackingId), Kind == 'Retirement')\n| project Signal = 'Planned maintenance notices', Value = Maintenance, Detail = strcat(Notices, ' retirement notices'),\n    State = iff(Maintenance + Notices > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "exp-tile-maintenance",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Each tile counts what falls due in the next **{Days} days** (change the window at the top), plus anything already\nexpired. *Certificates on services* are those held on App Service, API Management, Front Door and Entra Domain\nServices (secure LDAP). *Storage account keys* only have a due date when the account has a key expiration policy.\nAn expired AVD registration token is normal, so only tokens about to lapse are counted. Reservations and savings\nplans are on their own tab.",
+              "style": "info"
+            },
+            "name": "exp-tile-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.web/certificates', 'microsoft.apimanagement/service', 'microsoft.aad/domainservices',\n    'microsoft.cdn/profiles/secrets', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts')\n| extend items = case(\n    type =~ 'microsoft.apimanagement/service', properties.hostnameConfigurations,\n    type =~ 'microsoft.storage/storageaccounts',\n        iff(isnull(properties.keyPolicy.keyExpirationPeriodInDays) or tostring(properties.allowSharedKeyAccess) =~ 'false',\n            dynamic([]), dynamic(['key1', 'key2'])),\n    pack_array(properties))\n| mv-expand item = items\n| extend Kind = case(\n        type =~ 'microsoft.web/certificates', 'App Service certificate',\n        type =~ 'microsoft.apimanagement/service', 'API Management certificate',\n        type =~ 'microsoft.aad/domainservices', 'Secure LDAP certificate',\n        type =~ 'microsoft.cdn/profiles/secrets', 'Front Door certificate',\n        type =~ 'microsoft.desktopvirtualization/hostpools', 'AVD registration token',\n        'Storage account key'),\n    Expires = case(\n        type =~ 'microsoft.web/certificates', todatetime(properties.expirationDate),\n        type =~ 'microsoft.apimanagement/service', todatetime(item.certificate.expiry),\n        type =~ 'microsoft.aad/domainservices',\n            iff(tostring(properties.ldapsSettings.ldaps) =~ 'Enabled', todatetime(properties.ldapsSettings.certificateNotAfter), datetime(null)),\n        type =~ 'microsoft.cdn/profiles/secrets', todatetime(properties.parameters.expirationDate),\n        type =~ 'microsoft.desktopvirtualization/hostpools', todatetime(properties.registrationInfo.expirationTime),\n        datetime_add('day', toint(properties.keyPolicy.keyExpirationPeriodInDays), todatetime(properties.keyCreationTime[tostring(item)])))\n| where isnotnull(Expires)\n| extend kvSecret = tostring(item.keyVaultId)\n| extend Item = case(\n        type =~ 'microsoft.web/certificates', coalesce(tostring(properties.subjectName), name),\n        type =~ 'microsoft.apimanagement/service', strcat(tostring(item.hostName), ' (', tostring(item.type), ')'),\n        type =~ 'microsoft.cdn/profiles/secrets', coalesce(tostring(properties.parameters.subject), name),\n        type =~ 'microsoft.storage/storageaccounts', strcat(name, ' ', tostring(item)),\n        name),\n    Renewal = case(\n        type =~ 'microsoft.cdn/profiles/secrets' and tostring(properties.parameters.type) =~ 'ManagedCertificate', 'Automatic',\n        type =~ 'microsoft.cdn/profiles/secrets' and tostring(properties.parameters.useLatestVersion) =~ 'true', 'From Key Vault',\n        type =~ 'microsoft.apimanagement/service' and isnotempty(kvSecret),\n            iff(kvSecret matches regex @'(?i)/secrets/[^/]+/[0-9a-f]{32}/?$', 'Key Vault, pinned version', 'From Key Vault'),\n        type =~ 'microsoft.web/certificates' and isnotempty(tostring(properties.keyVaultId)), 'From Key Vault',\n        type =~ 'microsoft.storage/storageaccounts', 'Rotate the key',\n        type =~ 'microsoft.desktopvirtualization/hostpools', 'New token when adding hosts',\n        'Manual'),\n    DaysLeft = datetime_diff('day', Expires, now())\n| extend State = case(\n        Kind == 'AVD registration token' and Expires < now(), 'No valid token',\n        Expires < now(), 'Expired',\n        DaysLeft <= {Days}, 'Due',\n        'Later')\n| project Item, Kind, Expires, DaysLeft, State, Renewal, id, ResourceGroup = resourceGroup\n| where State in ('Due', 'Expired')\n| order by Expires asc",
+              "size": 0,
+              "title": "Certificates, keys and tokens due in the next {Days} days",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Nothing held on a resource falls due in the window.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Later",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Due",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No valid token",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Renewal",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Automatic",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "From Key Vault",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Key Vault, pinned version",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Manual",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "exp-due"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.authorization/policyexemptions'\n| extend Expires = todatetime(properties.expiresOn),\n    Scope = tostring(split(tolower(id), '/providers/microsoft.authorization/policyexemptions/')[0])\n| extend DaysLeft = datetime_diff('day', Expires, now())\n| extend Status = case(isnull(Expires), 'No expiry', Expires < now(), 'Expired', DaysLeft <= {Days}, 'Due', 'Later')\n| project Exemption = coalesce(tostring(properties.displayName), name), Status, Expires, DaysLeft,\n    Category = tostring(properties.exemptionCategory),\n    Assignment = tostring(split(tostring(properties.policyAssignmentId), '/')[-1]),\n    Description = tostring(properties.description), Scope\n| where Status in ('Due', 'Expired')\n| order by case(Status == 'Expired', 0, Status == 'Due', 1, Status == 'No expiry', 3, 2) asc, Expires asc",
+              "size": 0,
+              "title": "Policy exemptions expiring in the next {Days} days",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No policy exemptions expire in the window.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Due",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  }
+                ]
+              }
+            },
+            "name": "exp-due-exemptions",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend RetirementDate = todatetime(properties.extendedProperties.retirementDate),\n    Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), tostring(properties.shortDescription.problem)),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId))\n| extend DaysLeft = datetime_diff('day', RetirementDate, now())\n| summarize Resources = dcount(rid), Examples = strcat_array(make_set(tostring(split(rid, '/')[-1]), 5), ', ')\n    by Retiring, RetirementDate, DaysLeft, Impact = tostring(properties.impact), Action = tostring(properties.shortDescription.solution)\n| extend Due = iff(DaysLeft <= {Days}, 'Yes', '')\n| project Retiring, RetirementDate, DaysLeft, Due, Resources, Examples, Impact, Action\n| where Due == 'Yes'\n| order by RetirementDate asc",
+              "size": 0,
+              "title": "Service retirements in the next {Days} days",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor reports no retirements in the window.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Impact",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RetirementDate",
+                    "label": "Retirement date"
+                  },
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  }
+                ]
+              }
+            },
+            "name": "exp-due-retirements",
+            "customWidth": "50"
+          }
+        ]
+      },
+      "name": "exp-tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Certificates, keys and tokens held on services"
+            },
+            "name": "exp-services-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.web/certificates', 'microsoft.apimanagement/service', 'microsoft.aad/domainservices',\n    'microsoft.cdn/profiles/secrets', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts')\n| extend items = case(\n    type =~ 'microsoft.apimanagement/service', properties.hostnameConfigurations,\n    type =~ 'microsoft.storage/storageaccounts',\n        iff(isnull(properties.keyPolicy.keyExpirationPeriodInDays) or tostring(properties.allowSharedKeyAccess) =~ 'false',\n            dynamic([]), dynamic(['key1', 'key2'])),\n    pack_array(properties))\n| mv-expand item = items\n| extend Kind = case(\n        type =~ 'microsoft.web/certificates', 'App Service certificate',\n        type =~ 'microsoft.apimanagement/service', 'API Management certificate',\n        type =~ 'microsoft.aad/domainservices', 'Secure LDAP certificate',\n        type =~ 'microsoft.cdn/profiles/secrets', 'Front Door certificate',\n        type =~ 'microsoft.desktopvirtualization/hostpools', 'AVD registration token',\n        'Storage account key'),\n    Expires = case(\n        type =~ 'microsoft.web/certificates', todatetime(properties.expirationDate),\n        type =~ 'microsoft.apimanagement/service', todatetime(item.certificate.expiry),\n        type =~ 'microsoft.aad/domainservices',\n            iff(tostring(properties.ldapsSettings.ldaps) =~ 'Enabled', todatetime(properties.ldapsSettings.certificateNotAfter), datetime(null)),\n        type =~ 'microsoft.cdn/profiles/secrets', todatetime(properties.parameters.expirationDate),\n        type =~ 'microsoft.desktopvirtualization/hostpools', todatetime(properties.registrationInfo.expirationTime),\n        datetime_add('day', toint(properties.keyPolicy.keyExpirationPeriodInDays), todatetime(properties.keyCreationTime[tostring(item)])))\n| where isnotnull(Expires)\n| extend kvSecret = tostring(item.keyVaultId)\n| extend Item = case(\n        type =~ 'microsoft.web/certificates', coalesce(tostring(properties.subjectName), name),\n        type =~ 'microsoft.apimanagement/service', strcat(tostring(item.hostName), ' (', tostring(item.type), ')'),\n        type =~ 'microsoft.cdn/profiles/secrets', coalesce(tostring(properties.parameters.subject), name),\n        type =~ 'microsoft.storage/storageaccounts', strcat(name, ' ', tostring(item)),\n        name),\n    Renewal = case(\n        type =~ 'microsoft.cdn/profiles/secrets' and tostring(properties.parameters.type) =~ 'ManagedCertificate', 'Automatic',\n        type =~ 'microsoft.cdn/profiles/secrets' and tostring(properties.parameters.useLatestVersion) =~ 'true', 'From Key Vault',\n        type =~ 'microsoft.apimanagement/service' and isnotempty(kvSecret),\n            iff(kvSecret matches regex @'(?i)/secrets/[^/]+/[0-9a-f]{32}/?$', 'Key Vault, pinned version', 'From Key Vault'),\n        type =~ 'microsoft.web/certificates' and isnotempty(tostring(properties.keyVaultId)), 'From Key Vault',\n        type =~ 'microsoft.storage/storageaccounts', 'Rotate the key',\n        type =~ 'microsoft.desktopvirtualization/hostpools', 'New token when adding hosts',\n        'Manual'),\n    DaysLeft = datetime_diff('day', Expires, now())\n| extend State = case(\n        Kind == 'AVD registration token' and Expires < now(), 'No valid token',\n        Expires < now(), 'Expired',\n        DaysLeft <= {Days}, 'Due',\n        'Later')\n| project Item, Kind, Expires, DaysLeft, State, Renewal, id, ResourceGroup = resourceGroup\n| order by Expires asc",
+              "size": 0,
+              "title": "Everything with an expiry date",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No App Service, API Management, Front Door or secure LDAP certificates, storage key policies or AVD registration tokens found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Later",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Due",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No valid token",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Renewal",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Automatic",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "From Key Vault",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Key Vault, pinned version",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Manual",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Kind"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "exp-dated"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*From Key Vault* means the service reads the certificate from a vault and picks up a renewed version by itself, so the date to watch is the vault object's. A *pinned version* is read from Key Vault but by a fixed version, so it still expires: point it at the versionless secret id. Front Door managed certificates renew automatically.",
+              "style": "info"
+            },
+            "name": "exp-dated-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Application Gateway listener certificates"
+            },
+            "name": "exp-appgw-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/applicationgateways'\n| mv-expand cert = properties.sslCertificates\n| extend CertId = tolower(tostring(cert.id)), KvSecret = tostring(cert.properties.keyVaultSecretId)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/applicationgateways'\n    | mv-expand l = properties.httpListeners\n    | extend CertId = tolower(tostring(l.properties.sslCertificate.id))\n    | where isnotempty(CertId)\n    | summarize Listeners = strcat_array(make_set(tostring(l.name)), ', '),\n        HostNames = strcat_array(make_set(coalesce(tostring(l.properties.hostName), tostring(l.properties.hostNames[0]))), ', ')\n        by CertId\n  ) on CertId\n| extend Source = case(isempty(KvSecret), 'Uploaded', KvSecret matches regex @'(?i)/secrets/[^/]+/[0-9a-f]{32}/?$', 'Key Vault, pinned version',\n    'Key Vault, latest version')\n| project id, Certificate = tostring(cert.name), Source, Listeners, HostNames, KeyVaultSecret = KvSecret,\n    Provisioning = tostring(cert.properties.provisioningState)\n| order by case(Source == 'Uploaded', 0, Source == 'Key Vault, pinned version', 1, 2) asc, id asc",
+              "size": 0,
+              "title": "Listener certificates and where they come from",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Application Gateway has TLS certificates.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Source",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Key Vault, latest version",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Key Vault, pinned version",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Uploaded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Application gateway"
+                  },
+                  {
+                    "columnId": "HostNames",
+                    "label": "Host names"
+                  },
+                  {
+                    "columnId": "KeyVaultSecret",
+                    "label": "Key Vault secret"
+                  }
+                ]
+              }
+            },
+            "name": "exp-appgw"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Resource Graph holds an uploaded certificate only as encoded data, so its expiry date cannot be shown here; open the gateway's *Listeners* blade, or better, move the certificate to Key Vault and reference the versionless secret id so renewals reach the gateway without a change.",
+              "style": "info"
+            },
+            "name": "exp-appgw-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Key Vault certificates, secrets and keys"
+            },
+            "name": "exp-kv-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| where tostring(properties.resourceType) startswith 'Microsoft.KeyVault.Data/'\n| where tostring(properties.complianceState) =~ 'NonCompliant'\n| extend definitionId = tolower(tostring(properties.policyDefinitionId)), rid = tostring(properties.resourceId)\n| join kind=leftouter (\n    policyresources\n    | where type =~ 'microsoft.authorization/policydefinitions'\n    | project definitionId = tolower(id), Policy = tostring(properties.displayName)\n  ) on definitionId\n| where isempty(Policy) or Policy has_any ('expir', 'validity')\n| extend Problem = case(Policy has_any ('not expire within', 'more than the specified number of days'), 'Expires soon',\n        Policy has 'expiration date', 'No expiry date', Policy has 'validity', 'Validity too long', 'Non-compliant'),\n    Kind = case(rid has '/certificates/', 'Certificate', rid has '/secrets/', 'Secret', rid has '/keys/', 'Key', 'Other'),\n    Vault = extract(@'(?i)/vaults/([^/]+)', 1, rid),\n    Object = tostring(split(trim_end('/', rid), '/')[-1])\n| summarize Policies = strcat_array(make_set(Policy), '; ') by Vault, Kind, Object, Problem\n| order by case(Problem == 'Expires soon', 0, Problem == 'No expiry date', 1, 2) asc, Vault asc, Object asc",
+              "size": 0,
+              "title": "Objects flagged by Azure Policy's Key Vault expiry audits",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Key Vault object is non-compliant with an expiry policy, or no such policy is assigned (see below).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Problem",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expires soon",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Validity too long",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No expiry date",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "exp-kv-policy"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A workbook cannot read inside a vault. Assign the built-in policies *Certificates should not expire within the specified number of days*, *Secrets should have more than the specified number of days before expiration* and *Keys should have more than the specified number of days before expiration* (Audit, with the number of days set to match the window above) at the landing zone root, and every object that is due appears here. Policy evaluates vault contents about once a day.",
+              "style": "info"
+            },
+            "name": "exp-kv-policy-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top to add Key Vault's own near-expiry and expired events.",
+              "style": "info"
+            },
+            "name": "exp-kv-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (AzureDiagnostics | where TimeGenerated {TimeRange} | where ResourceProvider =~ 'MICROSOFT.KEYVAULT'\n        | project TimeGenerated, OperationName, Vault = tolower(Resource), Object = column_ifexists('id_s', '')),\n    (AZKVAuditLogs | where TimeGenerated {TimeRange}\n        | project TimeGenerated, OperationName, Vault = tolower(tostring(split(_ResourceId, '/')[8])), Object = column_ifexists('Id', ''))\n| where OperationName contains 'NearExpiry' or OperationName contains 'Expired'\n| extend Kind = case(OperationName startswith 'Certificate', 'Certificate', OperationName startswith 'Secret', 'Secret',\n        OperationName startswith 'Key', 'Key', 'Other'),\n    State = iff(OperationName contains 'NearExpiry', 'Near expiry', 'Expired')\n| summarize LastSeen = max(TimeGenerated) by Vault, Kind, Object, State\n| order by case(State == 'Expired', 0, 1) asc, LastSeen desc",
+              "size": 0,
+              "title": "Near-expiry and expired events (Key Vault audit log)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No expiry events in the time range. Key Vault reports near expiry once, about 30 days ahead, so use a time range of 30 days or more; vaults must send audit logs to this workspace.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Near expiry",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Reported"
+                  }
+                ]
+              }
+            },
+            "name": "exp-kv-events",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**Not covered:** client secrets and certificates on Entra ID app registrations and service principals are held in Microsoft Graph, which a workbook cannot query. Use Entra ID's *App registrations* blade or a scheduled Graph report for those.",
+              "style": "warning"
+            },
+            "name": "exp-graph-note"
+          }
+        ]
+      },
+      "name": "exp-tab-certificates",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "certificates"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.authorization/policyexemptions'\n| extend Expires = todatetime(properties.expiresOn),\n    Scope = tostring(split(tolower(id), '/providers/microsoft.authorization/policyexemptions/')[0])\n| extend DaysLeft = datetime_diff('day', Expires, now())\n| extend Status = case(isnull(Expires), 'No expiry', Expires < now(), 'Expired', DaysLeft <= {Days}, 'Due', 'Later')\n| project Exemption = coalesce(tostring(properties.displayName), name), Status, Expires, DaysLeft,\n    Category = tostring(properties.exemptionCategory),\n    Assignment = tostring(split(tostring(properties.policyAssignmentId), '/')[-1]),\n    Description = tostring(properties.description), Scope\n| order by case(Status == 'Expired', 0, Status == 'Due', 1, Status == 'No expiry', 3, 2) asc, Expires asc",
+              "size": 0,
+              "title": "Policy exemptions",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No policy exemptions in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Later",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Due",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No expiry",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  }
+                ]
+              }
+            },
+            "name": "exp-exemptions"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "When an exemption expires, the resources it covered count as non-compliant again, and a *Deny* policy starts refusing changes to them. Renew it, or fix the resource, before the date.",
+              "style": "info"
+            },
+            "name": "exp-exemptions-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend RetirementDate = todatetime(properties.extendedProperties.retirementDate),\n    Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), tostring(properties.shortDescription.problem)),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId))\n| extend DaysLeft = datetime_diff('day', RetirementDate, now())\n| summarize Resources = dcount(rid), Examples = strcat_array(make_set(tostring(split(rid, '/')[-1]), 5), ', ')\n    by Retiring, RetirementDate, DaysLeft, Impact = tostring(properties.impact), Action = tostring(properties.shortDescription.solution)\n| extend Due = iff(DaysLeft <= {Days}, 'Yes', '')\n| project Retiring, RetirementDate, DaysLeft, Due, Resources, Examples, Impact, Action\n| order by RetirementDate asc",
+              "size": 0,
+              "title": "Service retirements affecting your resources (Azure Advisor)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor reports no service retirements for the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "60",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Due",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Impact",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RetirementDate",
+                    "label": "Retirement date"
+                  },
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  }
+                ]
+              }
+            },
+            "name": "exp-retirements"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "servicehealthresources\n| where type =~ 'microsoft.resourcehealth/events'\n| where tostring(properties.Status) =~ 'Active'\n| extend EventType = tostring(properties.EventType), Title = tostring(properties.Title)\n| where EventType =~ 'PlannedMaintenance' or tostring(properties.EventSubType) =~ 'Retirement' or Title contains 'retir'\n| extend Kind = iff(EventType =~ 'PlannedMaintenance', 'Planned maintenance', 'Retirement'),\n    Starts = todatetime(tolong(properties.ImpactStartTime)), Ends = todatetime(tolong(properties.ImpactMitigationTime))\n| summarize Subscriptions = dcount(subscriptionId) by Kind, Title, TrackingId = tostring(properties.TrackingId), Starts, Ends\n| order by Starts asc",
+              "size": 0,
+              "title": "Planned maintenance and retirement notices (Azure Service Health)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No active planned maintenance or retirement notices.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Kind",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Planned maintenance",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Retirement",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TrackingId",
+                    "label": "Tracking ID"
+                  }
+                ]
+              }
+            },
+            "name": "exp-maintenance"
+          }
+        ]
+      },
+      "name": "exp-tab-governance",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "governance"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"/providers/Microsoft.Capacity/reservations\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2022-11-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.properties.displayName\", \"columnid\": \"Reservation\"}, {\"path\": \"$.properties.expiryDateTime\", \"columnid\": \"Expires\", \"columnType\": \"datetime\"}, {\"path\": \"$.properties.renew\", \"columnid\": \"Renew\"}, {\"path\": \"$.properties.displayProvisioningState\", \"columnid\": \"State\"}, {\"path\": \"$.properties.reservedResourceType\", \"columnid\": \"Type\"}, {\"path\": \"$.sku.name\", \"columnid\": \"Sku\"}, {\"path\": \"$.properties.quantity\", \"columnid\": \"Quantity\"}, {\"path\": \"$.properties.term\", \"columnid\": \"Term\"}, {\"path\": \"$.properties.userFriendlyAppliedScopeType\", \"columnid\": \"Scope\"}]}}]}",
+              "size": 0,
+              "title": "Reservations",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expiring",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "PendingRenewal",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Cancelled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Split",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Merged",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Renew",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "sortBy": [
+                  {
+                    "itemKey": "Expires",
+                    "sortOrder": 1
+                  }
+                ]
+              },
+              "noDataMessage": "No reservations visible. Reading them needs the Reservations Reader role (at the tenant) or a role on each reservation."
+            },
+            "name": "exp-reservations"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "{\"version\": \"ARMEndpoint/1.0\", \"data\": null, \"headers\": [], \"method\": \"GET\", \"path\": \"/providers/Microsoft.BillingBenefits/savingsPlans\", \"urlParams\": [{\"key\": \"api-version\", \"value\": \"2022-11-01\"}], \"batchDisabled\": false, \"transformers\": [{\"type\": \"jsonpath\", \"settings\": {\"tablePath\": \"$.value\", \"columns\": [{\"path\": \"$.properties.displayName\", \"columnid\": \"SavingsPlan\"}, {\"path\": \"$.properties.expiryDateTime\", \"columnid\": \"Expires\", \"columnType\": \"datetime\"}, {\"path\": \"$.properties.renew\", \"columnid\": \"Renew\"}, {\"path\": \"$.properties.displayProvisioningState\", \"columnid\": \"State\"}, {\"path\": \"$.properties.commitment.amount\", \"columnid\": \"Commitment\"}, {\"path\": \"$.properties.commitment.currencyCode\", \"columnid\": \"Currency\"}, {\"path\": \"$.properties.commitment.grain\", \"columnid\": \"Per\"}, {\"path\": \"$.properties.term\", \"columnid\": \"Term\"}, {\"path\": \"$.properties.appliedScopeType\", \"columnid\": \"Scope\"}]}}]}",
+              "size": 0,
+              "title": "Savings plans",
+              "queryType": 12,
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expiring",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "PendingRenewal",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Expired",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Cancelled",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Split",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Merged",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Renew",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SavingsPlan",
+                    "label": "Savings plan"
+                  }
+                ],
+                "sortBy": [
+                  {
+                    "itemKey": "Expires",
+                    "sortOrder": 1
+                  }
+                ]
+              },
+              "noDataMessage": "No savings plans visible. Reading them needs the Savings plan Reader role or a role on each plan."
+            },
+            "name": "exp-savings-plans"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Sorted by expiry, soonest first. A reservation with **Renew** off simply stops at its expiry date and the resources it covered go back to pay-as-you-go prices, which shows up as a jump in cost the next day. Turn automatic renewal on, or plan an exchange, before the date. Expired and cancelled reservations stay in the list.",
+              "style": "info"
+            },
+            "name": "exp-commitments-note"
+          }
+        ]
+      },
+      "name": "exp-tab-commitments",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "commitments"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

@@ -6,7 +6,8 @@ Enterprise Scale (Azure Landing Zone) deployment. They are built for a **Virtual
 There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
-  *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations* and *Privileged access*.
+  *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
+  *Expiry and renewals*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -19,6 +20,8 @@ There are two kinds of workbook:
 | [Azure VMware Solution](workbook/avs.workbook.json) | Dashboard | Are the private clouds healthy, do they have room to grow, are they connected and monitored, and what are vCenter, ESXi and NSX reporting? | VMware / AVS team, platform operations |
 | [Microsoft Sentinel operations](workbook/sentinel.workbook.json) | Dashboard | Is Sentinel collecting what it should, are its detections and automation running, is the incident queue being worked, what does it cost, and is Purview data arriving? | The team that runs Sentinel, SOC leads |
 | [Privileged access](workbook/privileged-access.workbook.json) | Dashboard | Who is using privileged access, were the activations properly approved, what was granted outside PIM, and do admins sign in safely? | Identity and security owners, auditors |
+| [Expiry and renewals](workbook/expiry.workbook.json) | Dashboard | What expires or retires in the next 90 days: certificates, Key Vault objects, storage keys, AVD registration tokens, policy exemptions, service retirements, planned maintenance, reservations and savings plans? | Platform operations, FinOps |
+| [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
 | [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
 | [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
 | [DNS and private endpoints](workbook/dns-troubleshoot.workbook.json) | Troubleshooter | Why does this name not resolve, or resolve to the wrong address? | Network team, application teams |
@@ -45,6 +48,7 @@ Start from the symptom:
 | "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
 | "Something is wrong in AVS" (VMs slow, vSAN full, workloads unreachable) | **Azure VMware Solution**: Overview, then Capacity or Logs | *Private cloud* tab for the hub connection, Global Reach and NSX segments; **Platform health** ExpressRoute tab for the gateway |
 | "Sentinel didn't alert on something it should have" | **Microsoft Sentinel operations**: Data collection (did the table go silent?) | Detections: failed runs, rules turned off, rule changes in the audit |
+| "A certificate expired and the site is down" | **Expiry and renewals**: Certificates & secrets | Point the service at the versionless Key Vault secret id so the next renewal is picked up by itself |
 | "Who gave this person admin, and was it approved?" | **Privileged access**: Activations and Approvals | Assignments, for roles granted outside PIM; **What changed?** for Azure role assignments |
 
 For a connectivity ticket, work in this order: **DNS** (does the name resolve to the right address?),
@@ -56,8 +60,8 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 | When | What |
 |---|---|
 | **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution and Sentinel operations: the Overview tiles |
-| **Weekly** | Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
-| **Monthly** | Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
+| **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
+| **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
 
 ## Setting up
@@ -96,7 +100,8 @@ them) so new resources are included automatically:
 
 | Logs | Sent from | Used by |
 |---|---|---|
-| Activity log (`AzureActivity`) | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health, Sentinel operations, Privileged access |
+| Activity log (`AzureActivity`), including the *ResourceHealth* and *ServiceHealth* categories | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health, Sentinel operations, Privileged access, Monthly availability report |
+| Key Vault audit logs (`AzureDiagnostics` or `AZKVAuditLogs`) | Each vault's diagnostic setting | Expiry and renewals (near-expiry events), Platform health |
 | Azure Firewall, resource-specific (`AZFW*`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Firewalls, DNS, Platform health |
 | Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
 | VNet flow logs with Traffic Analytics (`NTANetAnalytics`) | Network Watcher | Firewalls (NSG decisions), Platform health (Connectivity) |
@@ -311,6 +316,59 @@ accounts, the **Admin account pattern**. A *rushed* approval is one decided with
 at the top). Logs record changes, not standing state: a role held permanently and not touched in the time range
 does not appear, because the current members of an Entra ID role are only in Microsoft Graph.
 
+## Expiry and renewals workbook
+
+**What falls due in the next 90 days, and what is already overdue?**
+[workbook/expiry.workbook.json](workbook/expiry.workbook.json). It gathers the dates that are otherwise spread over
+the Governance tab, the Azure portal and the billing blades. Choose how far ahead to look with **Due within** (30
+days to a year).
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Resource Graph, Logs* | One tile per kind of deadline (certificates on services, storage account keys, AVD registration tokens, App Gateway certificates renewed by hand, Key Vault objects expiring, policy exemptions, service retirements, planned maintenance); everything held on a resource that falls due in the window; exemptions and retirements due in the window |
+| Certificates & secrets | Resource Graph, Logs* | App Service, API Management, Front Door and Entra Domain Services (secure LDAP) certificates with their expiry and how they are renewed, storage account keys with a key expiration policy, AVD registration tokens; Application Gateway listener certificates and whether they come from Key Vault (latest or pinned version) or were uploaded; Key Vault certificates, secrets and keys flagged by Azure Policy's expiry audits; Key Vault's own near-expiry and expired events* |
+| Exemptions & retirements | Resource Graph | Policy exemptions with their expiry, service retirements from Azure Advisor with the resources affected, planned maintenance and retirement notices from Service Health |
+| Reservations | Resource Manager | Reservations and savings plans with expiry, automatic renewal, state, term and scope |
+
+\* Needs a Log Analytics workspace that receives the Key Vault audit logs.
+
+A workbook cannot read inside a key vault. To list every certificate, secret and key that is due across all vaults,
+assign the built-in Azure Policy definitions *Certificates should not expire within the specified number of days*,
+*Secrets should have more than the specified number of days before expiration* and *Keys should have more than the
+specified number of days before expiration* (effect Audit) at the landing zone root, with the number of days set to
+your window; the *Certificates & secrets* tab lists what they flag. Application Gateway does not expose the expiry of
+an uploaded certificate, so the tab shows where each one comes from instead: one read from Key Vault by its
+versionless id renews itself. Reading reservations needs the *Reservations Reader* role at the tenant (and *Savings
+plan Reader* for savings plans). Entra ID application secrets are in Microsoft Graph, which workbooks cannot query,
+so they are not covered.
+
+## Monthly availability report
+
+**How available was each platform service last month?**
+[workbook/availability-report.workbook.json](workbook/availability-report.workbook.json). A single page with no tabs,
+so it prints in full, for a monthly service review. Choose the **Month** (last month by default), the **Target**,
+and optionally type a few lines of **Commentary** to show at the top.
+
+| Section | What it shows |
+|---|---|
+| Summary tiles | Services meeting the target, the lowest service availability, Resource Health incidents and resources affected, Azure Service Health incidents (hours of impact) and planned maintenance |
+| Availability by service | For every platform service: available %, target met or missed, resources, resources affected, incidents, minutes impaired, longest incident, and the average availability of its resources; minutes impaired per day |
+| Six-month trend | Available % for each service in the month and the five before it |
+| Resource Health incidents | Every period a platform resource was impaired, longest first, with Resource Health's cause and title |
+| Azure Service Health | Incidents posted to the subscriptions (impact window, services, regions, whether a post-incident review is published) and planned maintenance |
+
+*Available %* is the share of the month in which no resource of the service was impaired, so a single firewall
+down counts against Azure Firewall for as long as it was down; *average resource %* spreads the downtime over every
+resource of the service. Impaired means *Unavailable*, and optionally *Degraded* (**Count as down**). Periods
+Resource Health marks as user-initiated are left out unless **User-initiated** says to count them.
+
+The report needs the central workspace that receives every subscription's activity log: Resource Graph keeps only
+14 days of health changes, but the activity log's *ResourceHealth* events keep for as long as the workspace retains
+them, so set the workspace's retention to at least 7 months for the trend. The list of platform resources comes
+from Resource Graph (through `arg("")` in the query), so resources deleted since are left out, and build agent
+scale sets are not included. Resource Health is Microsoft's view of each resource and does not see faults in your
+own configuration, so present it alongside the incidents your team handled.
+
 ## More troubleshooting workbooks
 
 Like the firewall workbook, each of these is a single page that answers one question. See
@@ -481,10 +539,12 @@ python src/build_routing.py
 python src/build_avs.py
 python src/build_sentinel.py
 python src/build_privileged_access.py
+python src/build_expiry.py
+python src/build_availability.py
 python src/build_grafana.py
 ```
 
-Commit the scripts and every generated JSON file (twelve workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (fourteen workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence
