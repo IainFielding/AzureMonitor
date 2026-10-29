@@ -38,6 +38,7 @@ jobs:
           python3 src/build_privileged_access.py
           python3 src/build_expiry.py
           python3 src/build_availability.py
+          python3 src/build_finops_hubs.py
           python3 src/build_grafana.py
 
       - name: Fail if the committed files differ
@@ -58,6 +59,9 @@ jobs:
             echo "    python src/build_avs.py"
             echo "    python src/build_sentinel.py"
             echo "    python src/build_privileged_access.py"
+            echo "    python src/build_expiry.py"
+            echo "    python src/build_availability.py"
+            echo "    python src/build_finops_hubs.py"
             echo "    python src/build_grafana.py"
             exit 1
           fi

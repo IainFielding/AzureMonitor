@@ -24,6 +24,7 @@ python src/build_sentinel.py
 python src/build_privileged_access.py
 python src/build_expiry.py
 python src/build_availability.py
+python src/build_finops_hubs.py
 python src/build_grafana.py
 ```
 

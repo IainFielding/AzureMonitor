@@ -7,7 +7,7 @@ There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
   *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
-  *Expiry and renewals*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
+  *Expiry and renewals* and *FinOps hubs*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -21,6 +21,7 @@ There are two kinds of workbook:
 | [Microsoft Sentinel operations](workbook/sentinel.workbook.json) | Dashboard | Is Sentinel collecting what it should, are its detections and automation running, is the incident queue being worked, what does it cost, and is Purview data arriving? | The team that runs Sentinel, SOC leads |
 | [Privileged access](workbook/privileged-access.workbook.json) | Dashboard | Who is using privileged access, were the activations properly approved, what was granted outside PIM, and do admins sign in safely? | Identity and security owners, auditors |
 | [Expiry and renewals](workbook/expiry.workbook.json) | Dashboard | What expires or retires in the next 90 days: certificates, Key Vault objects, storage keys, AVD registration tokens, policy exemptions, service retirements, planned maintenance, reservations and savings plans? | Platform operations, FinOps |
+| [FinOps hubs](workbook/finops-hubs.workbook.json) | Dashboard | Are the FinOps hubs (FinOps toolkit v15) healthy and up to date, are the Cost Management exports landing, are the Data Factory pipelines and triggers running, and is Azure Data Explorer ingesting and holding current data? | FinOps team, platform operations |
 | [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
 | [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
 | [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
@@ -44,6 +45,7 @@ Start from the symptom:
 | "Connections time out but the firewall allowed them" | **Routing**, for asymmetric routing | **Firewalls**: *Allowed but no reply* and out-of-state drops |
 | "My deployment failed with RequestDisallowedByPolicy / AuthorizationFailed / ScopeLocked" | **Why was this request refused?** with the correlation id | Create a policy exemption, or grant the role it names |
 | "A user can't get onto (or is slow on) virtual desktop" | **Azure Virtual Desktop: one user** | **Platform health**: AVD and Storage (FSLogix) tabs for the host pool as a whole |
+| "The FinOps reports stopped updating" (Power BI shows old or missing months) | **FinOps hubs**: Overview, then Data Explorer *Data in the hub* | Data Factory tab for stopped triggers and failed runs; Storage & exports for the exports' last run |
 | "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
 | "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
 | "Something is wrong in AVS" (VMs slow, vSAN full, workloads unreachable) | **Azure VMware Solution**: Overview, then Capacity or Logs | *Private cloud* tab for the hub connection, Global Reach and NSX segments; **Platform health** ExpressRoute tab for the gateway |
@@ -59,7 +61,7 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 
 | When | What |
 |---|---|
-| **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution and Sentinel operations: the Overview tiles |
+| **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution, Sentinel operations and FinOps hubs: the Overview tiles |
 | **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
 | **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
@@ -113,6 +115,7 @@ them) so new resources are included automatically:
 | Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
 | VMware syslog (`AVSSyslog`): vCenter, ESXi, vSAN and NSX, including NSX firewall rule logging | Each AVS private cloud's diagnostic setting, category *VMware Syslog* | Azure VMware Solution |
 | Sentinel health and audit (`SentinelHealth`, `SentinelAudit`) | Sentinel → Settings → *Auditing and health monitoring* | Sentinel operations |
+| FinOps hub Data Factory runs (`ADFPipelineRun`, `ADFActivityRun`, `ADFTriggerRun`, or `AzureDiagnostics`), Data Explorer ingestion and commands (`SucceededIngestion`, `FailedIngestion`, `ADXCommand`), blob logs (`StorageBlobLogs`) | Each hub data factory's, cluster's and data lake storage account's diagnostic setting | FinOps hubs |
 
 The Platform health workbook's *Monitoring* tab lists platform resources that are not logging, and the cost
 workbook shows what each of these costs once it is flowing.
@@ -273,6 +276,31 @@ the Platform health workbook's AVS tab. It runs without a workspace; pick one fo
 
 \* Needs each private cloud's diagnostic setting sending *VMware Syslog* to the workspace (`AVSSyslog`), and the
 activity log (`AzureActivity`) for the last panel.
+
+## FinOps hubs workbook
+
+**Are the FinOps hubs healthy and up to date, are the Cost Management exports landing, are the Data Factory
+pipelines and triggers running, and is Azure Data Explorer ingesting and holding current data?**
+[workbook/finops-hubs.workbook.json](workbook/finops-hubs.workbook.json). Built for
+[FinOps toolkit](https://github.com/microsoft/finops-toolkit) v15 hubs; earlier hubs work too. A hub is every resource
+carrying the tag the hub template puts on all it deploys, `cm-resource-parent` = `.../providers/Microsoft.Cloud/hubs/<name>`,
+and its version comes from the `ftk-version` tag. It runs without a workspace; pick one for the Logs tab and the
+data checks.
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Resource Graph, Metrics | Hubs and hubs older than the *Latest version* parameter (default 15.0), unhealthy hub resources, Data Explorer clusters not running or on a Dev SKU, deployment scripts left behind by a failed deploy, factories and clusters with no failure alerts, Service Health and Advisor; each hub's version, data store, network mode and remote hub status; pipeline, activity and trigger run counts per factory; keep alive, CPU, ingestion and cache per cluster; every hub resource with its health; Resource Health changes; changes |
+| Data Factory | Resource Manager, Metrics | For one factory: every trigger and whether it is started, managed private endpoints and their approval, pipeline runs and failures by pipeline, activity and trigger failures, the last 100 pipeline runs (select one for its activity runs and errors), trigger runs, diagnostic settings |
+| Data Explorer | Resource Graph, Resource Manager, Metrics, Logs* | For one cluster: state, SKU, auto-stop, public network access, databases with their cache and retention; keep alive, CPU, cache, ingestion result, latency, volume by database, query duration; *with a workspace*, rows and latest date of each Hub dataset (Costs, Prices, CommitmentDiscountUsage, Recommendations, Transactions), cost and rows per month for 13 months, hub settings and scopes |
+| Storage & exports | Resource Graph, Metrics, Resource Manager | Hub storage accounts (hierarchical namespace, network, shared key, TLS), availability, transactions, latency and capacity; the Cost Management exports at a scope you enter, with their last run status, error, next run and destination |
+| Network & security | Resource Graph, Metrics | v15 VNet and private network modes: virtual networks, subnets, NAT gateway, NSGs, private endpoints to hub resources and their approval, managed identities, metric alert coverage on factories and clusters, Key Vault availability (remote hubs) |
+| Logs | Logs* | Which hub resources are sending logs; pipeline runs by status, trigger runs, each pipeline's last status and last success, failed activities by error; ingestions by result, last successful ingestion per table, failed ingestions, failed commands; files written to msexports, ingestion and config, storage errors; Azure operations in the hubs' resource groups |
+
+\* Needs the diagnostic settings listed under [Logs to collect](#logs-to-collect). The data checks on the Data Explorer tab read the
+cluster's Hub and Ingestion databases with a cross-service `adx()` query from the workspace, so the viewer needs at
+least *Viewer* on those databases and the portal must reach the cluster (they show an error when the cluster's
+public network access is off). Pipeline and trigger runs come from Data Factory, which keeps 45 days. A hub that
+stores its data in Microsoft Fabric has no cluster to show; the rest of the workbook still applies.
 
 ## Microsoft Sentinel operations workbook
 
@@ -541,10 +569,11 @@ python src/build_sentinel.py
 python src/build_privileged_access.py
 python src/build_expiry.py
 python src/build_availability.py
+python src/build_finops_hubs.py
 python src/build_grafana.py
 ```
 
-Commit the scripts and every generated JSON file (fourteen workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (fifteen workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence
