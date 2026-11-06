@@ -7,7 +7,7 @@ There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
   *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
-  *Expiry and renewals* and *FinOps hubs*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
+  *Expiry and renewals*, *FinOps hubs* and *Azure Policy compliance*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -22,6 +22,7 @@ There are two kinds of workbook:
 | [Privileged access](workbook/privileged-access.workbook.json) | Dashboard | Who is using privileged access, were the activations properly approved, what was granted outside PIM, and do admins sign in safely? | Identity and security owners, auditors |
 | [Expiry and renewals](workbook/expiry.workbook.json) | Dashboard | What expires or retires in the next 90 days: certificates, Key Vault objects, storage keys, AVD registration tokens, policy exemptions, service retirements, planned maintenance, reservations and savings plans? | Platform operations, FinOps |
 | [FinOps hubs](workbook/finops-hubs.workbook.json) | Dashboard | Are the FinOps hubs (FinOps toolkit v15) healthy and up to date, are the Cost Management exports landing, are the Data Factory pipelines and triggers running, and is Azure Data Explorer ingesting and holding current data? | FinOps team, platform operations |
+| [Azure Policy compliance](workbook/policy-compliance.workbook.json) | Dashboard | How compliant is the estate with Azure Policy, what is exposed to the internet, which exemptions are expiring, how do we score against our regulatory initiatives, and what can be remediated automatically? | Governance and security owners, auditors |
 | [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
 | [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
 | [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
@@ -51,6 +52,7 @@ Start from the symptom:
 | "Something is wrong in AVS" (VMs slow, vSAN full, workloads unreachable) | **Azure VMware Solution**: Overview, then Capacity or Logs | *Private cloud* tab for the hub connection, Global Reach and NSX segments; **Platform health** ExpressRoute tab for the gateway |
 | "Sentinel didn't alert on something it should have" | **Microsoft Sentinel operations**: Data collection (did the table go silent?) | Detections: failed runs, rules turned off, rule changes in the audit |
 | "A certificate expired and the site is down" | **Expiry and renewals**: Certificates & secrets | Point the service at the versionless Key Vault secret id so the next renewal is picked up by itself |
+| "How compliant are we, and what do we fix first?" (an audit, or a security review) | **Azure Policy compliance**: Overview, then Regulatory frameworks for the initiative being audited | Remediation for what can be fixed by a remediation task; Public exposure for what is reachable from the internet |
 | "Who gave this person admin, and was it approved?" | **Privileged access**: Activations and Approvals | Assignments, for roles granted outside PIM; **What changed?** for Azure role assignments |
 
 For a connectivity ticket, work in this order: **DNS** (does the name resolve to the right address?),
@@ -62,7 +64,7 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 | When | What |
 |---|---|
 | **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution, Sentinel operations and FinOps hubs: the Overview tiles |
-| **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams |
+| **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams. Azure Policy compliance: Public exposure, and exemptions expiring within 30 days |
 | **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
 
@@ -370,6 +372,37 @@ versionless id renews itself. Reading reservations needs the *Reservations Reade
 plan Reader* for savings plans). Entra ID application secrets are in Microsoft Graph, which workbooks cannot query,
 so they are not covered.
 
+## Azure Policy compliance workbook
+
+**How compliant is the estate with Azure Policy, and what needs attention?**
+[workbook/policy-compliance.workbook.json](workbook/policy-compliance.workbook.json). It reads only Resource Graph, so
+it needs no workspace. *Why was this request refused?* explains one denied deployment; this workbook is the
+estate-wide view.
+
+| Tab | What it shows |
+|---|---|
+| Overview | Resource and policy compliance tiles, exemption tiles; compliance by state, resource category and effect; by management group (including child groups) and subscription; top failing policies and resource groups |
+| Policies & assignments | Compliance per policy (select a row for its failing resources), by policy category, and per assignment, with enforcement mode, managed identity, exclusions and whether it has a non-compliance message |
+| Resources | Compliance by resource type and region; every evaluated resource with its status (select one for every policy state that applies to it) |
+| Public exposure | Read from live configuration, not policy results: NSG inbound rules open to the internet (Critical for all ports, High for SSH, RDP, SMB, databases and other sensitive ports), VMs with public IPs, PaaS services with public endpoints, storage anonymous access / HTTPS / TLS, AKS API server exposure, App Service HTTPS, application gateways without WAF, the public IP inventory (including unattached IPs), and exposure-related policy compliance |
+| Exemptions | Expiry status, a 12-month expiry timeline, what expires within 30 days, the full register (justification, metadata, orphan check) and exempt resources per assignment. Extra filters for expiry status and Waiver / Mitigated |
+| Regulatory frameworks | Compliance per assigned initiative; pick one for pass/fail per control and domain, and select a control for its failing resources |
+| Remediation | DeployIfNotExists and Modify backlog by assignment, flagging assignments with no managed identity (they cannot remediate); the top manual fixes |
+| Governance hygiene | DoNotEnforce assignments, assignments with no non-compliance message, exclusions (notScopes), deprecated or preview policies in use, expired or orphaned exemptions, subscriptions with no evaluation results, unused custom definitions |
+
+The filters apply to every tab: management group (everything under it, plus assignments and exemptions inherited from
+above), subscription, resource category (resource providers grouped by service area), policy category, effect,
+initiative and compliance state. On *Public exposure* only the management group, subscription and resource category
+filters apply, except to its policy table.
+
+**Compliance %** is the share of evaluated resources with no non-compliant policy state; exempt and unknown count as
+compliant, as in the Azure portal. The compliance state filter works on individual results (one per resource and
+policy), so choosing *Non-compliant* drops the compliant results and the compliance % reads 0: use it to narrow
+lists, not to read the headline figures. The Regulatory tab works with any initiative that uses
+`policyDefinitionGroups`; the built-in CIS Azure Foundations, NIST SP 800-53 Rev. 5, ISO 27001 and Microsoft cloud
+security benchmark initiatives all do, and a custom initiative with one group per control appears the same way.
+Resource Graph holds only the latest state; for compliance trends, export policy states to Log Analytics.
+
 ## Monthly availability report
 
 **How available was each platform service last month?**
@@ -570,10 +603,11 @@ python src/build_privileged_access.py
 python src/build_expiry.py
 python src/build_availability.py
 python src/build_finops_hubs.py
+python src/build_policy_compliance.py
 python src/build_grafana.py
 ```
 
-Commit the scripts and every generated JSON file (fifteen workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (sixteen workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence

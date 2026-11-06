@@ -39,6 +39,7 @@ jobs:
           python3 src/build_expiry.py
           python3 src/build_availability.py
           python3 src/build_finops_hubs.py
+          python3 src/build_policy_compliance.py
           python3 src/build_grafana.py
 
       - name: Fail if the committed files differ
@@ -62,6 +63,7 @@ jobs:
             echo "    python src/build_expiry.py"
             echo "    python src/build_availability.py"
             echo "    python src/build_finops_hubs.py"
+            echo "    python src/build_policy_compliance.py"
             echo "    python src/build_grafana.py"
             exit 1
           fi
