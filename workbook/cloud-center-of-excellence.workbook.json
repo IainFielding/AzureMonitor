@@ -1,0 +1,2777 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Cloud Center of Excellence\nOne scorecard for the team that sets cloud standards: governance and tagging, landing zone placement, security posture and privileged access, savings and idle resources, monitoring, patching and retirements, by subscription. Read from Azure Resource Graph: no workspace needed. You need **Reader** across the subscriptions (at the tenant root management group to see everything)."
+      },
+      "name": "ccoe-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "9f6638a0-cc79-568f-a63f-631bb2a4934a",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "d2308d0d-9d4d-5040-b01f-02bbae3a9cad",
+            "version": "KqlParameterItem/1.0",
+            "name": "RequiredTags",
+            "label": "Required tags",
+            "type": 1,
+            "isRequired": false,
+            "value": "owner,costcenter,environment",
+            "description": "Comma-separated tag names every resource should carry, as your tagging policy sets out. Compared without case."
+          },
+          {
+            "id": "95cd33ea-0334-56a0-8217-9ab160b1d5af",
+            "version": "KqlParameterItem/1.0",
+            "name": "OwnerTag",
+            "label": "Owner tag",
+            "type": 1,
+            "isRequired": false,
+            "value": "owner",
+            "description": "The tag on a subscription that names its owner, shown beside each subscription."
+          },
+          {
+            "id": "f3d254dd-4c97-5303-992e-65845f7edf87",
+            "version": "KqlParameterItem/1.0",
+            "name": "ApprovedRegions",
+            "label": "Approved regions",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. Comma-separated Azure region names (for example uksouth,ukwest). Resources elsewhere are counted on the Scorecard and listed on Governance & tagging."
+          },
+          {
+            "id": "630ef21d-841b-5f80-bc3d-bda33f89390d",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "scorecard",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "ccoe-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "f5717bcc-f88f-5c09-a0a4-0745d4c4c836",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Scorecard",
+            "subTarget": "scorecard",
+            "style": "link"
+          },
+          {
+            "id": "297448df-54a4-521c-9b44-7ec11d4fb326",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Landing zones",
+            "subTarget": "landingzones",
+            "style": "link"
+          },
+          {
+            "id": "136766d2-d218-5082-8780-e968e80f70fb",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Governance & tagging",
+            "subTarget": "governance",
+            "style": "link"
+          },
+          {
+            "id": "ed89d62a-c809-5939-ae80-3dc7377f6596",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Cost",
+            "subTarget": "cost",
+            "style": "link"
+          },
+          {
+            "id": "76b5c3bd-0a10-5c76-9721-92a7522a8f8f",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Security & identity",
+            "subTarget": "security",
+            "style": "link"
+          },
+          {
+            "id": "87e5544d-35f5-55a6-84c7-c56449858292",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Operations",
+            "subTarget": "operations",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "ccoe-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Govern"
+            },
+            "name": "ccoe-govern-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| summarize Total = dcount(tostring(properties.resourceId)),\n    Bad = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')\n| project Signal = 'Policy compliance',\n    Value = iff(Total == 0, real(null), round(100.0 * (Total - Bad) / Total, 1)),\n    Detail = strcat(Bad, ' non-compliant resources'),\n    State = case(Total == 0, 'Unknown', Bad == 0, 'Available', 'Degraded')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 0
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-policy",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type !in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions', 'microsoft.network/networkwatchers', 'microsoft.network/networkwatchers/flowlogs', 'microsoft.alertsmanagement/smartdetectoralertrules', 'microsoft.compute/restorepointcollections')\n| extend tagText = tolower(tostring(tags)), required = split(tolower('{RequiredTags}'), ',')\n| mv-expand tag = required\n| extend tag = trim(' ', tostring(tag))\n| where isnotempty(tag)\n| extend HasTag = tagText contains strcat('\"', tag, '\":')\n| summarize Missing = make_set_if(tag, not(HasTag)) by id, type, subscriptionId, resourceGroup\n| summarize Total = count(), Full = countif(array_length(Missing) == 0)\n| project Signal = 'Tag coverage', Value = iff(Total == 0, real(null), round(100.0 * Full / Total, 1)),\n    Detail = strcat(Total - Full, ' resources missing a required tag'),\n    State = case(Total == 0, 'Unknown', Full == Total, 'Available', Full >= 0.8 * Total, 'Degraded', 'Unavailable')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 0
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-tags",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| extend chain = properties.managementGroupAncestorsChain\n| project subscriptionId, Subscription = name, SubState = tostring(properties.state),\n    ParentMG = iff(array_length(chain) > 0, tostring(chain[0].displayName), '(none)'),\n    Depth = coalesce(array_length(chain), 0),\n    Offer = tostring(split(tostring(properties.subscriptionPolicies.quotaId), '_')[0]),\n    Owner = extract(@'(?i)\"{OwnerTag}\":\"([^\"]*)\"', 1, tostring(tags))\n| extend Placement = case(Depth == 0, 'No management group', Depth == 1, 'Directly under tenant root', 'In a management group')\n| summarize Total = count(), Outside = countif(Placement != 'In a management group')\n| project Signal = 'Subscriptions at the tenant root', Value = Outside, Detail = strcat('of ', Total, ' subscriptions'),\n    State = iff(Outside > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-placement",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where isnotempty(location) and location !~ 'global'\n| summarize Resources = count() by location = tolower(location), subscriptionId\n| extend approved = split(tolower('{ApprovedRegions}'), ',')\n| mv-expand a = approved\n| extend a = trim(' ', tostring(a))\n| summarize Approved = countif(a == location), Listed = countif(isnotempty(a)) by location, subscriptionId, Resources\n| where Listed > 0 and Approved == 0\n| summarize Resources = sum(Resources), Regions = dcount(location)\n| project Signal = 'Resources outside approved regions', Value = coalesce(Resources, 0),\n    Detail = strcat('in ', coalesce(Regions, 0), ' regions'), State = iff(coalesce(Resources, 0) > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-regions",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            },
+            "conditionalVisibility": {
+              "parameterName": "ApprovedRegions",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Secure"
+            },
+            "name": "ccoe-secure-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type in~ ('microsoft.security/securescores', 'microsoft.security/locations/alerts')\n| extend isScore = type =~ 'microsoft.security/securescores',\n    isActiveAlert = type =~ 'microsoft.security/locations/alerts' and tostring(properties.Status) =~ 'Active'\n| summarize Score = avgif(toreal(properties.score.percentage), isScore), Subs = countif(isScore),\n    Alerts = countif(isActiveAlert), High = countif(isActiveAlert and tostring(properties.Severity) =~ 'High')\n| project Signal = 'Defender for Cloud',\n    Value = iff(Subs == 0, real(null), round(Score * 100, 0)),\n    Detail = strcat('secure score · ', Alerts, ' alerts (', High, ' high)'),\n    State = case(High > 0, 'Unavailable', Subs == 0, 'Unknown', Score < 0.5, 'Unavailable', Score < 0.8 or Alerts > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  },
+                  "numberFormat": {
+                    "unit": 1,
+                    "options": {
+                      "style": "decimal",
+                      "maximumFractionDigits": 0
+                    }
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-defender",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1])),\n    scope = tolower(tostring(properties.scope))\n| where roleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| extend Role = case(roleId startswith '8e3af657', 'Owner', roleId startswith '18d7d88d', 'User Access Administrator',\n        'RBAC Administrator'),\n    ScopeLevel = case(scope == '/', 'Tenant root', scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',\n        array_length(split(scope, '/')) == 3, 'Subscription', array_length(split(scope, '/')) == 5, 'Resource group', 'Resource')\n| summarize by scope, ScopeLevel, Role, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n| where ScopeLevel in ('Tenant root', 'Management group', 'Subscription')\n| summarize Direct = countif(principalType =~ 'User'), Total = count()\n| project Signal = 'Privileged roles held by users directly', Value = Direct,\n    Detail = strcat('of ', Total, ' at subscription scope or above'), State = iff(Direct > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-owners",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Manage cost"
+            },
+            "name": "ccoe-cost-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend Category = tostring(properties.category)\n| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',\n        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',\n        Category),\n    Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem),\n    Solution = tostring(properties.shortDescription.solution),\n    RecType = tostring(properties.recommendationTypeId),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId)),\n    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),\n        12 * todouble(properties.extendedProperties.savingsAmount)),\n    Currency = tostring(properties.extendedProperties.savingsCurrency)\n| where Pillar == 'Cost Optimization'\n| summarize Savings = sum(Savings), Recs = count(), Currency = take_anyif(Currency, isnotempty(Currency))\n| project Signal = 'Advisor savings a year', Value = round(coalesce(Savings, 0.0), 0),\n    Detail = strcat(coalesce(Currency, ''), ' · ', Recs, ' recommendations'), State = iff(Recs > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-savings",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/disks', 'microsoft.compute/snapshots', 'microsoft.compute/virtualmachines', 'microsoft.network/loadbalancers', 'microsoft.network/natgateways', 'microsoft.network/publicipaddresses', 'microsoft.web/serverfarms')\n\n| extend Waste = case(\n    type =~ 'microsoft.compute/disks' and (tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy)), 'Unattached disk',\n    type =~ 'microsoft.network/publicipaddresses' and (isempty(tostring(properties.ipConfiguration.id)) and isempty(tostring(properties.natGateway.id))), 'Unused public IP',\n    type =~ 'microsoft.compute/virtualmachines' and (tostring(properties.extended.instanceView.powerState.code) =~ 'PowerState/stopped'), 'VM stopped but not deallocated',\n    type =~ 'microsoft.web/serverfarms' and (toint(properties.numberOfSites) == 0 and tolower(tostring(sku.tier)) !in ('free', 'shared', 'dynamic')), 'App Service plan with no apps',\n    type =~ 'microsoft.network/loadbalancers' and (tostring(sku.name) =~ 'Standard' and coalesce(array_length(properties.backendAddressPools), 0) == 0), 'Load balancer with no backend pools',\n    type =~ 'microsoft.network/natgateways' and (coalesce(array_length(properties.subnets), 0) == 0), 'NAT gateway on no subnet',\n    type =~ 'microsoft.compute/snapshots' and (todatetime(properties.timeCreated) < ago(90d)), 'Snapshot older than 90 days',\n    '')\n| where isnotempty(Waste)\n| extend Detail = case(Waste == 'Unattached disk', strcat(tostring(properties.diskSizeGB), ' GB ', tostring(sku.name)), Waste == 'Unused public IP', strcat(tostring(sku.name), ' ', tostring(properties.ipAddress)), Waste == 'VM stopped but not deallocated', tostring(properties.hardwareProfile.vmSize), Waste == 'App Service plan with no apps', strcat(tostring(sku.name), ' x', tostring(sku.capacity)), Waste == 'Load balancer with no backend pools', tostring(sku.name), Waste == 'NAT gateway on no subnet', tostring(sku.name), Waste == 'Snapshot older than 90 days', strcat(tostring(properties.diskSizeGB), ' GB, taken ', format_datetime(todatetime(properties.timeCreated), 'yyyy-MM-dd')), ''),\n    Fix = case(Waste == 'Unattached disk', 'Snapshot it if it may be needed again, then delete it', Waste == 'Unused public IP', 'Delete it, unless the address is reserved for a planned service', Waste == 'VM stopped but not deallocated', 'Stop it from the portal or with deallocate: a VM shut down from inside is still billed for compute', Waste == 'App Service plan with no apps', 'Delete the plan: it is billed per instance whether or not it hosts apps', Waste == 'Load balancer with no backend pools', 'Delete it: Standard load balancers are billed per rule', Waste == 'NAT gateway on no subnet', 'Delete it, or attach it to the subnets that need outbound access', Waste == 'Snapshot older than 90 days', 'Delete it if it is not part of a retention plan; use Azure Backup for long-term copies', '')\n| project id, Waste, Detail, Fix, subscriptionId, ResourceGroup = resourceGroup, Location = location\n| summarize Resources = count(), Kinds = dcount(Waste)\n| project Signal = 'Idle resources', Value = Resources, Detail = strcat(Kinds, ' kinds · see Cost'),\n    State = iff(Resources > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-waste",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Operate"
+            },
+            "name": "ccoe-operate-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| where tostring(properties.impact) =~ 'High'\n| summarize Problems = dcount(tostring(properties.shortDescription.problem)), Total = count(),\n    Reliability = countif(tostring(properties.category) =~ 'HighAvailability')\n| project Signal = 'Advisor high-impact issues', Value = Problems,\n    Detail = strcat(Total, ' affected resources (', Reliability, ' reliability)'),\n    State = case(Reliability > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-advisor",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n\n| project id = tolower(id), subscriptionId, Kind = iff(type =~ 'microsoft.hybridcompute/machines', 'Arc server', 'VM'),\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus), ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions')\n    | extend ext = tostring(properties.type)\n    | where ext in~ ('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent', 'MicrosoftMonitoringAgent', 'OmsAgentForLinux')\n    | summarize Ama = countif(ext startswith 'AzureMonitor'), Legacy = countif(not(ext startswith 'AzureMonitor'))\n        by id = tostring(split(tolower(id), '/extensions/')[0])\n  ) on id\n| extend Agent = case(Ama > 0 and Legacy > 0, 'Azure Monitor Agent and legacy agent', Ama > 0, 'Azure Monitor Agent',\n    Legacy > 0, 'Legacy agent only', 'No agent')\n| project-away id1\n| summarize Total = count(), Gaps = countif(Agent in ('Legacy agent only', 'No agent')),\n    Legacy = countif(Agent == 'Legacy agent only')\n| project Signal = 'Machines without Azure Monitor Agent', Value = Gaps,\n    Detail = strcat('of ', Total, ' · ', Legacy, ' on the legacy agent'),\n    State = case(Total == 0, 'Unknown', Gaps > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-agents",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend Category = tostring(properties.category)\n| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',\n        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',\n        Category),\n    Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem),\n    Solution = tostring(properties.shortDescription.solution),\n    RecType = tostring(properties.recommendationTypeId),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId)),\n    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),\n        12 * todouble(properties.extendedProperties.savingsAmount)),\n    Currency = tostring(properties.extendedProperties.savingsCurrency)\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend Retires = todatetime(properties.extendedProperties.retirementDate),\n    Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), Problem)\n| where Retires < now() + 180d\n| summarize Features = dcount(Retiring), Resources = dcount(rid)\n| project Signal = 'Retiring within 180 days', Value = Features, Detail = strcat(Resources, ' resources affected'),\n    State = iff(Features > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-tile-retirements",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**How to read this.** Each tile is one measure the CCoE owns; a green tick means nothing needs action, amber means\nsome subscriptions are behind. *Policy compliance* is the share of evaluated resources with no failing policy (as in\nthe Azure portal). *Tag coverage* counts resources that carry every tag in **Required tags**, ignoring the\nplatform's own types that nobody tags (extensions, Network Watcher). *Privileged roles* are Owner, User Access\nAdministrator and RBAC Administrator assigned to a user rather than a group. *Idle resources* are unattached disks,\nunused public IPs, stopped but billed VMs, empty App Service plans, unused load balancers and NAT gateways, and old\nsnapshots. *Advisor savings* is Azure Advisor's own estimate, a year. Advisor high-impact issues and the Defender for\nCloud secure score are the same figures as on the Platform health overview.",
+              "style": "info"
+            },
+            "name": "ccoe-scorecard-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| extend chain = properties.managementGroupAncestorsChain\n| project subscriptionId, Subscription = name, SubState = tostring(properties.state),\n    ParentMG = iff(array_length(chain) > 0, tostring(chain[0].displayName), '(none)'),\n    Depth = coalesce(array_length(chain), 0),\n    Offer = tostring(split(tostring(properties.subscriptionPolicies.quotaId), '_')[0]),\n    Owner = extract(@'(?i)\"{OwnerTag}\":\"([^\"]*)\"', 1, tostring(tags))\n| extend Placement = case(Depth == 0, 'No management group', Depth == 1, 'Directly under tenant root', 'In a management group')\n| join kind=leftouter (\n    resources\n    | where type !in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions', 'microsoft.network/networkwatchers', 'microsoft.network/networkwatchers/flowlogs', 'microsoft.alertsmanagement/smartdetectoralertrules', 'microsoft.compute/restorepointcollections')\n    | extend tagText = tolower(tostring(tags)), required = split(tolower('{RequiredTags}'), ',')\n    | mv-expand tag = required\n    | extend tag = trim(' ', tostring(tag))\n    | where isnotempty(tag)\n    | extend HasTag = tagText contains strcat('\"', tag, '\":')\n    | summarize Missing = make_set_if(tag, not(HasTag)) by id, type, subscriptionId, resourceGroup\n    | summarize Resources = count(), Tagged = countif(array_length(Missing) == 0) by subscriptionId\n  ) on subscriptionId\n| join kind=leftouter (\n    policyresources\n    | where type =~ 'microsoft.policyinsights/policystates'\n    | summarize Evaluated = dcount(tostring(properties.resourceId)),\n        NonCompliant = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant')\n        by subscriptionId\n  ) on subscriptionId\n| join kind=leftouter (\n    securityresources\n    | where type =~ 'microsoft.security/securescores'\n    | project subscriptionId, SecureScorePct = round(100 * toreal(properties.score.percentage), 0)\n  ) on subscriptionId\n| project Subscription, ParentMG, Placement, Owner, Resources = coalesce(Resources, 0),\n    TagPct = iff(Resources > 0, round(100.0 * Tagged / Resources, 0), real(null)),\n    PolicyPct = iff(Evaluated > 0, round(100.0 * (Evaluated - NonCompliant) / Evaluated, 0), real(null)),\n    SecureScorePct, subscriptionId\n| order by PolicyPct asc",
+              "size": 0,
+              "title": "Scorecard by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No subscriptions selected.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Placement",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "In a management group",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Directly under tenant root",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No management group",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "TagPct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "PolicyPct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "SecureScorePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "subscriptionId",
+                    "formatter": 5
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ParentMG",
+                    "label": "Parent management group"
+                  },
+                  {
+                    "columnId": "TagPct",
+                    "label": "Tag coverage %"
+                  },
+                  {
+                    "columnId": "PolicyPct",
+                    "label": "Policy compliance %"
+                  },
+                  {
+                    "columnId": "SecureScorePct",
+                    "label": "Secure score %"
+                  },
+                  {
+                    "columnId": "subscriptionId",
+                    "label": "Subscription ID"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-scorecard"
+          }
+        ]
+      },
+      "name": "ccoe-tab-scorecard",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "scorecard"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Where subscriptions sit in the management group hierarchy, and how the estate is growing. In an Azure landing zone every subscription belongs under a landing zone, platform, sandbox or decommissioned management group; one *directly under the tenant root* gets none of the policies or access set on those groups."
+            },
+            "name": "ccoe-lz-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| extend chain = properties.managementGroupAncestorsChain\n| project subscriptionId, Subscription = name, SubState = tostring(properties.state),\n    ParentMG = iff(array_length(chain) > 0, tostring(chain[0].displayName), '(none)'),\n    Depth = coalesce(array_length(chain), 0),\n    Offer = tostring(split(tostring(properties.subscriptionPolicies.quotaId), '_')[0]),\n    Owner = extract(@'(?i)\"{OwnerTag}\":\"([^\"]*)\"', 1, tostring(tags))\n| extend Placement = case(Depth == 0, 'No management group', Depth == 1, 'Directly under tenant root', 'In a management group')\n| summarize Subscriptions = count() by ParentMG\n| order by Subscriptions desc",
+              "size": 0,
+              "title": "Subscriptions by parent management group",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "barchart"
+            },
+            "name": "ccoe-by-mg",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| extend chain = properties.managementGroupAncestorsChain\n| project subscriptionId, Subscription = name, SubState = tostring(properties.state),\n    ParentMG = iff(array_length(chain) > 0, tostring(chain[0].displayName), '(none)'),\n    Depth = coalesce(array_length(chain), 0),\n    Offer = tostring(split(tostring(properties.subscriptionPolicies.quotaId), '_')[0]),\n    Owner = extract(@'(?i)\"{OwnerTag}\":\"([^\"]*)\"', 1, tostring(tags))\n| extend Placement = case(Depth == 0, 'No management group', Depth == 1, 'Directly under tenant root', 'In a management group')\n| summarize Subscriptions = count() by Offer = iff(isempty(Offer), '(unknown)', Offer)",
+              "size": 0,
+              "title": "Subscriptions by offer",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart"
+            },
+            "name": "ccoe-by-offer",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| extend chain = properties.managementGroupAncestorsChain\n| project subscriptionId, Subscription = name, SubState = tostring(properties.state),\n    ParentMG = iff(array_length(chain) > 0, tostring(chain[0].displayName), '(none)'),\n    Depth = coalesce(array_length(chain), 0),\n    Offer = tostring(split(tostring(properties.subscriptionPolicies.quotaId), '_')[0]),\n    Owner = extract(@'(?i)\"{OwnerTag}\":\"([^\"]*)\"', 1, tostring(tags))\n| extend Placement = case(Depth == 0, 'No management group', Depth == 1, 'Directly under tenant root', 'In a management group')\n| join kind=leftouter (\n    resources\n    | summarize Resources = count(), ResourceGroups = dcount(resourceGroup), Regions = dcount(location) by subscriptionId\n  ) on subscriptionId\n| project Subscription, SubState, Placement, ParentMG, Owner, Offer, Resources = coalesce(Resources, 0),\n    ResourceGroups = coalesce(ResourceGroups, 0), Regions = coalesce(Regions, 0), subscriptionId\n| order by case(Placement == 'In a management group', 1, 0) asc, ParentMG asc, Subscription asc",
+              "size": 0,
+              "title": "Subscriptions",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No subscriptions selected.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Placement",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "In a management group",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Directly under tenant root",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No management group",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "SubState",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Warned",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "PastDue",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleted",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "subscriptionId",
+                    "formatter": 5
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SubState",
+                    "label": "State"
+                  },
+                  {
+                    "columnId": "ParentMG",
+                    "label": "Parent management group"
+                  },
+                  {
+                    "columnId": "ResourceGroups",
+                    "label": "Resource groups"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-inventory"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp), ChangeType = tostring(properties.changeType)\n| where ChangeType in ('Create', 'Delete')\n| summarize Created = countif(ChangeType == 'Create'), Deleted = countif(ChangeType == 'Delete')\n    by Day = format_datetime(startofday(Time), 'yyyy-MM-dd')\n| order by Day asc",
+              "size": 0,
+              "title": "Resources created and deleted per day (last 14 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "barchart",
+              "noDataMessage": "No resources created or deleted in the last 14 days.",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Created",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "Deleted",
+                    "color": "redBright"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-growth"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| summarize Resources = count(), Subscriptions = dcount(subscriptionId), Regions = dcount(location) by Type = tolower(type)\n| top 25 by Resources desc",
+              "size": 0,
+              "title": "Most common resource types",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "ccoe-types",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where isnotempty(location)\n| summarize Resources = count() by Region = tolower(location)\n| top 15 by Resources desc",
+              "size": 0,
+              "title": "Resources by region",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart"
+            },
+            "name": "ccoe-regions",
+            "customWidth": "40"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Resource Graph keeps 14 days of change history, so growth is shown for that window only. For a resource-by-resource view of the changes, use the **What changed?** workbook.",
+              "style": "info"
+            },
+            "name": "ccoe-lz-note"
+          }
+        ]
+      },
+      "name": "ccoe-tab-landingzones",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "landingzones"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Policy compliance and tagging by subscription. For the detail behind a low score (which policies fail, exemptions, regulatory initiatives) open the **Azure Policy compliance** workbook."
+            },
+            "name": "ccoe-gov-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "policyresources\n| where type =~ 'microsoft.policyinsights/policystates'\n| summarize Evaluated = dcount(tostring(properties.resourceId)),\n    NonCompliant = dcountif(tostring(properties.resourceId), tostring(properties.complianceState) =~ 'NonCompliant'),\n    FailingPolicies = dcountif(tostring(properties.policyDefinitionId), tostring(properties.complianceState) =~ 'NonCompliant')\n    by subscriptionId\n| join kind=inner (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | extend chain = properties.managementGroupAncestorsChain\n    | project subscriptionId, Subscription = name, SubState = tostring(properties.state),\n        ParentMG = iff(array_length(chain) > 0, tostring(chain[0].displayName), '(none)'),\n        Depth = coalesce(array_length(chain), 0),\n        Offer = tostring(split(tostring(properties.subscriptionPolicies.quotaId), '_')[0]),\n        Owner = extract(@'(?i)\"{OwnerTag}\":\"([^\"]*)\"', 1, tostring(tags))\n    | extend Placement = case(Depth == 0, 'No management group', Depth == 1, 'Directly under tenant root', 'In a management group')\n  ) on subscriptionId\n| project Subscription, ParentMG, Owner, Evaluated, NonCompliant, FailingPolicies,\n    CompliancePct = round(100.0 * (Evaluated - NonCompliant) / Evaluated, 1)\n| order by CompliancePct asc",
+              "size": 0,
+              "title": "Azure Policy compliance by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No policy evaluation results in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CompliancePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ParentMG",
+                    "label": "Parent management group"
+                  },
+                  {
+                    "columnId": "NonCompliant",
+                    "label": "Non-compliant resources"
+                  },
+                  {
+                    "columnId": "FailingPolicies",
+                    "label": "Failing policies"
+                  },
+                  {
+                    "columnId": "CompliancePct",
+                    "label": "Compliance %"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-policy-subs"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Tagging\nMeasured against **Required tags** at the top. Tags inherited from a resource group by policy (*Inherit a tag from the resource group*) are written to the resource and count; tags only on the resource group do not."
+            },
+            "name": "ccoe-tags-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type !in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions', 'microsoft.network/networkwatchers', 'microsoft.network/networkwatchers/flowlogs', 'microsoft.alertsmanagement/smartdetectoralertrules', 'microsoft.compute/restorepointcollections')\n| extend tagText = tolower(tostring(tags)), required = split(tolower('{RequiredTags}'), ',')\n| mv-expand tag = required\n| extend tag = trim(' ', tostring(tag))\n| where isnotempty(tag)\n| extend HasTag = tagText contains strcat('\"', tag, '\":')\n| summarize Resources = count(), Tagged = countif(HasTag) by Tag = tag\n| extend CoveragePct = round(100.0 * Tagged / Resources, 1)\n| project Tag, CoveragePct, Tagged, Missing = Resources - Tagged\n| order by CoveragePct asc",
+              "size": 0,
+              "title": "Coverage by tag",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Set Required tags at the top.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CoveragePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CoveragePct",
+                    "label": "Coverage %"
+                  },
+                  {
+                    "columnId": "Missing",
+                    "label": "Resources without it"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-tags-by-name",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type !in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions', 'microsoft.network/networkwatchers', 'microsoft.network/networkwatchers/flowlogs', 'microsoft.alertsmanagement/smartdetectoralertrules', 'microsoft.compute/restorepointcollections')\n| extend tagText = tolower(tostring(tags)), required = split(tolower('{RequiredTags}'), ',')\n| mv-expand tag = required\n| extend tag = trim(' ', tostring(tag))\n| where isnotempty(tag)\n| extend HasTag = tagText contains strcat('\"', tag, '\":')\n| summarize Missing = make_set_if(tag, not(HasTag)) by id, type, subscriptionId, resourceGroup\n| summarize Resources = count(), Tagged = countif(array_length(Missing) == 0) by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), CoveragePct = round(100.0 * Tagged / Resources, 1),\n    Untagged = Resources - Tagged, Resources\n| order by CoveragePct asc",
+              "size": 0,
+              "title": "Coverage by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Set Required tags at the top.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CoveragePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CoveragePct",
+                    "label": "Coverage %"
+                  },
+                  {
+                    "columnId": "Untagged",
+                    "label": "Missing a tag"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-tags-by-sub",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| extend tagText = tolower(tostring(tags)), required = split(tolower('{RequiredTags}'), ',')\n| mv-expand tag = required\n| extend tag = trim(' ', tostring(tag))\n| where isnotempty(tag)\n| extend HasTag = tagText contains strcat('\"', tag, '\":')\n| summarize Missing = make_set_if(tag, not(HasTag)) by subscriptionId, Subscription = name\n| where array_length(Missing) > 0\n| project Subscription, Missing = strcat_array(Missing, ', '), subscriptionId\n| order by Subscription asc",
+              "size": 0,
+              "title": "Subscriptions missing required tags",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every subscription carries every required tag.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "subscriptionId",
+                    "formatter": 5
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "ccoe-tags-subs",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions/resourcegroups'\n| extend tagText = tolower(tostring(tags)), required = split(tolower('{RequiredTags}'), ',')\n| mv-expand tag = required\n| extend tag = trim(' ', tostring(tag))\n| where isnotempty(tag)\n| extend HasTag = tagText contains strcat('\"', tag, '\":')\n| summarize Missing = make_set_if(tag, not(HasTag)) by id, subscriptionId, resourceGroup\n| where array_length(Missing) > 0\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project id, Missing = strcat_array(Missing, ', '), Subscription = coalesce(Subscription, subscriptionId)\n| order by Subscription asc, id asc",
+              "size": 0,
+              "title": "Resource groups missing required tags",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every resource group carries every required tag.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-tags-rgs",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type !in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions', 'microsoft.network/networkwatchers', 'microsoft.network/networkwatchers/flowlogs', 'microsoft.alertsmanagement/smartdetectoralertrules', 'microsoft.compute/restorepointcollections')\n| extend tagText = tolower(tostring(tags)), required = split(tolower('{RequiredTags}'), ',')\n| mv-expand tag = required\n| extend tag = trim(' ', tostring(tag))\n| where isnotempty(tag)\n| extend HasTag = tagText contains strcat('\"', tag, '\":')\n| summarize Missing = make_set_if(tag, not(HasTag)) by id, type, subscriptionId, resourceGroup\n| where array_length(Missing) > 0\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project id, Type = type, Missing = strcat_array(Missing, ', '), MissingCount = array_length(Missing),\n    ResourceGroup = resourceGroup, Subscription = coalesce(Subscription, subscriptionId)\n| order by MissingCount desc, Type asc",
+              "size": 0,
+              "title": "Resources missing required tags",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every resource carries every required tag.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "MissingCount",
+                    "formatter": 5
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-tags-resources"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Regions"
+            },
+            "name": "ccoe-regions-h",
+            "conditionalVisibility": {
+              "parameterName": "ApprovedRegions",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where isnotempty(location) and location !~ 'global'\n| summarize Resources = count() by location = tolower(location), subscriptionId\n| extend approved = split(tolower('{ApprovedRegions}'), ',')\n| mv-expand a = approved\n| extend a = trim(' ', tostring(a))\n| summarize Approved = countif(a == location), Listed = countif(isnotempty(a)) by location, subscriptionId, Resources\n| where Listed > 0 and Approved == 0\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Region = location, Subscription = coalesce(Subscription, subscriptionId), Resources\n| order by Resources desc",
+              "size": 0,
+              "title": "Resources outside the approved regions",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every resource is in an approved region (or is global).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "ccoe-outside-regions",
+            "conditionalVisibility": {
+              "parameterName": "ApprovedRegions",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "ccoe-tab-governance",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "governance"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Savings the CCoE can chase, by subscription. Resource Graph holds no spend: for actual and forecast cost use Cost Management, or the **FinOps hubs** data, which this workbook does not read."
+            },
+            "name": "ccoe-cost-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend Category = tostring(properties.category)\n| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',\n        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',\n        Category),\n    Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem),\n    Solution = tostring(properties.shortDescription.solution),\n    RecType = tostring(properties.recommendationTypeId),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId)),\n    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),\n        12 * todouble(properties.extendedProperties.savingsAmount)),\n    Currency = tostring(properties.extendedProperties.savingsCurrency)\n| where Pillar == 'Cost Optimization'\n| summarize Savings = sum(Savings), Recs = count(), Resources = dcount(rid),\n    Commitments = countif(Problem has_any ('reserved instance', 'reservation', 'savings plan')),\n    CommitmentSavings = sumif(Savings, Problem has_any ('reserved instance', 'reservation', 'savings plan')),\n    Currency = take_anyif(Currency, isnotempty(Currency))\n| extend rows = pack_array(\n    pack('Signal', 'Advisor savings a year', 'Value', round(coalesce(Savings, 0.0), 0), 'Detail', strcat(Currency, ' · all cost recommendations')),\n    pack('Signal', 'From reservations and savings plans', 'Value', round(coalesce(CommitmentSavings, 0.0), 0), 'Detail', strcat(Currency, ' · ', Commitments, ' recommendations')),\n    pack('Signal', 'Resources to right-size or remove', 'Value', Resources, 'Detail', strcat(Recs, ' recommendations')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = todouble(r.Value), Detail = tostring(r.Detail),\n    State = iff(todouble(r.Value) > 0, 'Degraded', 'Available')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "ccoe-cost-tiles"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend Category = tostring(properties.category)\n| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',\n        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',\n        Category),\n    Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem),\n    Solution = tostring(properties.shortDescription.solution),\n    RecType = tostring(properties.recommendationTypeId),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId)),\n    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),\n        12 * todouble(properties.extendedProperties.savingsAmount)),\n    Currency = tostring(properties.extendedProperties.savingsCurrency)\n| where Pillar == 'Cost Optimization'\n| summarize Savings = round(sum(Savings), 0), Recommendations = count(),\n    Currency = take_anyif(Currency, isnotempty(Currency)) by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), Savings, Currency, Recommendations\n| order by Savings desc",
+              "size": 0,
+              "title": "Advisor savings by subscription (a year)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor has no cost recommendations for the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "ccoe-savings-subs",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend Category = tostring(properties.category)\n| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',\n        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',\n        Category),\n    Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem),\n    Solution = tostring(properties.shortDescription.solution),\n    RecType = tostring(properties.recommendationTypeId),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId)),\n    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),\n        12 * todouble(properties.extendedProperties.savingsAmount)),\n    Currency = tostring(properties.extendedProperties.savingsCurrency)\n| where Pillar == 'Cost Optimization'\n| summarize Savings = round(sum(Savings), 0), Resources = dcount(rid), Subscriptions = dcount(subscriptionId),\n    Currency = take_anyif(Currency, isnotempty(Currency)) by Problem, Solution, Impact\n| project Recommendation = Problem, Savings, Currency, Resources, Subscriptions, Impact, Action = Solution\n| order by Savings desc",
+              "size": 0,
+              "title": "Advisor cost recommendations",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor has no cost recommendations for the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Impact",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "ccoe-savings-recs",
+            "customWidth": "60"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Idle resources"
+            },
+            "name": "ccoe-waste-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/disks', 'microsoft.compute/snapshots', 'microsoft.compute/virtualmachines', 'microsoft.network/loadbalancers', 'microsoft.network/natgateways', 'microsoft.network/publicipaddresses', 'microsoft.web/serverfarms')\n\n| extend Waste = case(\n    type =~ 'microsoft.compute/disks' and (tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy)), 'Unattached disk',\n    type =~ 'microsoft.network/publicipaddresses' and (isempty(tostring(properties.ipConfiguration.id)) and isempty(tostring(properties.natGateway.id))), 'Unused public IP',\n    type =~ 'microsoft.compute/virtualmachines' and (tostring(properties.extended.instanceView.powerState.code) =~ 'PowerState/stopped'), 'VM stopped but not deallocated',\n    type =~ 'microsoft.web/serverfarms' and (toint(properties.numberOfSites) == 0 and tolower(tostring(sku.tier)) !in ('free', 'shared', 'dynamic')), 'App Service plan with no apps',\n    type =~ 'microsoft.network/loadbalancers' and (tostring(sku.name) =~ 'Standard' and coalesce(array_length(properties.backendAddressPools), 0) == 0), 'Load balancer with no backend pools',\n    type =~ 'microsoft.network/natgateways' and (coalesce(array_length(properties.subnets), 0) == 0), 'NAT gateway on no subnet',\n    type =~ 'microsoft.compute/snapshots' and (todatetime(properties.timeCreated) < ago(90d)), 'Snapshot older than 90 days',\n    '')\n| where isnotempty(Waste)\n| extend Detail = case(Waste == 'Unattached disk', strcat(tostring(properties.diskSizeGB), ' GB ', tostring(sku.name)), Waste == 'Unused public IP', strcat(tostring(sku.name), ' ', tostring(properties.ipAddress)), Waste == 'VM stopped but not deallocated', tostring(properties.hardwareProfile.vmSize), Waste == 'App Service plan with no apps', strcat(tostring(sku.name), ' x', tostring(sku.capacity)), Waste == 'Load balancer with no backend pools', tostring(sku.name), Waste == 'NAT gateway on no subnet', tostring(sku.name), Waste == 'Snapshot older than 90 days', strcat(tostring(properties.diskSizeGB), ' GB, taken ', format_datetime(todatetime(properties.timeCreated), 'yyyy-MM-dd')), ''),\n    Fix = case(Waste == 'Unattached disk', 'Snapshot it if it may be needed again, then delete it', Waste == 'Unused public IP', 'Delete it, unless the address is reserved for a planned service', Waste == 'VM stopped but not deallocated', 'Stop it from the portal or with deallocate: a VM shut down from inside is still billed for compute', Waste == 'App Service plan with no apps', 'Delete the plan: it is billed per instance whether or not it hosts apps', Waste == 'Load balancer with no backend pools', 'Delete it: Standard load balancers are billed per rule', Waste == 'NAT gateway on no subnet', 'Delete it, or attach it to the subnets that need outbound access', Waste == 'Snapshot older than 90 days', 'Delete it if it is not part of a retention plan; use Azure Backup for long-term copies', '')\n| project id, Waste, Detail, Fix, subscriptionId, ResourceGroup = resourceGroup, Location = location\n| summarize Idle = count(), Kinds = strcat_array(make_set(Waste), ', ') by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), Idle, Kinds\n| order by Idle desc",
+              "size": 0,
+              "title": "Idle resources by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No idle resources found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "ccoe-waste-subs",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.sqlvirtualmachine/sqlvirtualmachines')\n| extend Gap = case(\n    type =~ 'microsoft.compute/virtualmachines' and tostring(properties.storageProfile.osDisk.osType) =~ 'Windows'\n        and isempty(tostring(properties.licenseType)), 'Windows VM with no licence type',\n    type =~ 'microsoft.sqlvirtualmachine/sqlvirtualmachines' and tostring(properties.sqlServerLicenseType) =~ 'PAYG',\n        'SQL Server VM paying for SQL licence',\n    '')\n| where isnotempty(Gap)\n| summarize Machines = count() by Gap, subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), Gap, Machines\n| order by Machines desc",
+              "size": 0,
+              "title": "Licences paid in the VM price (Azure Hybrid Benefit not used)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every Windows and SQL Server VM uses Azure Hybrid Benefit.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "ccoe-hybrid",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/disks', 'microsoft.compute/snapshots', 'microsoft.compute/virtualmachines', 'microsoft.network/loadbalancers', 'microsoft.network/natgateways', 'microsoft.network/publicipaddresses', 'microsoft.web/serverfarms')\n\n| extend Waste = case(\n    type =~ 'microsoft.compute/disks' and (tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy)), 'Unattached disk',\n    type =~ 'microsoft.network/publicipaddresses' and (isempty(tostring(properties.ipConfiguration.id)) and isempty(tostring(properties.natGateway.id))), 'Unused public IP',\n    type =~ 'microsoft.compute/virtualmachines' and (tostring(properties.extended.instanceView.powerState.code) =~ 'PowerState/stopped'), 'VM stopped but not deallocated',\n    type =~ 'microsoft.web/serverfarms' and (toint(properties.numberOfSites) == 0 and tolower(tostring(sku.tier)) !in ('free', 'shared', 'dynamic')), 'App Service plan with no apps',\n    type =~ 'microsoft.network/loadbalancers' and (tostring(sku.name) =~ 'Standard' and coalesce(array_length(properties.backendAddressPools), 0) == 0), 'Load balancer with no backend pools',\n    type =~ 'microsoft.network/natgateways' and (coalesce(array_length(properties.subnets), 0) == 0), 'NAT gateway on no subnet',\n    type =~ 'microsoft.compute/snapshots' and (todatetime(properties.timeCreated) < ago(90d)), 'Snapshot older than 90 days',\n    '')\n| where isnotempty(Waste)\n| extend Detail = case(Waste == 'Unattached disk', strcat(tostring(properties.diskSizeGB), ' GB ', tostring(sku.name)), Waste == 'Unused public IP', strcat(tostring(sku.name), ' ', tostring(properties.ipAddress)), Waste == 'VM stopped but not deallocated', tostring(properties.hardwareProfile.vmSize), Waste == 'App Service plan with no apps', strcat(tostring(sku.name), ' x', tostring(sku.capacity)), Waste == 'Load balancer with no backend pools', tostring(sku.name), Waste == 'NAT gateway on no subnet', tostring(sku.name), Waste == 'Snapshot older than 90 days', strcat(tostring(properties.diskSizeGB), ' GB, taken ', format_datetime(todatetime(properties.timeCreated), 'yyyy-MM-dd')), ''),\n    Fix = case(Waste == 'Unattached disk', 'Snapshot it if it may be needed again, then delete it', Waste == 'Unused public IP', 'Delete it, unless the address is reserved for a planned service', Waste == 'VM stopped but not deallocated', 'Stop it from the portal or with deallocate: a VM shut down from inside is still billed for compute', Waste == 'App Service plan with no apps', 'Delete the plan: it is billed per instance whether or not it hosts apps', Waste == 'Load balancer with no backend pools', 'Delete it: Standard load balancers are billed per rule', Waste == 'NAT gateway on no subnet', 'Delete it, or attach it to the subnets that need outbound access', Waste == 'Snapshot older than 90 days', 'Delete it if it is not part of a retention plan; use Azure Backup for long-term copies', '')\n| project id, Waste, Detail, Fix, subscriptionId, ResourceGroup = resourceGroup, Location = location\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project id, Waste, Detail, Fix, ResourceGroup, Subscription = coalesce(Subscription, subscriptionId)\n| order by Waste asc, Subscription asc",
+              "size": 0,
+              "title": "Idle resources",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No idle resources found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  },
+                  {
+                    "columnId": "Waste",
+                    "label": "Kind"
+                  },
+                  {
+                    "columnId": "Fix",
+                    "label": "What to do"
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Waste"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "ccoe-waste"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Azure Hybrid Benefit only applies where you hold Windows Server or SQL Server licences with Software Assurance (or subscriptions); check with whoever manages licensing before switching it on. Windows client VMs (Azure Virtual Desktop) need the licence type *Windows_Client*.",
+              "style": "info"
+            },
+            "name": "ccoe-hybrid-note"
+          }
+        ]
+      },
+      "name": "ccoe-tab-cost",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "cost"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Security posture and privileged access by subscription. The **Platform health** Security tab has the alerts and recommendations behind these figures; the **Privileged access** workbook has activations, approvals and sign-ins."
+            },
+            "name": "ccoe-sec-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/securescores'\n| project subscriptionId, ScorePct = round(100 * toreal(properties.score.percentage), 0),\n    Current = round(toreal(properties.score.current), 1), Max = toreal(properties.score.max)\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), ScorePct, Current, Max\n| order by ScorePct asc",
+              "size": 0,
+              "title": "Defender for Cloud secure score",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No secure score: Defender for Cloud is not reporting for the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "ScorePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ScorePct",
+                    "label": "Score %"
+                  },
+                  {
+                    "columnId": "Current",
+                    "label": "Points"
+                  },
+                  {
+                    "columnId": "Max",
+                    "label": "Out of"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-secure-score",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/pricings'\n| where not(tobool(properties.deprecated))\n| extend isOn = tostring(properties.pricingTier) =~ 'Standard'\n| summarize PlansOn = countif(isOn), PlansOff = countif(not(isOn)), Off = make_set_if(name, not(isOn)) by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), CoveragePct = round(100.0 * PlansOn / (PlansOn + PlansOff), 0),\n    PlansOn, PlansOff, Off = strcat_array(Off, ', ')\n| order by CoveragePct asc",
+              "size": 0,
+              "title": "Defender for Cloud plans",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Defender for Cloud plans found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CoveragePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CoveragePct",
+                    "label": "Plans on %"
+                  },
+                  {
+                    "columnId": "PlansOn",
+                    "label": "On"
+                  },
+                  {
+                    "columnId": "PlansOff",
+                    "label": "Off"
+                  },
+                  {
+                    "columnId": "Off",
+                    "label": "Plans off"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-defender-plans",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "securityresources\n| where type =~ 'microsoft.security/assessments'\n| where tostring(properties.status.code) =~ 'Unhealthy' and tostring(properties.metadata.severity) =~ 'High'\n| summarize Resources = dcount(tolower(tostring(properties.resourceDetails.Id))),\n    Recommendations = dcount(tostring(properties.displayName)) by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), Recommendations, Resources\n| order by Resources desc",
+              "size": 0,
+              "title": "High-severity recommendations by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No unhealthy high-severity recommendations.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "ccoe-high-recs",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1])),\n    scope = tolower(tostring(properties.scope))\n| where roleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| extend Role = case(roleId startswith '8e3af657', 'Owner', roleId startswith '18d7d88d', 'User Access Administrator',\n        'RBAC Administrator'),\n    ScopeLevel = case(scope == '/', 'Tenant root', scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',\n        array_length(split(scope, '/')) == 3, 'Subscription', array_length(split(scope, '/')) == 5, 'Resource group', 'Resource')\n| summarize by scope, ScopeLevel, Role, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n| summarize Users = countif(principalType =~ 'User'), Groups = countif(principalType =~ 'Group'),\n    ServicePrincipals = countif(principalType =~ 'ServicePrincipal') by ScopeLevel, Role\n| order by case(ScopeLevel == 'Tenant root', 0, ScopeLevel == 'Management group', 1, ScopeLevel == 'Subscription', 2,\n    ScopeLevel == 'Resource group', 3, 4) asc, Role asc",
+              "size": 0,
+              "title": "Roles that can grant access, by scope",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ScopeLevel",
+                    "label": "Scope"
+                  },
+                  {
+                    "columnId": "ServicePrincipals",
+                    "label": "Service principals"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-privileged",
+            "customWidth": "60"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roleassignments'\n| extend roleId = tolower(tostring(split(tostring(properties.roleDefinitionId), '/')[-1])),\n    scope = tolower(tostring(properties.scope))\n| where roleId in ('8e3af657-a8ff-443c-a75c-2fe8c4bcb635', '18d7d88d-d35e-4fb5-a5c3-7773c20a72d9', 'f58310d9-a9f6-439a-9e8d-f62e7b41a168')\n| extend Role = case(roleId startswith '8e3af657', 'Owner', roleId startswith '18d7d88d', 'User Access Administrator',\n        'RBAC Administrator'),\n    ScopeLevel = case(scope == '/', 'Tenant root', scope startswith '/providers/microsoft.management/managementgroups/', 'Management group',\n        array_length(split(scope, '/')) == 3, 'Subscription', array_length(split(scope, '/')) == 5, 'Resource group', 'Resource')\n| summarize by scope, ScopeLevel, Role, principalType = tostring(properties.principalType), principalId = tostring(properties.principalId)\n| where principalType =~ 'User' and ScopeLevel in ('Tenant root', 'Management group', 'Subscription')\n| extend subscriptionId = iff(ScopeLevel == 'Subscription', tostring(split(scope, '/')[2]), '')\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project ScopeLevel, Scope = case(ScopeLevel == 'Subscription', coalesce(Subscription, subscriptionId),\n        ScopeLevel == 'Management group', tostring(split(scope, '/')[4]), '/'),\n    Role, PrincipalId = principalId\n| order by case(ScopeLevel == 'Tenant root', 0, ScopeLevel == 'Management group', 1, 2) asc, Scope asc",
+              "size": 0,
+              "title": "Assigned to users directly, at subscription scope or above",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every privileged role at subscription scope or above is assigned to a group or identity.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ScopeLevel",
+                    "label": "Scope level"
+                  },
+                  {
+                    "columnId": "PrincipalId",
+                    "label": "User object ID"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-privileged-users",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "authorizationresources\n| where type =~ 'microsoft.authorization/roledefinitions'\n| where tostring(properties.type) =~ 'CustomRole'\n| mv-expand perm = properties.permissions\n| mv-expand action = perm.actions\n| extend action = tostring(action)\n| where action contains '*'\n| summarize Wildcards = make_set(action, 10), Full = countif(action == '*')\n    by id, Role = tostring(properties.roleName), Scopes = strcat_array(properties.assignableScopes, ', ')\n| project Role, Wildcard = iff(Full > 0, 'All actions (*)', 'Provider wildcards'), Actions = strcat_array(Wildcards, ', '), Scopes\n| order by Wildcard asc, Role asc",
+              "size": 0,
+              "title": "Custom roles with wildcard actions",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No custom roles use wildcard actions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Wildcard",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Provider wildcards",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "All actions (*)",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Scopes",
+                    "label": "Assignable scopes"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-custom-roles",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Resource Graph has object IDs, not names: look a user up in Entra ID, or use the **Privileged access** workbook, which reads names from the sign-in logs. Assigning roles to groups (made eligible through PIM) keeps access reviewable.",
+              "style": "info"
+            },
+            "name": "ccoe-sec-note"
+          }
+        ]
+      },
+      "name": "ccoe-tab-security",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "security"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "How well the estate is run, by subscription: monitoring, patching, Advisor's high-impact issues, changes made by hand, and what Azure is retiring. The **Platform health** Monitoring and Governance tabs list the machines behind these figures."
+            },
+            "name": "ccoe-ops-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n\n| project id = tolower(id), subscriptionId, Kind = iff(type =~ 'microsoft.hybridcompute/machines', 'Arc server', 'VM'),\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus), ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions')\n    | extend ext = tostring(properties.type)\n    | where ext in~ ('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent', 'MicrosoftMonitoringAgent', 'OmsAgentForLinux')\n    | summarize Ama = countif(ext startswith 'AzureMonitor'), Legacy = countif(not(ext startswith 'AzureMonitor'))\n        by id = tostring(split(tolower(id), '/extensions/')[0])\n  ) on id\n| extend Agent = case(Ama > 0 and Legacy > 0, 'Azure Monitor Agent and legacy agent', Ama > 0, 'Azure Monitor Agent',\n    Legacy > 0, 'Legacy agent only', 'No agent')\n| project-away id1\n| summarize Machines = count() by Agent",
+              "size": 0,
+              "title": "Monitoring agent on machines",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart",
+              "noDataMessage": "No VMs or Arc servers in the selected subscriptions.",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Azure Monitor Agent",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "Azure Monitor Agent and legacy agent",
+                    "color": "yellow"
+                  },
+                  {
+                    "seriesName": "Legacy agent only",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "No agent",
+                    "color": "redBright"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-agents-pie",
+            "customWidth": "35"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n\n| project id = tolower(id), subscriptionId, Kind = iff(type =~ 'microsoft.hybridcompute/machines', 'Arc server', 'VM'),\n    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),\n    Power = tostring(properties.extended.instanceView.powerState.displayStatus), ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions')\n    | extend ext = tostring(properties.type)\n    | where ext in~ ('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent', 'MicrosoftMonitoringAgent', 'OmsAgentForLinux')\n    | summarize Ama = countif(ext startswith 'AzureMonitor'), Legacy = countif(not(ext startswith 'AzureMonitor'))\n        by id = tostring(split(tolower(id), '/extensions/')[0])\n  ) on id\n| extend Agent = case(Ama > 0 and Legacy > 0, 'Azure Monitor Agent and legacy agent', Ama > 0, 'Azure Monitor Agent',\n    Legacy > 0, 'Legacy agent only', 'No agent')\n| project-away id1\n| summarize Machines = count(), Ama = countif(Agent startswith 'Azure Monitor Agent'),\n    LegacyOnly = countif(Agent == 'Legacy agent only'), NoAgent = countif(Agent == 'No agent') by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), CoveragePct = round(100.0 * Ama / Machines, 0),\n    Machines, LegacyOnly, NoAgent\n| order by CoveragePct asc",
+              "size": 0,
+              "title": "Azure Monitor Agent coverage by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No VMs or Arc servers in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "CoveragePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CoveragePct",
+                    "label": "Coverage %"
+                  },
+                  {
+                    "columnId": "LegacyOnly",
+                    "label": "Legacy agent only"
+                  },
+                  {
+                    "columnId": "NoAgent",
+                    "label": "No agent"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-agents-subs",
+            "customWidth": "65"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')\n| project id = tolower(id), subscriptionId\n| join kind=leftouter (\n    patchassessmentresources\n    | where type in~ ('microsoft.compute/virtualmachines/patchassessmentresults', 'microsoft.hybridcompute/machines/patchassessmentresults')\n    | project id = tostring(split(tolower(id), '/patchassessmentresults/')[0]),\n        Assessed = todatetime(properties.lastModifiedDateTime),\n        Critical = coalesce(toint(properties.availablePatchCountByClassification.critical), 0),\n        Security = coalesce(toint(properties.availablePatchCountByClassification.security), 0),\n        Reboot = tobool(properties.rebootPending)\n  ) on id\n| summarize Machines = count(), Pending = countif(Critical > 0 or Security > 0), Reboot = countif(Reboot),\n    NotAssessed = countif(isnull(Assessed) or Assessed < ago(7d)) by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), Machines,\n    UpToDatePct = round(100.0 * (Machines - Pending - NotAssessed) / Machines, 0), Pending, NotAssessed, Reboot\n| order by UpToDatePct asc",
+              "size": 0,
+              "title": "Patching by subscription (Azure Update Manager)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No VMs or Arc servers in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "UpToDatePct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "redGreen"
+                    },
+                    "numberFormat": {
+                      "unit": 1,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 0
+                      }
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "UpToDatePct",
+                    "label": "Up to date %"
+                  },
+                  {
+                    "columnId": "Pending",
+                    "label": "Critical or security due"
+                  },
+                  {
+                    "columnId": "NotAssessed",
+                    "label": "Not assessed in 7 days"
+                  },
+                  {
+                    "columnId": "Reboot",
+                    "label": "Reboot pending"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-patch-subs",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend Category = tostring(properties.category)\n| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',\n        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',\n        Category),\n    Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem),\n    Solution = tostring(properties.shortDescription.solution),\n    RecType = tostring(properties.recommendationTypeId),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId)),\n    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),\n        12 * todouble(properties.extendedProperties.savingsAmount)),\n    Currency = tostring(properties.extendedProperties.savingsCurrency)\n| where Impact =~ 'High'\n| summarize Reliability = countif(Pillar == 'Reliability'), Security = countif(Pillar == 'Security'),\n    Cost = countif(Pillar == 'Cost Optimization'), Operations = countif(Pillar == 'Operational Excellence'),\n    Performance = countif(Pillar == 'Performance Efficiency'), Total = count() by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), Total, Reliability, Security, Cost, Operations, Performance\n| order by Total desc",
+              "size": 0,
+              "title": "Advisor high-impact recommendations by subscription",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor has no high-impact recommendations.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "ccoe-advisor-subs",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| extend ChangeType = tostring(properties.changeType), Client = tostring(properties.changeAttributes.clientType)\n| where ChangeType != 'Update' or tostring(properties.changes) contains '\"changeCategory\":\"User\"'\n| extend Client = iff(isempty(Client) or Client =~ 'Unspecified', '(not recorded)', Client)\n| summarize Changes = count() by Client\n| top 8 by Changes desc",
+              "size": 0,
+              "title": "Changes by tool (last 14 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart",
+              "noDataMessage": "No changes recorded in the last 14 days."
+            },
+            "name": "ccoe-clients-pie",
+            "customWidth": "35"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| extend ChangeType = tostring(properties.changeType), Client = tostring(properties.changeAttributes.clientType)\n| where ChangeType != 'Update' or tostring(properties.changes) contains '\"changeCategory\":\"User\"'\n| extend Client = iff(isempty(Client) or Client =~ 'Unspecified', '(not recorded)', Client)\n| summarize Changes = count(), Portal = countif(Client has 'portal') by subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project Subscription = coalesce(Subscription, subscriptionId), PortalPct = round(100.0 * Portal / Changes, 0), Portal, Changes\n| order by PortalPct desc",
+              "size": 0,
+              "title": "Changes made in the Azure portal, by subscription (last 14 days)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No changes recorded in the last 14 days.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PortalPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "50",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "20",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "PortalPct",
+                    "label": "Made in the portal %"
+                  },
+                  {
+                    "columnId": "Portal",
+                    "label": "Portal changes"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-portal-subs",
+            "customWidth": "65"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend Category = tostring(properties.category)\n| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',\n        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',\n        Category),\n    Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem),\n    Solution = tostring(properties.shortDescription.solution),\n    RecType = tostring(properties.recommendationTypeId),\n    rid = tolower(tostring(properties.resourceMetadata.resourceId)),\n    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),\n        12 * todouble(properties.extendedProperties.savingsAmount)),\n    Currency = tostring(properties.extendedProperties.savingsCurrency)\n| where tostring(properties.extendedProperties.recommendationSubCategory) =~ 'ServiceUpgradeAndRetirement'\n| extend Retires = todatetime(properties.extendedProperties.retirementDate),\n    Retiring = coalesce(tostring(properties.extendedProperties.retirementFeatureName), Problem)\n| where Retires < now() + 180d\n| summarize Resources = dcount(rid), Subscriptions = dcount(subscriptionId) by Retiring, Retires, Action = Solution\n| project Retiring, RetirementDate = Retires, DaysLeft = datetime_diff('day', Retires, now()), Resources, Subscriptions, Action\n| order by RetirementDate asc",
+              "size": 0,
+              "title": "Azure retirements within 180 days (Azure Advisor)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor reports no retirements in the next 180 days.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "DaysLeft",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "30",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "90",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "RetirementDate",
+                    "label": "Retirement date"
+                  },
+                  {
+                    "columnId": "DaysLeft",
+                    "label": "Days left"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-retirements"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "healthresources\n| where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n| extend State = tostring(properties.availabilityState)\n| where State in~ ('Unavailable', 'Degraded')\n| project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]), State,\n    Reason = tostring(properties.reasonType), Summary = tostring(properties.summary),\n    Since = todatetime(coalesce(tostring(properties.occurredTime), tostring(properties.occuredTime))), subscriptionId\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project id, State, Reason, Since, Summary, Subscription = coalesce(Subscription, subscriptionId)\n| order by case(State =~ 'Unavailable', 0, 1) asc, Since asc",
+              "size": 0,
+              "title": "Resources currently unavailable or degraded (Resource Health)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Resource Health reports nothing unavailable or degraded.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  }
+                ]
+              }
+            },
+            "name": "ccoe-health"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A high share of changes made in the portal means changes are bypassing the pipelines (infrastructure as code) the platform relies on. Some portal changes are expected: incident fixes and sandbox subscriptions.",
+              "style": "info"
+            },
+            "name": "ccoe-ops-note"
+          }
+        ]
+      },
+      "name": "ccoe-tab-operations",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "operations"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

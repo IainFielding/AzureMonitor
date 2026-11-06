@@ -7,7 +7,8 @@ There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
   *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
-  *Expiry and renewals*, *FinOps hubs* and *Azure Policy compliance*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
+  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Cloud Center of Excellence* and
+  *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -23,6 +24,8 @@ There are two kinds of workbook:
 | [Expiry and renewals](workbook/expiry.workbook.json) | Dashboard | What expires or retires in the next 90 days: certificates, Key Vault objects, storage keys, AVD registration tokens, policy exemptions, service retirements, planned maintenance, reservations and savings plans? | Platform operations, FinOps |
 | [FinOps hubs](workbook/finops-hubs.workbook.json) | Dashboard | Are the FinOps hubs (FinOps toolkit v15) healthy and up to date, are the Cost Management exports landing, are the Data Factory pipelines and triggers running, and is Azure Data Explorer ingesting and holding current data? | FinOps team, platform operations |
 | [Azure Policy compliance](workbook/policy-compliance.workbook.json) | Dashboard | How compliant is the estate with Azure Policy, what is exposed to the internet, which exemptions are expiring, how do we score against our regulatory initiatives, and what can be remediated automatically? | Governance and security owners, auditors |
+| [Cloud Center of Excellence](workbook/cloud-center-of-excellence.workbook.json) | Dashboard | Across governance, tagging, landing zone placement, security, privileged access, savings, idle resources, monitoring, patching and retirements, where does each subscription stand, and who needs to act? | Cloud Center of Excellence, cloud governance board |
+| [Well-Architected Framework](workbook/well-architected.workbook.json) | Dashboard | For one workload, what does it get wrong against each of the five pillars (Reliability, Security, Cost Optimization, Operational Excellence, Performance Efficiency), from Azure Advisor and from its configuration? | Workload and application owners, architects running a Well-Architected review |
 | [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
 | [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
 | [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
@@ -53,6 +56,8 @@ Start from the symptom:
 | "Sentinel didn't alert on something it should have" | **Microsoft Sentinel operations**: Data collection (did the table go silent?) | Detections: failed runs, rules turned off, rule changes in the audit |
 | "A certificate expired and the site is down" | **Expiry and renewals**: Certificates & secrets | Point the service at the versionless Key Vault secret id so the next renewal is picked up by itself |
 | "How compliant are we, and what do we fix first?" (an audit, or a security review) | **Azure Policy compliance**: Overview, then Regulatory frameworks for the initiative being audited | Remediation for what can be fixed by a remediation task; Public exposure for what is reachable from the internet |
+| "We have a Well-Architected review for this application next week" | **Well-Architected Framework**, with the workload picked at the top: Overview, then each pillar tab | **Backup & Recovery** for recovery testing; **Azure Policy compliance** Public exposure for what the workload exposes |
+| "Which subscriptions are behind on our standards?" (a CCoE or governance board meeting) | **Cloud Center of Excellence**: the Scorecard, then the tab for the measure that is amber | The detailed workbook that tab names (Azure Policy compliance, Platform health, Privileged access) |
 | "Who gave this person admin, and was it approved?" | **Privileged access**: Activations and Approvals | Assignments, for roles granted outside PIM; **What changed?** for Azure role assignments |
 
 For a connectivity ticket, work in this order: **DNS** (does the name resolve to the right address?),
@@ -65,7 +70,8 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 |---|---|
 | **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution, Sentinel operations and FinOps hubs: the Overview tiles |
 | **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams. Azure Policy compliance: Public exposure, and exemptions expiring within 30 days |
-| **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due |
+| **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due. Cloud Center of Excellence: the Scorecard and the subscription table, for the governance board |
+| **Each release or design review of a workload** | Well-Architected Framework, filtered to the workload: every pillar tab, recording what is fixed and what is accepted |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
 
 ## Setting up
@@ -403,6 +409,57 @@ lists, not to read the headline figures. The Regulatory tab works with any initi
 security benchmark initiatives all do, and a custom initiative with one group per control appears the same way.
 Resource Graph holds only the latest state; for compliance trends, export policy states to Log Analytics.
 
+## Cloud Center of Excellence workbook
+
+**Where does each subscription stand against our cloud standards, and who needs to act?**
+[workbook/cloud-center-of-excellence.workbook.json](workbook/cloud-center-of-excellence.workbook.json). A roll-up
+for the team that sets the standards, grouped by the Cloud Adoption Framework's disciplines. It reads only Resource
+Graph, so it needs no workspace. It shows who is behind; each tab names the workbook with the detail.
+
+| Tab | What it shows |
+|---|---|
+| Scorecard | Tiles under *Govern* (policy compliance, tag coverage, subscriptions at the tenant root, resources outside approved regions), *Secure* (Defender for Cloud secure score, privileged roles held by users directly), *Manage cost* (Advisor savings a year, idle resources) and *Operate* (Advisor high-impact issues, machines without the Azure Monitor Agent, retirements within 180 days); then a scorecard per subscription with its parent management group, owner, tag coverage, policy compliance and secure score |
+| Landing zones | Subscriptions by parent management group and by offer; every subscription with its state, placement, owner, resource and resource group counts; resources created and deleted per day (14 days); the most common resource types; resources by region |
+| Governance & tagging | Policy compliance by subscription; tag coverage by tag and by subscription; subscriptions, resource groups and resources missing a required tag; resources outside the approved regions |
+| Cost | Advisor savings a year (all, and from reservations and savings plans) by subscription and by recommendation; idle resources by subscription and in full, with what to do; Windows and SQL Server VMs not using Azure Hybrid Benefit |
+| Security & identity | Secure score and Defender for Cloud plans by subscription; high-severity recommendations by subscription; Owner, User Access Administrator and RBAC Administrator assignments by scope and principal type; those held by users directly; custom roles with wildcard actions |
+| Operations | Monitoring agent coverage (Azure Monitor Agent, legacy agent, none) and patching by subscription; Advisor high-impact recommendations by subscription and pillar; changes by tool, and the share made in the portal, by subscription (14 days); retirements within 180 days; resources currently unavailable or degraded |
+
+Set **Required tags** to the tags your tagging policy requires (compared without case), **Owner tag** to the
+subscription tag that names its owner, and **Approved regions** to the regions you deploy to (leave it empty to
+skip the region check). *Tag coverage* ignores types the platform creates itself (VM extensions, Network Watcher,
+restore point collections). *Idle resources* are unattached disks, unused public IPs, VMs stopped but not
+deallocated, App Service plans with no apps, Standard load balancers with no backend pools, NAT gateways on no
+subnet, and snapshots older than 90 days. The policy, secure score and Advisor tiles are the same figures as on the
+Platform health overview. Resource Graph holds no spend and only 14 days of changes; for cost, use Cost Management
+or the FinOps hubs data.
+
+## Well-Architected Framework workbook
+
+**What does this workload get wrong against the Well-Architected Framework?**
+[workbook/well-architected.workbook.json](workbook/well-architected.workbook.json). A Well-Architected review is
+done per workload, so pick one (or more) at the top: workloads are found from the values of the **Workload tag**
+(`workload` unless you change it). *All* covers everything in the selected subscriptions, tagged or not. It reads
+only Resource Graph, so it needs no workspace.
+
+| Tab | What it shows |
+|---|---|
+| Overview | A tile per pillar counting failed configuration checks plus Azure Advisor recommendations (red when any is high severity); Advisor score per pillar; Advisor recommendations by pillar and impact; the list of every check |
+| Reliability | Single VMs and App Service plans, resources not spread across availability zones, LRS storage, retired Basic public IPs and load balancers, Application Gateway v1, non-AZ gateways, SQL, AKS, Redis and Cosmos DB redundancy, Key Vault purge protection; VMs with no backup or replication; resources currently unavailable |
+| Security | Storage, Key Vault and SQL public network access, anonymous blob access, HTTP and TLS below 1.2, shared key and local authentication, SQL authentication, AKS API exposure and local accounts, container registry admin user and anonymous pull, VMs without Trusted Launch; Defender for Cloud recommendations for the workload; secure score |
+| Cost Optimization | Idle resources (the same checks as the Cloud Center of Excellence workbook), VMs and SQL Server VMs not using Azure Hybrid Benefit, deallocated VMs on Premium SSD, workspaces keeping data searchable for over 90 days; Advisor's cost recommendations with its savings a year |
+| Operational Excellence | Patch assessment off, AKS with no monitoring or auto-upgrade, classic Application Insights, disabled alert rules and action groups; the monitoring agent on each machine; patching; changes by tool and those made in the portal (14 days); retirements |
+| Performance Efficiency | Older VM sizes, Standard HDD disks, accelerated networking off, general-purpose v1 storage, App Service Premium v2 or older, AKS with no autoscaling; autoscale on scale sets and App Service plans |
+
+On every pillar tab, selecting an Advisor recommendation lists its resources, and the failed checks are summarised
+with what to do before being listed resource by resource. Tag names in **Workload tag** match case. The workload
+filter reaches Advisor, Defender for Cloud, Resource Health and change records through the resource they are about,
+so recommendations on a subscription (reservations, for example) drop out once a workload is picked; *Advisor
+score* and the secure score are per subscription and are never narrowed. The checks are the settings a reviewer
+would otherwise look up one resource at a time; they do not replace the
+[Azure Well-Architected Review](https://learn.microsoft.com/assessments/azure-architecture-review/) assessment,
+which covers design, process and recovery testing.
+
 ## Monthly availability report
 
 **How available was each platform service last month?**
@@ -604,10 +661,12 @@ python src/build_expiry.py
 python src/build_availability.py
 python src/build_finops_hubs.py
 python src/build_policy_compliance.py
+python src/build_ccoe.py
+python src/build_well_architected.py
 python src/build_grafana.py
 ```
 
-Commit the scripts and every generated JSON file (sixteen workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (eighteen workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence

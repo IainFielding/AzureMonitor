@@ -666,6 +666,114 @@ SUBSCRIPTION_NAMES = """
 
 
 # ---------------------------------------------------------------------------
+# Shared by the Cloud Center of Excellence and Well-Architected workbooks. Each fragment that reads `resources`
+# takes `scope`, a filter placed straight after its type filter (the Well-Architected workbook's workload filter).
+# ---------------------------------------------------------------------------
+
+def pct_bar(col):
+    """A 0-100 percentage drawn as a bar, red when low and green when high."""
+    return {"columnMatch": col, "formatter": 4, "formatOptions": {"min": 0, "max": 100, "palette": "redGreen"},
+            "numberFormat": {"unit": 1, "options": {"style": "decimal", "maximumFractionDigits": 0}}}
+
+
+# Azure Advisor's categories are the Well-Architected pillars under older names. Savings are Advisor's own estimate
+# for a year, in the billing currency; some recommendations only carry a monthly figure.
+ADVISOR_RECS = """
+advisorresources
+| where type =~ 'microsoft.advisor/recommendations'
+| extend Category = tostring(properties.category)
+| extend Pillar = case(Category =~ 'HighAvailability', 'Reliability', Category =~ 'Cost', 'Cost Optimization',
+        Category =~ 'OperationalExcellence', 'Operational Excellence', Category =~ 'Performance', 'Performance Efficiency',
+        Category),
+    Impact = tostring(properties.impact),
+    Problem = tostring(properties.shortDescription.problem),
+    Solution = tostring(properties.shortDescription.solution),
+    RecType = tostring(properties.recommendationTypeId),
+    rid = tolower(tostring(properties.resourceMetadata.resourceId)),
+    Savings = coalesce(todouble(properties.extendedProperties.annualSavingsAmount),
+        12 * todouble(properties.extendedProperties.savingsAmount)),
+    Currency = tostring(properties.extendedProperties.savingsCurrency)
+"""
+
+# Resources that cost money while doing nothing: (type, condition, kind, detail, what to do).
+WASTE_CHECKS = [
+    ("microsoft.compute/disks", "tostring(properties.diskState) =~ 'Unattached' and isempty(managedBy)",
+     "Unattached disk", "strcat(tostring(properties.diskSizeGB), ' GB ', tostring(sku.name))",
+     "Snapshot it if it may be needed again, then delete it"),
+    ("microsoft.network/publicipaddresses",
+     "isempty(tostring(properties.ipConfiguration.id)) and isempty(tostring(properties.natGateway.id))",
+     "Unused public IP", "strcat(tostring(sku.name), ' ', tostring(properties.ipAddress))",
+     "Delete it, unless the address is reserved for a planned service"),
+    ("microsoft.compute/virtualmachines",
+     "tostring(properties.extended.instanceView.powerState.code) =~ 'PowerState/stopped'",
+     "VM stopped but not deallocated", "tostring(properties.hardwareProfile.vmSize)",
+     "Stop it from the portal or with deallocate: a VM shut down from inside is still billed for compute"),
+    ("microsoft.web/serverfarms",
+     "toint(properties.numberOfSites) == 0 and tolower(tostring(sku.tier)) !in ('free', 'shared', 'dynamic')",
+     "App Service plan with no apps", "strcat(tostring(sku.name), ' x', tostring(sku.capacity))",
+     "Delete the plan: it is billed per instance whether or not it hosts apps"),
+    ("microsoft.network/loadbalancers",
+     "tostring(sku.name) =~ 'Standard' and coalesce(array_length(properties.backendAddressPools), 0) == 0",
+     "Load balancer with no backend pools", "tostring(sku.name)", "Delete it: Standard load balancers are billed per rule"),
+    ("microsoft.network/natgateways", "coalesce(array_length(properties.subnets), 0) == 0",
+     "NAT gateway on no subnet", "tostring(sku.name)", "Delete it, or attach it to the subnets that need outbound access"),
+    ("microsoft.compute/snapshots", "todatetime(properties.timeCreated) < ago(90d)",
+     "Snapshot older than 90 days", "strcat(tostring(properties.diskSizeGB), ' GB, taken ', format_datetime(todatetime(properties.timeCreated), 'yyyy-MM-dd'))",
+     "Delete it if it is not part of a retention plan; use Azure Backup for long-term copies"),
+]
+
+
+def _by_kind(column, checks, field):
+    return "case(" + ", ".join(f"{column} == '{c[2]}', {field(c)}" for c in checks) + ", '')"
+
+
+def waste(scope=""):
+    """One row per idle resource: id, Waste (the kind), Detail, Fix, subscriptionId, ResourceGroup."""
+    types = ", ".join(f"'{t}'" for t in sorted({c[0] for c in WASTE_CHECKS}))
+    kinds = ",\n    ".join(f"type =~ '{t}' and ({cond}), '{kind}'" for t, cond, kind, _, _ in WASTE_CHECKS)
+    return f"""
+resources
+| where type in~ ({types})
+{scope}
+| extend Waste = case(
+    {kinds},
+    '')
+| where isnotempty(Waste)
+| extend Detail = {_by_kind("Waste", WASTE_CHECKS, lambda c: c[3])},
+    Fix = {_by_kind("Waste", WASTE_CHECKS, lambda c: repr(c[4]))}
+| project id, Waste, Detail, Fix, subscriptionId, ResourceGroup = resourceGroup, Location = location
+"""
+
+
+def machine_agents(scope=""):
+    """Every VM and Arc server with the monitoring agents it runs. The legacy Log Analytics agent retired in
+    August 2024 and no longer sends data reliably."""
+    return f"""
+resources
+| where type in~ ('microsoft.compute/virtualmachines', 'microsoft.hybridcompute/machines')
+{scope}
+| project id = tolower(id), subscriptionId, Kind = iff(type =~ 'microsoft.hybridcompute/machines', 'Arc server', 'VM'),
+    OS = coalesce(tostring(properties.storageProfile.osDisk.osType), tostring(properties.osType)),
+    Power = tostring(properties.extended.instanceView.powerState.displayStatus), ResourceGroup = resourceGroup
+| join kind=leftouter (
+    resources
+    | where type in~ ('microsoft.compute/virtualmachines/extensions', 'microsoft.hybridcompute/machines/extensions')
+    | extend ext = tostring(properties.type)
+    | where ext in~ ('AzureMonitorWindowsAgent', 'AzureMonitorLinuxAgent', 'MicrosoftMonitoringAgent', 'OmsAgentForLinux')
+    | summarize Ama = countif(ext startswith 'AzureMonitor'), Legacy = countif(not(ext startswith 'AzureMonitor'))
+        by id = tostring(split(tolower(id), '/extensions/')[0])
+  ) on id
+| extend Agent = case(Ama > 0 and Legacy > 0, 'Azure Monitor Agent and legacy agent', Ama > 0, 'Azure Monitor Agent',
+    Legacy > 0, 'Legacy agent only', 'No agent')
+| project-away id1
+"""
+
+
+AGENT_STATUS = status_fmt("Agent", good=["Azure Monitor Agent"], warn=["Azure Monitor Agent and legacy agent"],
+                          bad=["Legacy agent only", "No agent"])
+
+
+# ---------------------------------------------------------------------------
 # Tabs
 # ---------------------------------------------------------------------------
 

@@ -26,6 +26,8 @@ python src/build_expiry.py
 python src/build_availability.py
 python src/build_finops_hubs.py
 python src/build_policy_compliance.py
+python src/build_ccoe.py
+python src/build_well_architected.py
 python src/build_grafana.py
 ```
 
