@@ -2051,6 +2051,8 @@ def foundry_tab():
     KeyAccess = iff(tobool(properties.disableLocalAuth), 'Disabled', 'Enabled'),
     Endpoint = tostring(properties.endpoint),
     Provisioning = tostring(properties.provisioningState),
+    BusinessOwner = tostring(coalesce(tags.BusinessOwner, tags.businessOwner, tags.businessowner, tags.BUSINESSOWNER)),
+    Subscription = strcat('/subscriptions/', subscriptionId),
     ResourceGroup = resourceGroup, Location = location
 """
     hubs_q = """
@@ -2123,11 +2125,11 @@ union isfuzzy=true (datatable(TimeGenerated:datetime)[]), (AzureDiagnostics)
     return group("tab-foundry", [
         params("foundry-params", [resource_param("FoundryAccounts", "AI Foundry resources", Q_FOUNDRY)]),
         arg("foundry-accounts", "AI Foundry and Azure OpenAI resources", accounts_q, formatters=[
-            resource_link(), PROVISIONING,
+            resource_link(), resource_link("Subscription"), PROVISIONING,
             status_fmt("PublicAccess", good=["Disabled"], warn=["Enabled"]),
             status_fmt("KeyAccess", good=["Disabled"], warn=["Enabled"]),
         ], labels={"id": "Resource", "PublicAccess": "Public access", "PrivateEndpoints": "Private endpoints",
-                   "KeyAccess": "Key access"}, no_data="No AI Foundry or Azure OpenAI resources found."),
+                   "KeyAccess": "Key access", "BusinessOwner": "Business owner"}, no_data="No AI Foundry or Azure OpenAI resources found."),
         arg("foundry-deployments", "Model deployments", deployments_q, formatters=[PROVISIONING],
             labels={"Sku": "Deployment type", "Upgrade": "Version upgrade"},
             no_data="No model deployments found.", width=60),

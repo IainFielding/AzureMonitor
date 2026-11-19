@@ -8940,7 +8940,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| project id,\n    Kind = iff(kind =~ 'OpenAI', 'Azure OpenAI', 'AI Foundry'),\n    Sku = tostring(sku.name),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = coalesce(array_length(properties.privateEndpointConnections), 0),\n    KeyAccess = iff(tobool(properties.disableLocalAuth), 'Disabled', 'Enabled'),\n    Endpoint = tostring(properties.endpoint),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+              "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| project id,\n    Kind = iff(kind =~ 'OpenAI', 'Azure OpenAI', 'AI Foundry'),\n    Sku = tostring(sku.name),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = coalesce(array_length(properties.privateEndpointConnections), 0),\n    KeyAccess = iff(tobool(properties.disableLocalAuth), 'Disabled', 'Enabled'),\n    Endpoint = tostring(properties.endpoint),\n    Provisioning = tostring(properties.provisioningState),\n    BusinessOwner = tostring(coalesce(tags.BusinessOwner, tags.businessOwner, tags.businessowner, tags.BUSINESSOWNER)),\n    Subscription = strcat('/subscriptions/', subscriptionId),\n    ResourceGroup = resourceGroup, Location = location",
               "size": 0,
               "title": "AI Foundry and Azure OpenAI resources",
               "queryType": 1,
@@ -8955,6 +8955,14 @@
                 "formatters": [
                   {
                     "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Subscription",
                     "formatter": 13,
                     "formatOptions": {
                       "linkTarget": "Resource",
@@ -9084,6 +9092,10 @@
                   {
                     "columnId": "KeyAccess",
                     "label": "Key access"
+                  },
+                  {
+                    "columnId": "BusinessOwner",
+                    "label": "Business owner"
                   }
                 ]
               }
