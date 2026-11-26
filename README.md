@@ -161,7 +161,7 @@ gathers every problem the other tabs find into one Issues board.
 | Identity | Resource Graph, Metrics, Logs* | Entra ID sign-ins, failure reasons, Conditional Access blocks, failing service principals, users at risk and directory changes*, Entra Domain Services replica sets and health alerts, domain controller VMs (health, power, pending patches), CPU and memory, heartbeats*, directory/replication/DNS errors*, failed logons and lockouts* |
 | Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
 | AVS (Azure VMware Solution) | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
-| AVD (Azure Virtual Desktop) | Resource Graph, Logs* | Host pools, session host status, sessions/users, connection RTT, connection success rate, time to sign in, logon time by stage, sessions by host pool, top errors |
+| AVD (Azure Virtual Desktop) | Resource Graph, Logs* | Host pools (and whether Nerdio Manager runs them), session host status, sessions/users, connection RTT, connection success rate, time to sign in, logon time by stage, sessions by host pool, top errors; **Nerdio Manager**: its own resources and their health, the session hosts it manages by power state, hosts held out of auto-scale, auto-scale actions over time*, who acts on the session hosts*, failed scaling actions with the reason*, and Nerdio Manager's application errors* |
 | Storage | Metrics | Availability, latency, transactions by response type (throttling), Azure Files (FSLogix) transactions, used capacity and quota by share |
 | Governance | Resource Graph, Logs* | Service retirements, planned maintenance, AVD registration tokens, Key Vault expiry events*, policy exemptions and their expiry, Policy compliance, subscriptions outside the management group hierarchy, resource locks by service, orphaned resources, empty resource groups, pending patches by machine (Azure Update Manager), Advisor recommendations |
 | Security | Resource Graph, Logs* | Defender for Cloud secure score, controls, active alerts and unhealthy recommendations, Defender plans on and off per subscription, Owner and access administrator assignments by scope, Sentinel open incidents, time to close and failing connectors or rules* |
@@ -184,6 +184,9 @@ Azure Monitor Agent / VM insights on build agents).
 - **Log Analytics workspace** – optional; enables the log panels.
 - **Domain controller name pattern** – regex matched against virtual machine and computer names to identify domain controllers.
 - **Build agent name pattern** – regex matched against scale set names to identify build agent pools.
+- **Nerdio Manager name pattern** – regex matched against resource names to find Nerdio Manager's own resources (default `(?i)^nmw-app`).
+- **Nerdio tag prefix** – the prefix of the tags Nerdio Manager puts on what it manages (default `NMW_`; change it if it was changed at install).
+- **Nerdio Manager app id** – optional; the application (client) id of Nerdio's app registration, so its actions on session hosts are labelled *Nerdio Manager* rather than *Automation*. The AVD tab's *Who acts on the session hosts* lists the ids to choose from.
 
 ### Health signal
 
@@ -547,7 +550,9 @@ changing the request to an exemption.
 
 ### Azure Virtual Desktop: one user
 
-Enter a user's sign-in name. For their connections over the time range:
+Pick the user from the drop-down: it lists the users who connected, or failed to, in the time range, most recent
+first, with their error count. On a large estate, type part of the name in *Find user* first to narrow the list
+(the drop-down holds the 1,000 most recent matches). For their connections over the time range:
 
 - **Connection attempts**: when, which host and host pool, how each ended, time to the desktop, round-trip time,
   bandwidth, client, client IP and gateway region.
@@ -560,10 +565,14 @@ Enter a user's sign-in name. For their connections over the time range:
 - **The session hosts they used**: latest health report and failing health checks, drain mode and sessions; CPU,
   free memory and input delay; FSLogix and User Profile Service errors on those hosts, flagging ones that name the
   user.
+- **Auto-scale and other actions on those hosts**: starts, deallocations, drain mode, rebuilds, log-offs and
+  messages from Nerdio Manager, scaling plans or admins, flagging the ones made while the user was on that host
+  (set *Nerdio Manager app id* to label Nerdio's own).
 - **Entra ID sign-ins** to Azure Virtual Desktop, with Conditional Access results.
 
 Needs the host pool and workspace diagnostic settings (`WVD*` tables). Host load, profile events and sign-ins use
-`Perf` or `InsightsMetrics`, `Event` and `SigninLogs` when they are in the same workspace.
+`Perf` or `InsightsMetrics`, `Event` and `SigninLogs` when they are in the same workspace; actions on the hosts use
+the activity log (`AzureActivity`).
 
 ### Log Analytics: cost and noise
 

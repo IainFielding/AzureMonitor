@@ -13,9 +13,10 @@ build_workbook.py so the workbooks look alike.
 
 import pathlib
 
-from build_workbook import (DAY_MS, WORKSPACE_SET, WORKSPACE_UNSET, big_number_tiles, free_text_param, la,
-                            low_is_good, notebook, params, resource_link, status_fmt, subscription_param, text,
-                            time_param, when_empty, when_set, workspace_param, write_workbook)
+from build_workbook import (AVD_ACTION_STATUS, DAY_MS, WORKSPACE_SET, WORKSPACE_UNSET, avd_host_actions,
+                            big_number_tiles, free_text_param, gid, la, low_is_good, notebook, params, resource_link,
+                            status_fmt, subscription_param, text, time_param, when_empty, when_set, workspace_param,
+                            write_workbook)
 
 OUT = pathlib.Path(__file__).resolve().parent.parent / "workbook" / "avd-user.workbook.json"
 
@@ -32,7 +33,7 @@ HOUR_MS = 3600000
 USER = r"""let User = trim(@'\s+', @'{User}');
 let Connections = WVDConnections
 | where TimeGenerated {TimeRange}
-| where isnotempty(User) and UserName contains User
+| where isnotempty(User) and UserName =~ User
 | summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),
     Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),
     UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),
@@ -71,7 +72,7 @@ TILES_Q = USER + r"""let Rtt = union isfuzzy=true (datatable(TimeGenerated: date
     | where TimeGenerated {TimeRange}
     | where CorrelationId in (Ids)
     | summarize P50 = percentile(toreal(column_ifexists('EstRoundTripTimeInMs', real(null))), 50);
-let Errors = WVDErrors | where TimeGenerated {TimeRange} | where isnotempty(User) and UserName contains User | count;
+let Errors = WVDErrors | where TimeGenerated {TimeRange} | where isnotempty(User) and UserName =~ User | count;
 Connections
 | summarize Attempts = count(), Connected = countif(isnotnull(ConnectedAt)), Hosts = dcount(Host)
 | extend Rtt = toscalar(Rtt), Errors = toscalar(Errors)
@@ -116,7 +117,7 @@ Connections
 
 ERRORS_Q = USER + r"""WVDErrors
 | where TimeGenerated {TimeRange}
-| where isnotempty(User) and UserName contains User
+| where isnotempty(User) and UserName =~ User
 | extend Text = strcat(CodeSymbolic, ' ', Message)
 | project Time = TimeGenerated, Source, Operation = tostring(column_ifexists('Operation', '')), Code = CodeSymbolic,
     Side = iff(tobool(ServiceError), 'Azure Virtual Desktop service', 'Host, configuration or client'),
@@ -256,7 +257,7 @@ SIGNINS_Q = USER + r"""union isfuzzy=true (datatable(TimeGenerated: datetime)[])
 | where TimeGenerated {TimeRange}
 | extend Upn = tostring(column_ifexists('UserPrincipalName', '')), App = tostring(column_ifexists('AppDisplayName', '')),
     Resource = tostring(column_ifexists('ResourceDisplayName', ''))
-| where isnotempty(User) and Upn contains User
+| where isnotempty(User) and Upn =~ User
 | where App has_any ('Virtual Desktop', 'Remote Desktop', 'Windows 365', 'Windows Cloud Login')
     or Resource has_any ('Virtual Desktop', 'Windows Cloud Login', 'Microsoft Remote Desktop')
 | extend Result = tostring(column_ifexists('ResultType', '')), Status = column_ifexists('Status', dynamic(null)),
@@ -269,13 +270,45 @@ SIGNINS_Q = USER + r"""union isfuzzy=true (datatable(TimeGenerated: datetime)[])
 | take 200
 """
 
+# Resource Manager actions on the hosts they used (Nerdio Manager auto-scale, AVD scaling plans, admins), flagged
+# when they fell inside one of the user's sessions on that host: a host deallocated, drained or rebuilt, or the user
+# logged off, while they were on it.
+HOST_ACTIONS_Q = USER + avd_host_actions("Hosts") + r"""let Sessions = Connections
+    | where isnotempty(HostShort)
+    | project HostShort, From = Started, To = coalesce(Ended, LastSeen) + 5m;
+Actions
+| join kind=leftouter Sessions on HostShort
+| extend During = toint(TimeGenerated between (From .. To))
+| summarize DuringSession = max(During) by TimeGenerated, HostShort, Action, Status, CallerKind, Caller, Error, ErrorMessage, CorrelationId
+| project Time = TimeGenerated, Host = HostShort, Action, DuringSession = iff(DuringSession == 1, 'Yes', ''), Status,
+    CallerKind, Caller, Error, ErrorMessage, CorrelationId
+| order by DuringSession desc, Time desc
+| take 300
+"""
+
+# The user picker: everyone who connected or hit an error in the time range, most recent first, narrowed by the
+# search box. A drop-down holds a limited number of entries, so on a large estate the search box does the narrowing.
+USER_LIST_Q = r"""let Find = trim(@'\s+', @'{Find}');
+union isfuzzy=true
+    (WVDConnections | where TimeGenerated {TimeRange} | project TimeGenerated, UserName, IsError = false),
+    (WVDErrors | where TimeGenerated {TimeRange} | project TimeGenerated, UserName, IsError = true)
+| where isnotempty(UserName)
+| where isempty(Find) or UserName contains Find
+| summarize LastSeen = max(TimeGenerated), Errors = countif(IsError) by UserName
+| top 1000 by LastSeen desc
+| project value = UserName,
+    label = strcat(UserName, '  ·  last seen ', format_datetime(LastSeen, 'yyyy-MM-dd HH:mm'),
+        iff(Errors > 0, strcat('  ·  ', Errors, ' errors'), ''))
+"""
+
 OUTCOME = status_fmt("Outcome", good=["Connected, then ended", "Success"], warn=["Connected (still on, or end not logged)",
                                                                               "In progress or abandoned"],
                      bad=["Never connected", "Failure"])
 
 HOW_TO = """\
-Enter the user's sign-in name (or part of it). Every panel follows the connections that user made in the time
-range: when, from which client, to which session host, how they ended, and why.
+Pick the user from the list, typing part of their name in *Find user* first to narrow it. The list holds the users
+who connected or hit an error in the time range, most recent first. Every panel follows the connections that user
+made: when, from which client, to which session host, how they ended, and why.
 
 **Reading it.** *Never connected* attempts carry the error: *Side* says whether Azure Virtual Desktop itself failed
 or the host, its configuration or the client did, and *Likely cause* explains the common codes. A slow sign-in
@@ -286,7 +319,8 @@ network (round-trip time above about 150 ms, or low bandwidth) or the host (high
 Needs the host pool's and workspace's diagnostic settings (`WVDConnections`, `WVDErrors`, `WVDCheckpoints`,
 `WVDConnectionNetworkData`, `WVDAgentHealthStatus`). Host load needs the hosts' performance counters (`Perf`) or VM
 insights (`InsightsMetrics`); profile events need the FSLogix and User Profile Service event logs collected
-(`Event`); sign-ins need the Entra ID sign-in logs (`SigninLogs`) in the same workspace."""
+(`Event`); sign-ins need the Entra ID sign-in logs (`SigninLogs`), and actions on the hosts (Nerdio Manager
+auto-scale, scaling plans) the subscription activity log (`AzureActivity`), in the same workspace."""
 
 
 def parameters():
@@ -294,7 +328,17 @@ def parameters():
         subscription_param(P),
         workspace_param(P, "The workspace your host pools, session hosts and Entra ID sign-in logs send to.", required=True),
         time_param(P, DAY_MS, (HOUR_MS, 4 * HOUR_MS, 12 * HOUR_MS, DAY_MS, 3 * DAY_MS, 7 * DAY_MS, 14 * DAY_MS, 30 * DAY_MS)),
-        free_text_param(P, "User", "User", "The user's sign-in name, or part of it, e.g. jane.smith@contoso.com."),
+        free_text_param(P, "Find", "Find user", "Part of the user's sign-in name, e.g. jane.smith, to narrow the "
+                        "User list. Leave empty to list the 1,000 users seen most recently."),
+        {"id": gid(f"{P}-param-User"), "version": "KqlParameterItem/1.0", "name": "User", "label": "User", "type": 2,
+         "isRequired": False, "multiSelect": False, "query": USER_LIST_Q.strip(), "crossComponentResources": ["{Workspace}"],
+         "typeSettings": {"additionalResourceOptions": [], "showDefault": False},
+         "timeContext": {"durationMs": DAY_MS}, "timeContextFromParameter": "TimeRange",
+         "queryType": 0, "resourceType": "microsoft.operationalinsights/workspaces",
+         "description": "Users who connected to, or failed to connect to, Azure Virtual Desktop in the time range, "
+                        "most recent first, with their error count."},
+        free_text_param(P, "NerdioCaller", "Nerdio Manager app id", "Optional. The application (client) id of "
+                        "Nerdio Manager's app registration, to label its actions on the session hosts."),
     ])
 
 
@@ -311,7 +355,7 @@ def workbook():
         parameters(),
         text(f"{P}-ws-hint", "Select the **Log Analytics workspace** your host pools send their diagnostics to.", "info",
              visible_when=WORKSPACE_UNSET),
-        when_empty(text(f"{P}-user-hint", "Enter a **user** to begin.", "info"), "User"),
+        when_empty(text(f"{P}-user-hint", "Pick a **user** to begin (type part of their name in *Find user* to narrow the list).", "info"), "User"),
         text(f"{P}-howto", HOW_TO, "info", visible_when=WORKSPACE_SET),
         user(la(f"{P}-tiles", "", TILES_Q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail"),
                 no_data="No connections for this user in the time range.")),
@@ -361,6 +405,13 @@ def workbook():
                 labels={"EventId": "Event", "ThisUser": "Names this user"},
                 no_data="No profile errors or warnings on these hosts (or the FSLogix and User Profile Service event "
                         "logs are not collected).")),
+        user(la(f"{P}-host-actions", "Auto-scale and other actions on those hosts (Nerdio Manager, scaling plans, admins)",
+                HOST_ACTIONS_Q,
+                formatters=[status_fmt("DuringSession", warn=["Yes"]), AVD_ACTION_STATUS],
+                labels={"DuringSession": "During their session", "CallerKind": "Kind", "ErrorMessage": "Message",
+                        "CorrelationId": "Correlation id"},
+                no_data="No Resource Manager actions on these hosts in the time range (or AzureActivity is not in "
+                        "this workspace).")),
         user(la(f"{P}-signins", "Entra ID sign-ins to Azure Virtual Desktop", SIGNINS_Q,
                 formatters=[OUTCOME, status_fmt("ConditionalAccess", good=["success", "notApplied"], bad=["failure"])],
                 labels={"ConditionalAccess": "Conditional Access", "ClientApp": "Client app"},

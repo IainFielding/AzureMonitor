@@ -31,7 +31,7 @@ COLOURS = {"success": "green", "2": "orange", "4": "red", "unknown": "#808080",
            "Sev0": "dark-red", "Sev1": "red", "Sev2": "orange", "Sev3": "yellow", "Sev4": "blue"}
 MARKERS = {"success": "🟢 ", "2": "🟠 ", "4": "🔴 ", "unknown": "⚪ "}
 
-TEXT_PARAMS = ("BuildAgentPattern", "DcPattern", "StoragePattern")
+TEXT_PARAMS = ("BuildAgentPattern", "DcPattern", "StoragePattern", "NerdioPattern", "NerdioPrefix", "NerdioCaller")
 PARAM = re.compile(r"(?<!\$)\{[A-Za-z]+(?::[A-Za-z]+)?\}")  # a workbook {Param}, not a Grafana ${var}
 
 

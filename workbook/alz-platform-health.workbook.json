@@ -133,6 +133,36 @@
             "description": "Regex matched against storage account and resource group names on the Storage and Throughput tabs. Metric charts handle at most 200 accounts; use '.' for all."
           },
           {
+            "id": "f82726c3-7508-5da4-b81e-c1524cc3f07f",
+            "version": "KqlParameterItem/1.0",
+            "name": "NerdioPattern",
+            "label": "Nerdio Manager name pattern",
+            "type": 1,
+            "isRequired": true,
+            "value": "(?i)^nmw-app",
+            "description": "Regex matched against resource names to find Nerdio Manager's own app service, database, key vault, automation account and Application Insights (AVD tab)."
+          },
+          {
+            "id": "ac3efc89-78c4-5858-9929-8752d3ed9a3b",
+            "version": "KqlParameterItem/1.0",
+            "name": "NerdioPrefix",
+            "label": "Nerdio tag prefix",
+            "type": 1,
+            "isRequired": true,
+            "value": "NMW_",
+            "description": "The prefix of the tags Nerdio Manager puts on what it manages: NMW_ unless it was changed at install. Case-sensitive (AVD tab)."
+          },
+          {
+            "id": "aa5bd7da-a83e-5fa6-bcbc-d7a4b2c798b6",
+            "version": "KqlParameterItem/1.0",
+            "name": "NerdioCaller",
+            "label": "Nerdio Manager app id",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. The application (client) id of Nerdio Manager's app registration, to label its actions on session hosts apart from other automation (AVD tab)."
+          },
+          {
             "id": "0254091d-5f4a-54d3-a698-78249209378c",
             "version": "KqlParameterItem/1.0",
             "name": "selectedTab",
@@ -926,7 +956,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
+              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/START/ACTION', 'MICROSOFT.COMPUTE/VIRTUALMACHINES/DEALLOCATE/ACTION')\n        | where ActivityStatusValue in~ ('Failure', 'Failed') and Caller !has '@'\n        | extend HostShort = tolower(extract(@'(?i)/virtualmachines/([^/]+)', 1, _ResourceId))\n        | where HostShort in ((WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize Count = count()\n        | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 0,
@@ -13989,7 +14019,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id,\n    PoolType = tostring(properties.hostPoolType),\n    LoadBalancing = tostring(properties.loadBalancerType),\n    MaxSessions = iff(tostring(properties.hostPoolType) =~ 'Personal', int(null), toint(properties.maxSessionLimit)),\n    AppGroupType = tostring(properties.preferredAppGroupType),\n    StartVmOnConnect = tostring(properties.startVMOnConnect),\n    Validation = tostring(properties.validationEnvironment),\n    ResourceGroup = resourceGroup, Location = location",
+              "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id,\n    PoolType = tostring(properties.hostPoolType),\n    LoadBalancing = tostring(properties.loadBalancerType),\n    MaxSessions = iff(tostring(properties.hostPoolType) =~ 'Personal', int(null), toint(properties.maxSessionLimit)),\n    AppGroupType = tostring(properties.preferredAppGroupType),\n    StartVmOnConnect = tostring(properties.startVMOnConnect),\n    Validation = tostring(properties.validationEnvironment),\n    ManagedBy = iff(tostring(tags) contains '\"{NerdioPrefix}', 'Nerdio Manager', ''),\n    ResourceGroup = resourceGroup, Location = location",
               "size": 0,
               "title": "Host pools",
               "queryType": 1,
@@ -14501,6 +14531,570 @@
               }
             },
             "name": "avd-errors",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Nerdio Manager"
+            },
+            "name": "avd-nerdio-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "For host pools run by **Nerdio Manager for Enterprise**. Its own resources are found by the *Nerdio Manager name pattern* and the hosts it manages by the *Nerdio tag prefix* (both at the top). Auto-scale runs as Nerdio's app registration, so its work shows in the activity log as automation starting, deallocating, draining and logging users off session hosts. Put Nerdio's application (client) id in *Nerdio Manager app id* to tell it apart from scaling plans and runbooks; *Who acts on the session hosts* shows the ids to choose from.",
+              "style": "info"
+            },
+            "name": "avd-nerdio-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where name matches regex @'{NerdioPattern}'\n| project id = tolower(id), Type = type,\n    State = coalesce(tostring(properties.state), tostring(properties.status), tostring(properties.provisioningState)),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState), Reason = tostring(properties.summary)\n  ) on id\n| project-away id1\n| order by Type asc",
+              "size": 0,
+              "title": "Nerdio Manager resources",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No resources match the Nerdio Manager name pattern in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Health",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Available",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Degraded",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unavailable",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Running",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Online",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Ok",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Paused",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Stopped",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Offline",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Suspended",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  }
+                ]
+              }
+            },
+            "name": "avd-nerdio-app",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where tostring(tags) contains '\"{NerdioPrefix}'\n| extend ObjectType = tostring(tags['{NerdioPrefix}OBJECT_TYPE']),\n    AutoscaleRestriction = tostring(tags['{NerdioPrefix}AUTOSCALE_RESTRICTION']),\n    ScaleInRestriction = tostring(tags['{NerdioPrefix}SCALE_IN_RESTRICTION']),\n    Power = tostring(properties.extended.instanceView.powerState.code)\n| extend Power = iff(isempty(Power), 'Unknown', tostring(split(Power, '/')[1]))\n| where ObjectType =~ 'SESSION_HOST'\n| summarize Hosts = count(), Running = countif(Power =~ 'running'), Deallocated = countif(Power =~ 'deallocated'),\n    Stopped = countif(Power =~ 'stopped'), Restricted = countif(isnotempty(AutoscaleRestriction) or isnotempty(ScaleInRestriction))\n| extend rows = pack_array(\n    pack('Signal', 'Nerdio session hosts', 'Value', Hosts, 'Detail', strcat(Running, ' running'), 'State', 'Unknown'),\n    pack('Signal', 'Deallocated', 'Value', Deallocated, 'Detail', 'scaled in, not billed for compute', 'State', 'Unknown'),\n    pack('Signal', 'Stopped, not deallocated', 'Value', Stopped, 'Detail', 'still billed for compute',\n        'State', iff(Stopped > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Held out of auto-scale', 'Value', Restricted, 'Detail', 'auto-scale or scale-in restriction tag',\n        'State', iff(Restricted > 0, 'Degraded', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = tolong(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "noDataMessage": "No session hosts carry Nerdio's tags.",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "avd-nerdio-tiles",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where tostring(tags) contains '\"{NerdioPrefix}'\n| extend ObjectType = tostring(tags['{NerdioPrefix}OBJECT_TYPE']),\n    AutoscaleRestriction = tostring(tags['{NerdioPrefix}AUTOSCALE_RESTRICTION']),\n    ScaleInRestriction = tostring(tags['{NerdioPrefix}SCALE_IN_RESTRICTION']),\n    Power = tostring(properties.extended.instanceView.powerState.code)\n| extend Power = iff(isempty(Power), 'Unknown', tostring(split(Power, '/')[1]))\n| project id, ObjectType, Power, AutoscaleRestriction, ScaleInRestriction,\n    Size = tostring(properties.hardwareProfile.vmSize), ResourceGroup = resourceGroup, Location = location\n| order by AutoscaleRestriction desc, ScaleInRestriction desc, Power asc",
+              "size": 0,
+              "title": "Virtual machines managed by Nerdio",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines carry Nerdio's tags. Check the tag prefix at the top.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Power",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "running",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "stopped",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "deallocated",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Virtual machine"
+                  },
+                  {
+                    "columnId": "ObjectType",
+                    "label": "Nerdio object"
+                  },
+                  {
+                    "columnId": "AutoscaleRestriction",
+                    "label": "Auto-scale restriction"
+                  },
+                  {
+                    "columnId": "ScaleInRestriction",
+                    "label": "Scale-in restriction"
+                  }
+                ]
+              }
+            },
+            "name": "avd-nerdio-hosts"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let AvdHosts = WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Nerdio = trim(@'\\s+', @'{NerdioCaller}');\nlet Actions = AzureActivity\n| where TimeGenerated {TimeRange}\n| where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/', 'MICROSOFT.DESKTOPVIRTUALIZATION/HOSTPOOLS/SESSIONAvdHosts')\n| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failure', 'Failed')\n| extend Op = tolower(OperationNameValue)\n| extend Action = case(Op endswith 'virtualmachines/start/action', 'Started',\n    Op endswith 'virtualmachines/deallocate/action', 'Deallocated',\n    Op endswith 'virtualmachines/poweroff/action', 'Powered off (still billed)',\n    Op endswith 'virtualmachines/restart/action', 'Restarted',\n    Op endswith 'virtualmachines/reimage/action', 'Re-imaged',\n    Op endswith 'virtualmachines/delete', 'VM deleted',\n    Op endswith 'virtualmachines/write', 'VM created or changed',\n    Op endswith 'usersessions/delete', 'User logged off',\n    Op endswith 'usersessions/disconnect/action', 'User disconnected',\n    Op endswith 'usersessions/sendmessage/action', 'Message sent to user',\n    Op endswith 'sessionhosts/write', 'Session host changed (drain mode)',\n    Op endswith 'sessionhosts/delete', 'Removed from host pool',\n    '')\n| where isnotempty(Action)\n| extend HostShort = tolower(tostring(split(extract(@'(?i)/(virtualmachines|sessionhosts)/([^/]+)', 2, _ResourceId), '.')[0]))\n| where HostShort in (AvdHosts)\n| extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', '')))),\n    AppId = tostring(coalesce(column_ifexists('Claims_d', dynamic(null)).appid, parse_json(tostring(column_ifexists('Claims', ''))).appid))\n| extend Status = iff(ActivityStatusValue in~ ('Failure', 'Failed'), 'Failed', 'Succeeded'),\n    CallerKind = case(Caller has '@', 'User',\n        isnotempty(Nerdio) and (Caller =~ Nerdio or AppId =~ Nerdio), 'Nerdio Manager',\n        'Automation'),\n    StatusMessage = tostring(Props.statusMessage)\n| extend Error = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.code),\n        tostring(parse_json(StatusMessage).Code), substring(StatusMessage, 0, 200)), ''),\n    ErrorMessage = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.message),\n        tostring(parse_json(StatusMessage).Message)), '');\nActions\n| where CallerKind != 'User' and Status == 'Succeeded'\n| summarize Actions = count() by bin(TimeGenerated, {TimeRange:grain}), Action",
+              "size": 0,
+              "title": "Automated actions on session hosts",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No automated actions on session hosts in the time range (needs AzureActivity)."
+            },
+            "name": "avd-nerdio-scaling",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let AvdHosts = WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Nerdio = trim(@'\\s+', @'{NerdioCaller}');\nlet Actions = AzureActivity\n| where TimeGenerated {TimeRange}\n| where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/', 'MICROSOFT.DESKTOPVIRTUALIZATION/HOSTPOOLS/SESSIONAvdHosts')\n| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failure', 'Failed')\n| extend Op = tolower(OperationNameValue)\n| extend Action = case(Op endswith 'virtualmachines/start/action', 'Started',\n    Op endswith 'virtualmachines/deallocate/action', 'Deallocated',\n    Op endswith 'virtualmachines/poweroff/action', 'Powered off (still billed)',\n    Op endswith 'virtualmachines/restart/action', 'Restarted',\n    Op endswith 'virtualmachines/reimage/action', 'Re-imaged',\n    Op endswith 'virtualmachines/delete', 'VM deleted',\n    Op endswith 'virtualmachines/write', 'VM created or changed',\n    Op endswith 'usersessions/delete', 'User logged off',\n    Op endswith 'usersessions/disconnect/action', 'User disconnected',\n    Op endswith 'usersessions/sendmessage/action', 'Message sent to user',\n    Op endswith 'sessionhosts/write', 'Session host changed (drain mode)',\n    Op endswith 'sessionhosts/delete', 'Removed from host pool',\n    '')\n| where isnotempty(Action)\n| extend HostShort = tolower(tostring(split(extract(@'(?i)/(virtualmachines|sessionhosts)/([^/]+)', 2, _ResourceId), '.')[0]))\n| where HostShort in (AvdHosts)\n| extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', '')))),\n    AppId = tostring(coalesce(column_ifexists('Claims_d', dynamic(null)).appid, parse_json(tostring(column_ifexists('Claims', ''))).appid))\n| extend Status = iff(ActivityStatusValue in~ ('Failure', 'Failed'), 'Failed', 'Succeeded'),\n    CallerKind = case(Caller has '@', 'User',\n        isnotempty(Nerdio) and (Caller =~ Nerdio or AppId =~ Nerdio), 'Nerdio Manager',\n        'Automation'),\n    StatusMessage = tostring(Props.statusMessage)\n| extend Error = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.code),\n        tostring(parse_json(StatusMessage).Code), substring(StatusMessage, 0, 200)), ''),\n    ErrorMessage = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.message),\n        tostring(parse_json(StatusMessage).Message)), '');\nActions\n| summarize Actions = count(), Failed = countif(Status == 'Failed'), Hosts = dcount(HostShort), LastSeen = max(TimeGenerated),\n    TopActions = strcat_array(make_set(Action, 4), ', ') by CallerKind, Caller, AppId\n| order by Actions desc",
+              "size": 0,
+              "title": "Who acts on the session hosts",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No activity on session hosts in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Failed",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "CallerKind",
+                    "label": "Kind"
+                  },
+                  {
+                    "columnId": "AppId",
+                    "label": "App id"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  },
+                  {
+                    "columnId": "TopActions",
+                    "label": "Actions taken"
+                  }
+                ]
+              }
+            },
+            "name": "avd-nerdio-callers",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let AvdHosts = WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Nerdio = trim(@'\\s+', @'{NerdioCaller}');\nlet Actions = AzureActivity\n| where TimeGenerated {TimeRange}\n| where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/', 'MICROSOFT.DESKTOPVIRTUALIZATION/HOSTPOOLS/SESSIONAvdHosts')\n| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failure', 'Failed')\n| extend Op = tolower(OperationNameValue)\n| extend Action = case(Op endswith 'virtualmachines/start/action', 'Started',\n    Op endswith 'virtualmachines/deallocate/action', 'Deallocated',\n    Op endswith 'virtualmachines/poweroff/action', 'Powered off (still billed)',\n    Op endswith 'virtualmachines/restart/action', 'Restarted',\n    Op endswith 'virtualmachines/reimage/action', 'Re-imaged',\n    Op endswith 'virtualmachines/delete', 'VM deleted',\n    Op endswith 'virtualmachines/write', 'VM created or changed',\n    Op endswith 'usersessions/delete', 'User logged off',\n    Op endswith 'usersessions/disconnect/action', 'User disconnected',\n    Op endswith 'usersessions/sendmessage/action', 'Message sent to user',\n    Op endswith 'sessionhosts/write', 'Session host changed (drain mode)',\n    Op endswith 'sessionhosts/delete', 'Removed from host pool',\n    '')\n| where isnotempty(Action)\n| extend HostShort = tolower(tostring(split(extract(@'(?i)/(virtualmachines|sessionhosts)/([^/]+)', 2, _ResourceId), '.')[0]))\n| where HostShort in (AvdHosts)\n| extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', '')))),\n    AppId = tostring(coalesce(column_ifexists('Claims_d', dynamic(null)).appid, parse_json(tostring(column_ifexists('Claims', ''))).appid))\n| extend Status = iff(ActivityStatusValue in~ ('Failure', 'Failed'), 'Failed', 'Succeeded'),\n    CallerKind = case(Caller has '@', 'User',\n        isnotempty(Nerdio) and (Caller =~ Nerdio or AppId =~ Nerdio), 'Nerdio Manager',\n        'Automation'),\n    StatusMessage = tostring(Props.statusMessage)\n| extend Error = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.code),\n        tostring(parse_json(StatusMessage).Code), substring(StatusMessage, 0, 200)), ''),\n    ErrorMessage = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.message),\n        tostring(parse_json(StatusMessage).Message)), '');\nActions\n| where Status == 'Failed'\n| project Time = TimeGenerated, Host = HostShort, Action, Error, ErrorMessage, CallerKind, Caller, CorrelationId\n| order by Time desc\n| take 200",
+              "size": 0,
+              "title": "Failed scaling and session host actions",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failed actions on session hosts in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ErrorMessage",
+                    "label": "Message"
+                  },
+                  {
+                    "columnId": "CallerKind",
+                    "label": "Kind"
+                  },
+                  {
+                    "columnId": "CorrelationId",
+                    "label": "Correlation id"
+                  }
+                ]
+              }
+            },
+            "name": "avd-nerdio-failures",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*AllocationFailed*, *ZonalAllocationFailed* and *SkuNotAvailable* mean Azure had no capacity for that size: scale-out stalls and users queue or fail with *no healthy session host*. *OperationNotAllowed* is usually a vCPU quota (see the Capacity tab).",
+              "style": "info"
+            },
+            "name": "avd-nerdio-failures-note",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Kind: string, What: string, Detail: string)[]),\n    (AppExceptions | where TimeGenerated {TimeRange}\n        | where extract(@'[^/]+$', 0, tostring(_ResourceId)) matches regex @'{NerdioPattern}'\n        | extend Kind = 'Exception', What = tostring(column_ifexists('OuterMessage', '')),\n            Detail = tostring(column_ifexists('ProblemId', ''))),\n    (AppRequests | where TimeGenerated {TimeRange}\n        | where extract(@'[^/]+$', 0, tostring(_ResourceId)) matches regex @'{NerdioPattern}'\n        | where tostring(column_ifexists('Success', true)) =~ 'false'\n        | extend Kind = 'Failed request', What = tostring(column_ifexists('Name', '')),\n            Detail = strcat('HTTP ', tostring(column_ifexists('ResultCode', ''))))\n| summarize Count = count(), LastSeen = max(TimeGenerated), Detail = take_any(Detail) by Kind, What = substring(What, 0, 300)\n| top 25 by Count desc",
+              "size": 0,
+              "title": "Nerdio Manager application errors",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No errors from Nerdio Manager's Application Insights in this workspace (it must be workspace-based, and its workspace selected at the top).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "avd-nerdio-errors",
             "conditionalVisibility": {
               "parameterName": "Workspace",
               "comparison": "isNotEqualTo",
