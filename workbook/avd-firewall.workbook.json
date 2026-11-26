@@ -1,0 +1,982 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Azure Virtual Desktop disconnections and Azure Firewall\nDo users drop off Azure Virtual Desktop when the firewall is short of SNAT ports, unhealthy, slow or scaling? The disconnections and the firewall's signals on the same timeline, and how strongly each signal lines up with them."
+      },
+      "name": "avdfw-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "27094104-1338-5751-9f1c-3f8c085a7630",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "a8df0627-f4a5-5056-af53-5f5ff5b63a16",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": true,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace your host pools and firewalls send their logs and metrics to.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "c3989752-ccb4-536e-ba01-69a61dd857d7",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            }
+          },
+          {
+            "id": "c4e0574a-d969-5f24-8747-201eb8ac9fc3",
+            "version": "KqlParameterItem/1.0",
+            "name": "HostPools",
+            "label": "Host pools",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "67b69122-767c-55d9-83a3-6c4eb83de3f5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Firewalls",
+            "label": "Firewalls",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "82a3c63c-5960-5e55-9653-c3e2e44d8303",
+            "version": "KqlParameterItem/1.0",
+            "name": "Grain",
+            "label": "Time bin",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"1m\", \"label\": \"1 minute\"}, {\"value\": \"5m\", \"label\": \"5 minutes\"}, {\"value\": \"15m\", \"label\": \"15 minutes\"}]",
+            "value": "5m",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "How finely to line the two up. Use 1 minute over a few hours, 15 minutes over a week or more."
+          },
+          {
+            "id": "9c4945f1-01e7-5720-8c7b-6ed023db9d68",
+            "version": "KqlParameterItem/1.0",
+            "name": "Measure",
+            "label": "Count",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"both\", \"label\": \"Dropped sessions and failed connections\"}, {\"value\": \"drops\", \"label\": \"Dropped sessions only\"}, {\"value\": \"failed\", \"label\": \"Failed connections only\"}]",
+            "value": "both",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "Which disconnections the comparison counts."
+          },
+          {
+            "id": "5b6ddbb3-4732-5846-996b-9d6c351e02bb",
+            "version": "KqlParameterItem/1.0",
+            "name": "SnatThreshold",
+            "label": "SNAT stress at",
+            "type": 2,
+            "isRequired": true,
+            "jsonData": "[{\"value\": \"50\", \"label\": \"50%\"}, {\"value\": \"70\", \"label\": \"70%\"}, {\"value\": \"90\", \"label\": \"90%\"}]",
+            "value": "70",
+            "typeSettings": {
+              "showDefault": false
+            },
+            "description": "The SNAT port use that counts as stress."
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "avdfw-params"
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Select the **Log Analytics workspace** your host pools and firewalls send to.",
+        "style": "info"
+      },
+      "name": "avdfw-ws-hint",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "Pick the workspace, the **host pools** whose session hosts send their traffic through the firewall, and the\n**firewalls** on that path. Each disconnection is a connection that hit a network error: a **dropped session** (the\nuser was connected) or a **failed connection** (they never got on; *ReverseConnect* codes are the session host\nfailing to reach the gateway, the leg that crosses the firewall). *Count* chooses which the comparison uses.\n\n**Reading it.** *Does the firewall explain the disconnections?* is the answer. For each firewall signal it takes the\ntime bins where the signal was under stress (in that bin or the one before) and compares the average disconnections\nin them with the rest. *Likely related* means at least three such bins with twice the usual disconnections or more.\n*Correlation* is between -1 and 1: above about 0.3 the two move together. Then check *Disconnection spikes* and\n*Scale operations and Resource Health events* to see whether the bad moments line up. A link is a lead, not proof:\nthe drops and the firewall's stress could both come from the same burst of users, such as the Monday morning sign-in.\n\nNeeds the host pools' diagnostic settings (`WVDConnections`, `WVDErrors`) and the firewalls' diagnostic setting with\n**AllMetrics** (`AzureMetrics`) sent to the same workspace. The rule logs (`AZFWNetworkRule`, `AZFWApplicationRule`)\nadd the denies, and the activity log (`AzureActivity`) adds Resource Health events.",
+        "style": "info"
+      },
+      "name": "avdfw-howto",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Bins = range T from Start to End step Grain\n    | join kind=leftouter (Errs | summarize Drops = countif(Connected), FailedConnects = countif(not(Connected)),\n        Users = dcount(UserName) by T = bin(At, Grain)) on T\n    | join kind=leftouter Fw on T\n    | join kind=leftouter CapBins on T\n    | join kind=leftouter (Rh | summarize RhEvents = count() by T = bin(TimeGenerated, Grain)) on T\n    | join kind=leftouter (FwDenies | summarize Denies = count() by T = bin(TimeGenerated, Grain)) on T\n    | project T, Drops = coalesce(Drops, 0), FailedConnects = coalesce(FailedConnects, 0), Users = coalesce(Users, 0),\n        Health, SnatPct, LatencyMs, ThroughputMbps, Capacity, ScaleOut = coalesce(ScaleOut, 0), ScaleIn = coalesce(ScaleIn, 0),\n        RhEvents = coalesce(RhEvents, 0), Denies = coalesce(Denies, 0)\n    | extend Y = case('{Measure}' == 'drops', Drops, '{Measure}' == 'failed', FailedConnects, Drops + FailedConnects);\nlet Affected = toscalar(Errs | summarize dcount(UserName));\nBins\n| summarize Drops = sum(Drops), Failed = sum(FailedConnects), Health = min(Health), Snat = max(SnatPct),\n    ScaleOps = sum(ScaleOut) + sum(ScaleIn), ScaleOut = sum(ScaleOut), RhEvents = sum(RhEvents), Denies = sum(Denies),\n    MetricBins = countif(isnotnull(Health) or isnotnull(SnatPct))\n| extend rows = pack_array(\n    pack('Signal', 'Dropped sessions', 'Value', Drops, 'Detail', strcat(Affected, ' users affected in all'), 'State', iff(Drops > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Failed connections', 'Value', Failed, 'Detail', 'network errors before connecting', 'State', iff(Failed > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Lowest firewall health', 'Value', round(Health), 'Detail', iff(MetricBins == 0, 'no firewall metrics (AzureMetrics)', '%'),\n        'State', case(isnull(Health), 'Unknown', Health < 90, 'Unavailable', Health < 100, 'Degraded', 'Available')),\n    pack('Signal', 'Peak SNAT port use', 'Value', round(Snat), 'Detail', '%',\n        'State', case(isnull(Snat), 'Unknown', Snat >= 90, 'Unavailable', Snat >= 70, 'Degraded', 'Available')),\n    pack('Signal', 'Scale operations', 'Value', ScaleOps, 'Detail', strcat(ScaleOut, ' out'), 'State', 'Unknown'),\n    pack('Signal', 'Resource Health events', 'Value', RhEvents, 'Detail', 'on the firewalls', 'State', iff(RhEvents > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Denies from session hosts', 'Value', Denies, 'Detail', 'firewall rule logs', 'State', iff(Denies > 0, 'Degraded', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toreal(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)",
+        "size": 3,
+        "title": "",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "tiles",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "tileSettings": {
+          "titleContent": {
+            "columnMatch": "Signal",
+            "formatter": 1
+          },
+          "leftContent": {
+            "columnMatch": "State",
+            "formatter": 18,
+            "formatOptions": {
+              "thresholdsOptions": "icons",
+              "thresholdsGrid": [
+                {
+                  "operator": "==",
+                  "thresholdValue": "Available",
+                  "representation": "success",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Degraded",
+                  "representation": "2",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unavailable",
+                  "representation": "4",
+                  "text": "​"
+                },
+                {
+                  "operator": "==",
+                  "thresholdValue": "Unknown",
+                  "representation": "unknown",
+                  "text": "​"
+                },
+                {
+                  "operator": "Default",
+                  "thresholdValue": null,
+                  "representation": "Blank",
+                  "text": "​"
+                }
+              ]
+            }
+          },
+          "rightContent": {
+            "columnMatch": "Value",
+            "formatter": 12,
+            "formatOptions": {
+              "palette": "none"
+            }
+          },
+          "showBorder": true,
+          "secondaryContent": {
+            "columnMatch": "Detail",
+            "formatter": 1
+          }
+        }
+      },
+      "name": "avdfw-tiles",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Bins = range T from Start to End step Grain\n    | join kind=leftouter (Errs | summarize Drops = countif(Connected), FailedConnects = countif(not(Connected)),\n        Users = dcount(UserName) by T = bin(At, Grain)) on T\n    | join kind=leftouter Fw on T\n    | join kind=leftouter CapBins on T\n    | join kind=leftouter (Rh | summarize RhEvents = count() by T = bin(TimeGenerated, Grain)) on T\n    | join kind=leftouter (FwDenies | summarize Denies = count() by T = bin(TimeGenerated, Grain)) on T\n    | project T, Drops = coalesce(Drops, 0), FailedConnects = coalesce(FailedConnects, 0), Users = coalesce(Users, 0),\n        Health, SnatPct, LatencyMs, ThroughputMbps, Capacity, ScaleOut = coalesce(ScaleOut, 0), ScaleIn = coalesce(ScaleIn, 0),\n        RhEvents = coalesce(RhEvents, 0), Denies = coalesce(Denies, 0)\n    | extend Y = case('{Measure}' == 'drops', Drops, '{Measure}' == 'failed', FailedConnects, Drops + FailedConnects);\nlet LatMedian = toscalar(Bins | summarize percentile(LatencyMs, 50));\nBins\n| order by T asc\n| extend SnatNow = coalesce(SnatPct >= {SnatThreshold}, false), HealthNow = coalesce(Health < 100, false),\n    LatNow = coalesce(LatencyMs >= 2 * LatMedian and LatencyMs >= 5, false), ScaleNow = ScaleOut + ScaleIn > 0,\n    ScaleOutNow = ScaleOut > 0, RhNow = RhEvents > 0, DenyNow = Denies > 0\n| extend rows = pack_array(\n    pack('Signal', strcat('SNAT port use at or above ', {SnatThreshold}, '%'), 'Hit', SnatNow or coalesce(prev(SnatNow), false), 'Value', SnatPct),\n    pack('Signal', 'Firewall health below 100%', 'Hit', HealthNow or coalesce(prev(HealthNow), false), 'Value', 100 - Health),\n    pack('Signal', 'Latency probe at least twice its median', 'Hit', LatNow or coalesce(prev(LatNow), false), 'Value', LatencyMs),\n    pack('Signal', 'Scale-out', 'Hit', ScaleOutNow or coalesce(prev(ScaleOutNow), false), 'Value', toreal(ScaleOut)),\n    pack('Signal', 'Any scale operation (out or in)', 'Hit', ScaleNow or coalesce(prev(ScaleNow), false), 'Value', toreal(ScaleOut + ScaleIn)),\n    pack('Signal', 'Resource Health event', 'Hit', RhNow or coalesce(prev(RhNow), false), 'Value', toreal(RhEvents)),\n    pack('Signal', 'Firewall denies from session hosts', 'Hit', DenyNow or coalesce(prev(DenyNow), false), 'Value', toreal(Denies)),\n    pack('Signal', 'Throughput (Mbps)', 'Hit', false, 'Value', ThroughputMbps))\n| mv-expand r = rows\n| extend Signal = tostring(r.Signal), Hit = tobool(r.Hit), x = toreal(r.Value), y = toreal(Y)\n| summarize DataBins = countif(isnotnull(x)), BinsHit = countif(Hit), WithHit = avgif(y, Hit), Without = avgif(y, not(Hit) and isnotnull(x)),\n    n = countif(isnotnull(x)), sx = sumif(x, isnotnull(x)), sy = sumif(y, isnotnull(x)), sxy = sumif(x * y, isnotnull(x)),\n    sxx = sumif(x * x, isnotnull(x)), syy = sumif(y * y, isnotnull(x)) by Signal\n| extend Pearson = round((n * sxy - sx * sy) / sqrt((n * sxx - sx * sx) * (n * syy - sy * sy)), 2),\n    Ratio = round(iff(Without > 0, WithHit / Without, real(null)), 1)\n| extend Verdict = case(DataBins == 0, 'No data for this signal',\n    Signal startswith 'Throughput', iff(Pearson >= 0.5, 'Disconnections rise with load', 'No sign of a link'),\n    BinsHit == 0, 'Did not happen in the time range',\n    BinsHit >= 3 and (Ratio >= 2 or (Without == 0 and WithHit > 0)), 'Likely related',\n    Ratio >= 1.3 or Pearson >= 0.3, 'Possibly related',\n    'No sign of a link')\n| project Signal, Verdict, BinsHit, DataBins, WithHit = round(WithHit, 2), Without = round(Without, 2), Ratio, Pearson\n| order by case(Verdict == 'Likely related', 0, Verdict == 'Possibly related', 1, Verdict == 'Disconnections rise with load', 1, 2) asc, Ratio desc",
+        "size": 0,
+        "title": "Does the firewall explain the disconnections?",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No data. Check the host pools and firewalls picked, and that the firewalls send AllMetrics.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Verdict",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No sign of a link",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Possibly related",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Disconnections rise with load",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Likely related",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Did not happen in the time range",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No data for this signal",
+                    "representation": "unknown",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Ratio",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "2",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1.3",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "maximumFractionDigits": 1
+                }
+              }
+            },
+            {
+              "columnMatch": "Pearson",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "0.5",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "0.3",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "maximumFractionDigits": 2
+                }
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "BinsHit",
+              "label": "Bins under stress"
+            },
+            {
+              "columnId": "DataBins",
+              "label": "Bins with data"
+            },
+            {
+              "columnId": "WithHit",
+              "label": "Disconnections per bin, under stress"
+            },
+            {
+              "columnId": "Without",
+              "label": "Disconnections per bin, otherwise"
+            },
+            {
+              "columnId": "Ratio",
+              "label": "Times as many"
+            },
+            {
+              "columnId": "Pearson",
+              "label": "Correlation"
+            }
+          ]
+        }
+      },
+      "name": "avdfw-signals",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Bins = range T from Start to End step Grain\n    | join kind=leftouter (Errs | summarize Drops = countif(Connected), FailedConnects = countif(not(Connected)),\n        Users = dcount(UserName) by T = bin(At, Grain)) on T\n    | join kind=leftouter Fw on T\n    | join kind=leftouter CapBins on T\n    | join kind=leftouter (Rh | summarize RhEvents = count() by T = bin(TimeGenerated, Grain)) on T\n    | join kind=leftouter (FwDenies | summarize Denies = count() by T = bin(TimeGenerated, Grain)) on T\n    | project T, Drops = coalesce(Drops, 0), FailedConnects = coalesce(FailedConnects, 0), Users = coalesce(Users, 0),\n        Health, SnatPct, LatencyMs, ThroughputMbps, Capacity, ScaleOut = coalesce(ScaleOut, 0), ScaleIn = coalesce(ScaleIn, 0),\n        RhEvents = coalesce(RhEvents, 0), Denies = coalesce(Denies, 0)\n    | extend Y = case('{Measure}' == 'drops', Drops, '{Measure}' == 'failed', FailedConnects, Drops + FailedConnects);\nBins\n| project T, ['Dropped sessions'] = Drops, ['Failed connections'] = FailedConnects",
+        "size": 0,
+        "title": "Disconnections",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        }
+      },
+      "name": "avdfw-drops",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Bins = range T from Start to End step Grain\n    | join kind=leftouter (Errs | summarize Drops = countif(Connected), FailedConnects = countif(not(Connected)),\n        Users = dcount(UserName) by T = bin(At, Grain)) on T\n    | join kind=leftouter Fw on T\n    | join kind=leftouter CapBins on T\n    | join kind=leftouter (Rh | summarize RhEvents = count() by T = bin(TimeGenerated, Grain)) on T\n    | join kind=leftouter (FwDenies | summarize Denies = count() by T = bin(TimeGenerated, Grain)) on T\n    | project T, Drops = coalesce(Drops, 0), FailedConnects = coalesce(FailedConnects, 0), Users = coalesce(Users, 0),\n        Health, SnatPct, LatencyMs, ThroughputMbps, Capacity, ScaleOut = coalesce(ScaleOut, 0), ScaleIn = coalesce(ScaleIn, 0),\n        RhEvents = coalesce(RhEvents, 0), Denies = coalesce(Denies, 0)\n    | extend Y = case('{Measure}' == 'drops', Drops, '{Measure}' == 'failed', FailedConnects, Drops + FailedConnects);\nBins\n| project T, ['SNAT port use %'] = SnatPct, ['Health %'] = Health",
+        "size": 0,
+        "title": "Firewall SNAT port use and health (%)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No firewall metrics: send the firewalls' AllMetrics to this workspace."
+      },
+      "name": "avdfw-snat",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nCapChanges\n| project T, Firewall = tostring(split(Firewall, '/')[8]), Cap",
+        "size": 0,
+        "title": "Firewall capacity units (a step is a scale operation)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No ObservedCapacity metric from these firewalls."
+      },
+      "name": "avdfw-capacity",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Bins = range T from Start to End step Grain\n    | join kind=leftouter (Errs | summarize Drops = countif(Connected), FailedConnects = countif(not(Connected)),\n        Users = dcount(UserName) by T = bin(At, Grain)) on T\n    | join kind=leftouter Fw on T\n    | join kind=leftouter CapBins on T\n    | join kind=leftouter (Rh | summarize RhEvents = count() by T = bin(TimeGenerated, Grain)) on T\n    | join kind=leftouter (FwDenies | summarize Denies = count() by T = bin(TimeGenerated, Grain)) on T\n    | project T, Drops = coalesce(Drops, 0), FailedConnects = coalesce(FailedConnects, 0), Users = coalesce(Users, 0),\n        Health, SnatPct, LatencyMs, ThroughputMbps, Capacity, ScaleOut = coalesce(ScaleOut, 0), ScaleIn = coalesce(ScaleIn, 0),\n        RhEvents = coalesce(RhEvents, 0), Denies = coalesce(Denies, 0)\n    | extend Y = case('{Measure}' == 'drops', Drops, '{Measure}' == 'failed', FailedConnects, Drops + FailedConnects);\nBins\n| project T, ['Latency probe (ms)'] = LatencyMs",
+        "size": 0,
+        "title": "Firewall latency probe (ms)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        }
+      },
+      "name": "avdfw-latency",
+      "customWidth": "50",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Bins = range T from Start to End step Grain\n    | join kind=leftouter (Errs | summarize Drops = countif(Connected), FailedConnects = countif(not(Connected)),\n        Users = dcount(UserName) by T = bin(At, Grain)) on T\n    | join kind=leftouter Fw on T\n    | join kind=leftouter CapBins on T\n    | join kind=leftouter (Rh | summarize RhEvents = count() by T = bin(TimeGenerated, Grain)) on T\n    | join kind=leftouter (FwDenies | summarize Denies = count() by T = bin(TimeGenerated, Grain)) on T\n    | project T, Drops = coalesce(Drops, 0), FailedConnects = coalesce(FailedConnects, 0), Users = coalesce(Users, 0),\n        Health, SnatPct, LatencyMs, ThroughputMbps, Capacity, ScaleOut = coalesce(ScaleOut, 0), ScaleIn = coalesce(ScaleIn, 0),\n        RhEvents = coalesce(RhEvents, 0), Denies = coalesce(Denies, 0)\n    | extend Y = case('{Measure}' == 'drops', Drops, '{Measure}' == 'failed', FailedConnects, Drops + FailedConnects);\nBins\n| project T, ['Throughput (Mbps)'] = ThroughputMbps, ['Users disconnected'] = Users",
+        "size": 0,
+        "title": "Firewall throughput and users disconnected",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "timechart",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        }
+      },
+      "name": "avdfw-throughput",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Bins = range T from Start to End step Grain\n    | join kind=leftouter (Errs | summarize Drops = countif(Connected), FailedConnects = countif(not(Connected)),\n        Users = dcount(UserName) by T = bin(At, Grain)) on T\n    | join kind=leftouter Fw on T\n    | join kind=leftouter CapBins on T\n    | join kind=leftouter (Rh | summarize RhEvents = count() by T = bin(TimeGenerated, Grain)) on T\n    | join kind=leftouter (FwDenies | summarize Denies = count() by T = bin(TimeGenerated, Grain)) on T\n    | project T, Drops = coalesce(Drops, 0), FailedConnects = coalesce(FailedConnects, 0), Users = coalesce(Users, 0),\n        Health, SnatPct, LatencyMs, ThroughputMbps, Capacity, ScaleOut = coalesce(ScaleOut, 0), ScaleIn = coalesce(ScaleIn, 0),\n        RhEvents = coalesce(RhEvents, 0), Denies = coalesce(Denies, 0)\n    | extend Y = case('{Measure}' == 'drops', Drops, '{Measure}' == 'failed', FailedConnects, Drops + FailedConnects);\nlet AvgY = toscalar(Bins | summarize avg(Y));\nlet BinCodes = Errs | summarize Codes = strcat_array(make_set(Code, 4), ', ') by T = bin(At, Grain);\nBins\n| order by T asc\n| extend PrevSnat = prev(SnatPct), PrevHealth = prev(Health), PrevScale = prev(ScaleOut + ScaleIn)\n| where Y >= 3 and Y >= 3 * AvgY\n| join kind=leftouter BinCodes on T\n| project Time = T, Disconnections = Y, Users, Health = round(min_of(coalesce(Health, 100.0), coalesce(PrevHealth, 100.0))),\n    SnatPct = round(max_of(coalesce(SnatPct, 0.0), coalesce(PrevSnat, 0.0))), LatencyMs = round(LatencyMs, 1), Capacity,\n    ScaleOps = ScaleOut + ScaleIn + coalesce(PrevScale, 0), RhEvents, Denies, Codes\n| order by Disconnections desc\n| take 100",
+        "size": 0,
+        "title": "Disconnection spikes and the firewall at the time",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No bin had at least three disconnections and three times the average.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Health",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "<",
+                    "thresholdValue": "90",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "<",
+                    "thresholdValue": "100",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "SnatPct",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "90",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "70",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "ScaleOps",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "3",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "RhEvents",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            },
+            {
+              "columnMatch": "Denies",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "100",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Health",
+              "label": "Lowest health %"
+            },
+            {
+              "columnId": "SnatPct",
+              "label": "Peak SNAT %"
+            },
+            {
+              "columnId": "LatencyMs",
+              "label": "Latency (ms)"
+            },
+            {
+              "columnId": "Capacity",
+              "label": "Capacity units"
+            },
+            {
+              "columnId": "ScaleOps",
+              "label": "Scale operations"
+            },
+            {
+              "columnId": "RhEvents",
+              "label": "Resource Health events"
+            },
+            {
+              "columnId": "Codes",
+              "label": "Error codes"
+            }
+          ]
+        }
+      },
+      "name": "avdfw-spikes",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nlet Metrics = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, _ResourceId: string, MetricName: string, Average: real, Maximum: real)[]),\n        (AzureMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tolower(_ResourceId) in~ ({Firewalls})\n    | where MetricName in ('FirewallHealth', 'SNATPortUtilization', 'FirewallLatencyPng', 'ObservedCapacity', 'Throughput');\nlet Fw = Metrics\n    | summarize Health = minif(Average, MetricName == 'FirewallHealth'), SnatPct = maxif(Maximum, MetricName == 'SNATPortUtilization'),\n        LatencyMs = maxif(Average, MetricName == 'FirewallLatencyPng'), ThroughputMbps = sumif(Average, MetricName == 'Throughput') / 1000000\n        by T = bin(TimeGenerated, Grain);\nlet CapChanges = Metrics\n    | where MetricName == 'ObservedCapacity'\n    | summarize Cap = round(max(Maximum)) by Firewall = tolower(_ResourceId), T = bin(TimeGenerated, Grain)\n    | order by Firewall asc, T asc\n    | extend Change = iff(prev(Firewall) == Firewall, Cap - prev(Cap), 0.0);\nlet CapBins = CapChanges\n    | summarize Capacity = sum(Cap), ScaleOut = countif(Change >= 1), ScaleIn = countif(Change <= -1) by T;\nlet Rh = union isfuzzy=true (datatable(TimeGenerated: datetime, _ResourceId: string, CategoryValue: string)[]), (AzureActivity)\n    | where TimeGenerated {TimeRange}\n    | where CategoryValue =~ 'ResourceHealth'\n    | where tolower(_ResourceId) in~ ({Firewalls});\nlet FwDenies = union isfuzzy=true\n        (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n        (AZFWNetworkRule), (AZFWApplicationRule)\n    | where TimeGenerated {TimeRange}\n    | where Action =~ 'Deny'\n    | where SourceIp in (HostIps);\nlet Events = union\n    (CapChanges | where abs(Change) >= 1\n        | project Time = T, Firewall, Event = strcat(iff(Change > 0, 'Scaled out to ', 'Scaled in to '), Cap, ' capacity units')),\n    (Rh | extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', ''))))\n        | project Time = TimeGenerated, Firewall = tolower(_ResourceId),\n            Event = strcat('Resource Health: ', coalesce(tostring(Props.title), tostring(Props.currentHealthStatus), 'event'),\n                iff(isnotempty(tostring(Props.cause)), strcat(' (', tostring(Props.cause), ')'), ''))));\nlet Window = 15m;\nEvents\n| extend k = 1\n| join kind=leftouter (Errs | project At, UserName, k = 1) on k\n| summarize Before = countif(At >= Time - Window and At < Time), After = countif(At >= Time and At < Time + Window),\n    UsersAfter = dcountif(UserName, At >= Time and At < Time + Window) by Time, Firewall, Event\n| extend Firewall = tostring(split(Firewall, '/')[8]),\n    Change = case(After >= 3 and After >= 2 * Before, 'Rose after', Before >= 3 and Before >= 2 * After, 'Rose before', 'No clear change')\n| project Time, Firewall, Event, Before, After, UsersAfter, Change\n| order by Time desc",
+        "size": 0,
+        "title": "Scale operations and Resource Health events, and the disconnections either side (15 min)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No scale operations or Resource Health events on these firewalls in the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "Change",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "==",
+                    "thresholdValue": "No clear change",
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Rose before",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "==",
+                    "thresholdValue": "Rose after",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "Blank",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "Before",
+              "label": "Disconnections before"
+            },
+            {
+              "columnId": "After",
+              "label": "Disconnections after"
+            },
+            {
+              "columnId": "UsersAfter",
+              "label": "Users after"
+            }
+          ]
+        }
+      },
+      "name": "avdfw-events",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nErrs\n| summarize Count = count(), Users = dcount(UserName), LastSeen = max(At) by Kind, Code\n| order by Count desc\n| take 30",
+        "size": 0,
+        "title": "Disconnection error codes",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No network errors on these host pools in the time range.",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        }
+      },
+      "name": "avdfw-codes",
+      "customWidth": "45",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let Grain = timespan({Grain});\nlet Start = bin(todatetime('{TimeRange:startISO}'), Grain);\nlet End = todatetime('{TimeRange:endISO}');\nlet Conn = WVDConnections\n    | where TimeGenerated {TimeRange}\n    | where _ResourceId in~ ({HostPools})\n    | summarize Connected = countif(State == 'Connected') > 0, UserName = take_any(UserName),\n        HostIp = take_anyif(tostring(column_ifexists('SessionHostIPAddress', '')), isnotempty(tostring(column_ifexists('SessionHostIPAddress', ''))))\n        by CorrelationId;\nlet Errs = WVDErrors\n    | where TimeGenerated {TimeRange}\n    | where CodeSymbolic matches regex @'(?i)(Disconnect|ConnectionBroken|NetworkDrop|MissedHeartbeat|ConnectionLost|TransportClosed|ReverseConnect|Timeout|Shortpath)'\n    | summarize At = min(TimeGenerated), Code = take_any(CodeSymbolic) by CorrelationId\n    | join kind=inner Conn on CorrelationId\n    | extend Kind = iff(Connected, 'Dropped session', 'Failed connection');\nlet HostIps = Conn | where isnotempty(HostIp) | summarize by HostIp;\nunion isfuzzy=true\n    (datatable(TimeGenerated: datetime, SourceIp: string, Action: string)[]),\n    (AZFWNetworkRule | extend Table = 'Network rule'), (AZFWApplicationRule | extend Table = 'Application rule')\n| where TimeGenerated {TimeRange}\n| where Action =~ 'Deny'\n| where SourceIp in (HostIps)\n| extend Destination = coalesce(tostring(column_ifexists('Fqdn', '')), tostring(column_ifexists('DestinationIp', ''))),\n    Port = tostring(column_ifexists('DestinationPort', '')), Protocol = tostring(column_ifexists('Protocol', '')),\n    Rule = coalesce(tostring(column_ifexists('Rule', '')), tostring(column_ifexists('ActionReason', '')), 'default deny')\n| summarize Count = count(), Hosts = dcount(SourceIp), FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated)\n    by Table, Destination, Port, Protocol, Rule\n| order by Count desc\n| take 100",
+        "size": 0,
+        "title": "Firewall denies from session hosts",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No denies from the session hosts' addresses (or the AZFW rule logs are not in this workspace).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [],
+          "filter": true
+        }
+      },
+      "name": "avdfw-denies",
+      "customWidth": "55",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**If SNAT port use is the link.** Each session host holds a long-lived connection to a handful of Azure Virtual Desktop\ngateway addresses on 443, and through the firewall these share its SNAT ports, which are limited per public IP and\ninstance. Add public IPs to the firewall, or send Azure Virtual Desktop traffic around it: Microsoft advises against\ninspecting it, and a route on the session host subnets for the `WindowsVirtualDesktop` service tag with next hop\n*Internet* takes it off the firewall (check this fits your routing intent first). RDP Shortpath (UDP) moves the session\nitself off the gateway path.\n\n**If scaling is the link.** The firewall adds capacity as load grows and takes several minutes to do it, so a sharp\nmorning ramp can outrun it. Look at whether *Scale-out* lines up with the start-of-day sign-in. If your firewall SKU and\nregion support it, set a minimum capacity (prescaling) to cover the peak.\n\n**If health or latency is the link** with no scaling and normal SNAT use, raise it with Microsoft support, quoting the\ntimes from *Disconnection spikes*. **If nothing lines up,** look past the firewall: the user's own network (the\n*Azure Virtual Desktop: one user* workbook shows round-trip time per connection), the session hosts' load, or the\nExpressRoute or VPN path. The *Firewalls: blocked connections* workbook shows what any deny was.",
+        "style": "info"
+      },
+      "name": "avdfw-next",
+      "conditionalVisibility": {
+        "parameterName": "Workspace",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
