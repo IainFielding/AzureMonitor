@@ -31,6 +31,7 @@ jobs:
           python3 src/build_changes.py
           python3 src/build_policy_denials.py
           python3 src/build_avd_user.py
+          python3 src/build_avd_firewall.py
           python3 src/build_log_cost.py
           python3 src/build_routing.py
           python3 src/build_avs.py
@@ -57,6 +58,7 @@ jobs:
             echo "    python src/build_changes.py"
             echo "    python src/build_policy_denials.py"
             echo "    python src/build_avd_user.py"
+            echo "    python src/build_avd_firewall.py"
             echo "    python src/build_log_cost.py"
             echo "    python src/build_routing.py"
             echo "    python src/build_avs.py"

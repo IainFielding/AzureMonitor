@@ -33,6 +33,7 @@ There are two kinds of workbook:
 | [What changed?](workbook/changes.workbook.json) | Troubleshooter | What changed here, who did it, and what else happened at the same time? | Anyone running an incident |
 | [Why was this request refused?](workbook/policy-denials.workbook.json) | Troubleshooter | Which policy (or missing permission, lock or quota) refused this deployment, and how do I get past it? | Governance owners, application teams |
 | [Azure Virtual Desktop: one user](workbook/avd-user.workbook.json) | Troubleshooter | Why is this user's session failing, slow to start, or laggy? | End-user computing, service desk |
+| [AVD disconnections and Azure Firewall](workbook/avd-firewall.workbook.json) | Troubleshooter | Do users drop off virtual desktop when the firewall is short of SNAT ports, unhealthy, slow or scaling? | End-user computing, network team |
 | [Log Analytics: cost and noise](workbook/log-cost.workbook.json) | Troubleshooter | Where is ingestion going, and what could we stop paying for? | Monitoring owners, FinOps |
 | [Grafana dashboards](#grafana-dashboards) | Dashboard | The platform health view in Azure Managed Grafana or Azure Monitor dashboards with Grafana | NOC screens, teams that work in Grafana |
 
@@ -49,6 +50,7 @@ Start from the symptom:
 | "Connections time out but the firewall allowed them" | **Routing**, for asymmetric routing | **Firewalls**: *Allowed but no reply* and out-of-state drops |
 | "My deployment failed with RequestDisallowedByPolicy / AuthorizationFailed / ScopeLocked" | **Why was this request refused?** with the correlation id | Create a policy exemption, or grant the role it names |
 | "A user can't get onto (or is slow on) virtual desktop" | **Azure Virtual Desktop: one user** | **Platform health**: AVD and Storage (FSLogix) tabs for the host pool as a whole |
+| "Lots of users keep dropping off virtual desktop" | **AVD disconnections and Azure Firewall**: *Does the firewall explain the disconnections?* | **Firewalls: blocked connections** for any deny it finds; **Azure Virtual Desktop: one user** if nothing lines up |
 | "The FinOps reports stopped updating" (Power BI shows old or missing months) | **FinOps hubs**: Overview, then Data Explorer *Data in the hub* | Data Factory tab for stopped triggers and failed runs; Storage & exports for the exports' last run |
 | "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
 | "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
@@ -116,7 +118,8 @@ them) so new resources are included automatically:
 | Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
 | VNet flow logs with Traffic Analytics (`NTANetAnalytics`) | Network Watcher | Firewalls (NSG decisions), Platform health (Connectivity) |
 | DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints |
-| Azure Virtual Desktop (`WVD*`) | Each host pool's and AVD workspace's diagnostic setting | Azure Virtual Desktop: one user, Platform health |
+| Azure Virtual Desktop (`WVD*`) | Each host pool's and AVD workspace's diagnostic setting | Azure Virtual Desktop: one user, AVD disconnections and Azure Firewall, Platform health |
+| Azure Firewall metrics (`AzureMetrics`), category *AllMetrics* | Each firewall's diagnostic setting | AVD disconnections and Azure Firewall |
 | Session host performance (`Perf` or `InsightsMetrics`) and FSLogix / User Profile Service events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user |
 | Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity), Privileged access (including `AADNonInteractiveUserSignInLogs` for break-glass accounts) |
 | Query audit (`LAQueryLogs`) | The workspace's own diagnostic setting, category *Audit* | Log Analytics: cost and noise (*Who reads it*) |
@@ -501,6 +504,7 @@ Like the firewall workbook, each of these is a single page that answers one ques
 | [What changed?](workbook/changes.workbook.json) | What changed in this resource group or resource, who changed it, and what else happened at the same time? | Optional: adds the activity log |
 | [Why was this request refused?](workbook/policy-denials.workbook.json) | Which policy denied my deployment, and how do I get past it? | Yes for refused requests; the policy panels work without one |
 | [Azure Virtual Desktop: one user](workbook/avd-user.workbook.json) | Why is this user's session failing, slow to start, or laggy? | Yes |
+| [AVD disconnections and Azure Firewall](workbook/avd-firewall.workbook.json) | Do AVD disconnections line up with the firewall being short of SNAT ports, unhealthy, slow or scaling? | Yes |
 | [Log Analytics: cost and noise](workbook/log-cost.workbook.json) | Where is ingestion going, and what could we stop paying for? | Yes (the one being analysed) |
 | [Routing](workbook/routing.workbook.json) | What path does traffic from A to B take, and does the reply come back the same way? | No |
 
@@ -573,6 +577,29 @@ first, with their error count. On a large estate, type part of the name in *Find
 Needs the host pool and workspace diagnostic settings (`WVD*` tables). Host load, profile events and sign-ins use
 `Perf` or `InsightsMetrics`, `Event` and `SigninLogs` when they are in the same workspace; actions on the hosts use
 the activity log (`AzureActivity`).
+
+### AVD disconnections and Azure Firewall
+
+Pick the host pools whose session hosts reach Azure Virtual Desktop through the firewall, and the firewalls on that
+path. A disconnection is a connection attempt that hit a network error: a dropped session, or a failed connection
+(*ReverseConnect* codes are the session host failing to reach the gateway, the leg that crosses the firewall). On
+the same time bins (1, 5 or 15 minutes) it lines up:
+
+- **Does the firewall explain the disconnections?** For each firewall signal (SNAT port use above a threshold,
+  health below 100%, latency probe at twice its median, scale-out, any scale operation, Resource Health events,
+  denies from the session hosts, throughput) the disconnections per bin while it was under stress against the rest,
+  how many times as many, the correlation, and a verdict: *Likely related*, *Possibly related* or *No sign of a link*.
+- **Timelines**: disconnections, SNAT use and health, capacity units per firewall (a step is a scale operation),
+  latency, throughput against users disconnected.
+- **Disconnection spikes** with the firewall's state at the time and the error codes users got.
+- **Scale operations and Resource Health events** with the disconnections in the 15 minutes before and after each.
+- **Error codes**, and **firewall denies** whose source is a session host's address.
+- **What to do next** for each kind of link: more public IPs or sending AVD traffic around the firewall for SNAT,
+  a minimum capacity for scaling, support for health or latency.
+
+A link is a lead, not proof: the drops and the firewall's stress can both come from the same burst of users. Needs
+`WVDConnections` and `WVDErrors`, and each firewall's diagnostic setting sending **AllMetrics** to the same workspace
+(`AzureMetrics`); the firewall rule logs and the activity log add denies and Resource Health events.
 
 ### Log Analytics: cost and noise
 
@@ -661,6 +688,7 @@ python src/build_dns_troubleshoot.py
 python src/build_changes.py
 python src/build_policy_denials.py
 python src/build_avd_user.py
+python src/build_avd_firewall.py
 python src/build_log_cost.py
 python src/build_routing.py
 python src/build_avs.py
