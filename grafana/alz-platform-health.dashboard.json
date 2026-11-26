@@ -147,6 +147,60 @@
           }
         ],
         "description": "Regex matched against storage account and resource group names on the Storage and Throughput tabs. Metric charts handle at most 200 accounts; use '.' for all."
+      },
+      {
+        "name": "NerdioPattern",
+        "label": "Nerdio Manager name pattern",
+        "type": "textbox",
+        "query": "(?i)^nmw-app",
+        "current": {
+          "text": "(?i)^nmw-app",
+          "value": "(?i)^nmw-app"
+        },
+        "options": [
+          {
+            "text": "(?i)^nmw-app",
+            "value": "(?i)^nmw-app",
+            "selected": true
+          }
+        ],
+        "description": "Regex matched against resource names to find Nerdio Manager's own app service, database, key vault, automation account and Application Insights (AVD tab)."
+      },
+      {
+        "name": "NerdioPrefix",
+        "label": "Nerdio tag prefix",
+        "type": "textbox",
+        "query": "NMW_",
+        "current": {
+          "text": "NMW_",
+          "value": "NMW_"
+        },
+        "options": [
+          {
+            "text": "NMW_",
+            "value": "NMW_",
+            "selected": true
+          }
+        ],
+        "description": "The prefix of the tags Nerdio Manager puts on what it manages: NMW_ unless it was changed at install. Case-sensitive (AVD tab)."
+      },
+      {
+        "name": "NerdioCaller",
+        "label": "Nerdio Manager app id",
+        "type": "textbox",
+        "query": "",
+        "current": {
+          "text": "",
+          "value": ""
+        },
+        "options": [
+          {
+            "text": "",
+            "value": "",
+            "selected": true
+          }
+        ],
+        "description": "Optional. The application (client) id of Nerdio Manager's app registration, to label its actions on session hosts apart from other automation (AVD tab)."
       }
     ]
   },
@@ -622,7 +676,7 @@
           },
           "queryType": "Azure Log Analytics",
           "azureLogAnalytics": {
-            "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (Heartbeat | where $__timeFilter(TimeGenerated)\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/START/ACTION', 'MICROSOFT.COMPUTE/VIRTUALMACHINES/DEALLOCATE/ACTION')\n        | where ActivityStatusValue in~ ('Failure', 'Failed') and Caller !has '@'\n        | extend HostShort = tolower(extract(@'(?i)/virtualmachines/([^/]+)', 1, _ResourceId))\n        | where HostShort in ((WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize Count = count()\n        | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),\n    (Heartbeat | where $__timeFilter(TimeGenerated)\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
             "resultFormat": "table",
             "resources": [
               "$Workspace"
@@ -7026,7 +7080,7 @@
                 "$Subscription"
               ],
               "azureResourceGraph": {
-                "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| project id,\n    Kind = iff(kind =~ 'OpenAI', 'Azure OpenAI', 'AI Foundry'),\n    Sku = tostring(sku.name),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = coalesce(array_length(properties.privateEndpointConnections), 0),\n    KeyAccess = iff(tobool(properties.disableLocalAuth), 'Disabled', 'Enabled'),\n    Endpoint = tostring(properties.endpoint),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup, Location = location",
+                "query": "resources\n| where type =~ 'microsoft.cognitiveservices/accounts'\n| where kind in~ ('AIServices', 'OpenAI')\n| project id,\n    Kind = iff(kind =~ 'OpenAI', 'Azure OpenAI', 'AI Foundry'),\n    Sku = tostring(sku.name),\n    PublicAccess = tostring(properties.publicNetworkAccess),\n    PrivateEndpoints = coalesce(array_length(properties.privateEndpointConnections), 0),\n    KeyAccess = iff(tobool(properties.disableLocalAuth), 'Disabled', 'Enabled'),\n    Endpoint = tostring(properties.endpoint),\n    Provisioning = tostring(properties.provisioningState),\n    BusinessOwner = tostring(coalesce(tags.BusinessOwner, tags.businessOwner, tags.businessowner, tags.BUSINESSOWNER)),\n    Subscription = strcat('/subscriptions/', subscriptionId),\n    ResourceGroup = resourceGroup, Location = location",
                 "resultFormat": "table"
               }
             }
@@ -7081,6 +7135,39 @@
                   {
                     "id": "displayName",
                     "value": "Resource"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Subscription"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
                   }
                 ]
               },
@@ -7223,6 +7310,18 @@
                   {
                     "id": "displayName",
                     "value": "Private endpoints"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "BusinessOwner"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Business owner"
                   }
                 ]
               }
@@ -11492,7 +11591,7 @@
                 "$Subscription"
               ],
               "azureResourceGraph": {
-                "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id,\n    PoolType = tostring(properties.hostPoolType),\n    LoadBalancing = tostring(properties.loadBalancerType),\n    MaxSessions = iff(tostring(properties.hostPoolType) =~ 'Personal', int(null), toint(properties.maxSessionLimit)),\n    AppGroupType = tostring(properties.preferredAppGroupType),\n    StartVmOnConnect = tostring(properties.startVMOnConnect),\n    Validation = tostring(properties.validationEnvironment),\n    ResourceGroup = resourceGroup, Location = location",
+                "query": "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'\n| project id,\n    PoolType = tostring(properties.hostPoolType),\n    LoadBalancing = tostring(properties.loadBalancerType),\n    MaxSessions = iff(tostring(properties.hostPoolType) =~ 'Personal', int(null), toint(properties.maxSessionLimit)),\n    AppGroupType = tostring(properties.preferredAppGroupType),\n    StartVmOnConnect = tostring(properties.startVMOnConnect),\n    Validation = tostring(properties.validationEnvironment),\n    ManagedBy = iff(tostring(tags) contains '\"${NerdioPrefix:raw}', 'Nerdio Manager', ''),\n    ResourceGroup = resourceGroup, Location = location",
                 "resultFormat": "table"
               }
             }
@@ -12248,6 +12347,866 @@
             "x": 0,
             "y": 142
           }
+        },
+        {
+          "type": "text",
+          "title": "",
+          "transparent": true,
+          "options": {
+            "mode": "markdown",
+            "content": "### Nerdio Manager"
+          },
+          "id": 160,
+          "gridPos": {
+            "h": 2,
+            "w": 24,
+            "x": 0,
+            "y": 151
+          }
+        },
+        {
+          "type": "text",
+          "title": "",
+          "transparent": true,
+          "options": {
+            "mode": "markdown",
+            "content": "For host pools run by **Nerdio Manager for Enterprise**. Its own resources are found by the *Nerdio Manager name pattern* and the hosts it manages by the *Nerdio tag prefix* (both at the top). Auto-scale runs as Nerdio's app registration, so its work shows in the activity log as automation starting, deallocating, draining and logging users off session hosts. Put Nerdio's application (client) id in *Nerdio Manager app id* to tell it apart from scaling plans and runbooks; *Who acts on the session hosts* shows the ids to choose from."
+          },
+          "id": 161,
+          "gridPos": {
+            "h": 5,
+            "w": 24,
+            "x": 0,
+            "y": 153
+          }
+        },
+        {
+          "type": "table",
+          "title": "Nerdio Manager resources",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Resource Graph",
+              "subscriptions": [
+                "$Subscription"
+              ],
+              "azureResourceGraph": {
+                "query": "resources\n| where name matches regex @'${NerdioPattern:raw}'\n| project id = tolower(id), Type = type,\n    State = coalesce(tostring(properties.state), tostring(properties.status), tostring(properties.provisioningState)),\n    ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    healthresources\n    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'\n    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),\n        Health = tostring(properties.availabilityState), Reason = tostring(properties.summary)\n  ) on id\n| project-away id1\n| order by Type asc",
+                "resultFormat": "table"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No resources match the Nerdio Manager name pattern in the selected subscriptions."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "id"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Resource"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Health"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Available": {
+                            "index": 0,
+                            "text": "Available",
+                            "color": "green"
+                          },
+                          "Degraded": {
+                            "index": 1,
+                            "text": "Degraded",
+                            "color": "orange"
+                          },
+                          "Unavailable": {
+                            "index": 2,
+                            "text": "Unavailable",
+                            "color": "red"
+                          },
+                          "Unknown": {
+                            "index": 3,
+                            "text": "Unknown",
+                            "color": "#808080"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "State"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Running": {
+                            "index": 0,
+                            "text": "Running",
+                            "color": "green"
+                          },
+                          "Online": {
+                            "index": 1,
+                            "text": "Online",
+                            "color": "green"
+                          },
+                          "Succeeded": {
+                            "index": 2,
+                            "text": "Succeeded",
+                            "color": "green"
+                          },
+                          "Ok": {
+                            "index": 3,
+                            "text": "Ok",
+                            "color": "green"
+                          },
+                          "Updating": {
+                            "index": 4,
+                            "text": "Updating",
+                            "color": "orange"
+                          },
+                          "Paused": {
+                            "index": 5,
+                            "text": "Paused",
+                            "color": "orange"
+                          },
+                          "Stopped": {
+                            "index": 6,
+                            "text": "Stopped",
+                            "color": "red"
+                          },
+                          "Failed": {
+                            "index": 7,
+                            "text": "Failed",
+                            "color": "red"
+                          },
+                          "Disabled": {
+                            "index": 8,
+                            "text": "Disabled",
+                            "color": "red"
+                          },
+                          "Offline": {
+                            "index": 9,
+                            "text": "Offline",
+                            "color": "red"
+                          },
+                          "Suspended": {
+                            "index": 10,
+                            "text": "Suspended",
+                            "color": "red"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 162,
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 0,
+            "y": 158
+          }
+        },
+        {
+          "type": "stat",
+          "title": "",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Resource Graph",
+              "subscriptions": [
+                "$Subscription"
+              ],
+              "azureResourceGraph": {
+                "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where tostring(tags) contains '\"${NerdioPrefix:raw}'\n| extend ObjectType = tostring(tags['${NerdioPrefix:raw}OBJECT_TYPE']),\n    AutoscaleRestriction = tostring(tags['${NerdioPrefix:raw}AUTOSCALE_RESTRICTION']),\n    ScaleInRestriction = tostring(tags['${NerdioPrefix:raw}SCALE_IN_RESTRICTION']),\n    Power = tostring(properties.extended.instanceView.powerState.code)\n| extend Power = iff(isempty(Power), 'Unknown', tostring(split(Power, '/')[1]))\n| where ObjectType =~ 'SESSION_HOST'\n| summarize Hosts = count(), Running = countif(Power =~ 'running'), Deallocated = countif(Power =~ 'deallocated'),\n    Stopped = countif(Power =~ 'stopped'), Restricted = countif(isnotempty(AutoscaleRestriction) or isnotempty(ScaleInRestriction))\n| extend rows = pack_array(\n    pack('Signal', 'Nerdio session hosts', 'Value', Hosts, 'Detail', strcat(Running, ' running'), 'State', 'Unknown'),\n    pack('Signal', 'Deallocated', 'Value', Deallocated, 'Detail', 'scaled in, not billed for compute', 'State', 'Unknown'),\n    pack('Signal', 'Stopped, not deallocated', 'Value', Stopped, 'Detail', 'still billed for compute',\n        'State', iff(Stopped > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Held out of auto-scale', 'Value', Restricted, 'Detail', 'auto-scale or scale-in restriction tag',\n        'State', iff(Restricted > 0, 'Degraded', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = tolong(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Signal))\n| project Name = TileName, Value = todouble(Value)",
+                "resultFormat": "table"
+              }
+            }
+          ],
+          "options": {
+            "reduceOptions": {
+              "values": true,
+              "calcs": [
+                "lastNotNull"
+              ],
+              "fields": "/^Value$/",
+              "limit": 60
+            },
+            "textMode": "value_and_name",
+            "colorMode": "none",
+            "graphMode": "none",
+            "justifyMode": "center",
+            "orientation": "auto",
+            "wideLayout": false
+          },
+          "fieldConfig": {
+            "defaults": {
+              "noValue": "No session hosts carry Nerdio's tags."
+            },
+            "overrides": []
+          },
+          "id": 163,
+          "gridPos": {
+            "h": 6,
+            "w": 12,
+            "x": 12,
+            "y": 158
+          }
+        },
+        {
+          "type": "table",
+          "title": "Virtual machines managed by Nerdio",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Resource Graph",
+              "subscriptions": [
+                "$Subscription"
+              ],
+              "azureResourceGraph": {
+                "query": "resources\n| where type =~ 'microsoft.compute/virtualmachines'\n| where tostring(tags) contains '\"${NerdioPrefix:raw}'\n| extend ObjectType = tostring(tags['${NerdioPrefix:raw}OBJECT_TYPE']),\n    AutoscaleRestriction = tostring(tags['${NerdioPrefix:raw}AUTOSCALE_RESTRICTION']),\n    ScaleInRestriction = tostring(tags['${NerdioPrefix:raw}SCALE_IN_RESTRICTION']),\n    Power = tostring(properties.extended.instanceView.powerState.code)\n| extend Power = iff(isempty(Power), 'Unknown', tostring(split(Power, '/')[1]))\n| project id, ObjectType, Power, AutoscaleRestriction, ScaleInRestriction,\n    Size = tostring(properties.hardwareProfile.vmSize), ResourceGroup = resourceGroup, Location = location\n| order by AutoscaleRestriction desc, ScaleInRestriction desc, Power asc",
+                "resultFormat": "table"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No virtual machines carry Nerdio's tags. Check the tag prefix at the top."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "id"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "regex",
+                        "options": {
+                          "pattern": "^.*/([^/]+)$",
+                          "result": {
+                            "index": 0,
+                            "text": "$1"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "links",
+                    "value": [
+                      {
+                        "title": "Open in the Azure portal",
+                        "targetBlank": true,
+                        "url": "https://portal.azure.com/#@/resource${__value.raw}"
+                      }
+                    ]
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Virtual machine"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Power"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "running": {
+                            "index": 0,
+                            "text": "running",
+                            "color": "green"
+                          },
+                          "stopped": {
+                            "index": 1,
+                            "text": "stopped",
+                            "color": "orange"
+                          },
+                          "deallocated": {
+                            "index": 2,
+                            "text": "deallocated",
+                            "color": "#808080"
+                          },
+                          "Unknown": {
+                            "index": 3,
+                            "text": "Unknown",
+                            "color": "#808080"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ObjectType"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Nerdio object"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "AutoscaleRestriction"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Auto-scale restriction"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ScaleInRestriction"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Scale-in restriction"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 164,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 167
+          }
+        },
+        {
+          "type": "timeseries",
+          "title": "Automated actions on session hosts",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Log Analytics",
+              "azureLogAnalytics": {
+                "query": "let AvdHosts = WVDAgentHealthStatus\n| where $__timeFilter(TimeGenerated)\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Nerdio = trim(@'\\s+', @'${NerdioCaller:raw}');\nlet Actions = AzureActivity\n| where $__timeFilter(TimeGenerated)\n| where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/', 'MICROSOFT.DESKTOPVIRTUALIZATION/HOSTPOOLS/SESSIONAvdHosts')\n| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failure', 'Failed')\n| extend Op = tolower(OperationNameValue)\n| extend Action = case(Op endswith 'virtualmachines/start/action', 'Started',\n    Op endswith 'virtualmachines/deallocate/action', 'Deallocated',\n    Op endswith 'virtualmachines/poweroff/action', 'Powered off (still billed)',\n    Op endswith 'virtualmachines/restart/action', 'Restarted',\n    Op endswith 'virtualmachines/reimage/action', 'Re-imaged',\n    Op endswith 'virtualmachines/delete', 'VM deleted',\n    Op endswith 'virtualmachines/write', 'VM created or changed',\n    Op endswith 'usersessions/delete', 'User logged off',\n    Op endswith 'usersessions/disconnect/action', 'User disconnected',\n    Op endswith 'usersessions/sendmessage/action', 'Message sent to user',\n    Op endswith 'sessionhosts/write', 'Session host changed (drain mode)',\n    Op endswith 'sessionhosts/delete', 'Removed from host pool',\n    '')\n| where isnotempty(Action)\n| extend HostShort = tolower(tostring(split(extract(@'(?i)/(virtualmachines|sessionhosts)/([^/]+)', 2, _ResourceId), '.')[0]))\n| where HostShort in (AvdHosts)\n| extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', '')))),\n    AppId = tostring(coalesce(column_ifexists('Claims_d', dynamic(null)).appid, parse_json(tostring(column_ifexists('Claims', ''))).appid))\n| extend Status = iff(ActivityStatusValue in~ ('Failure', 'Failed'), 'Failed', 'Succeeded'),\n    CallerKind = case(Caller has '@', 'User',\n        isnotempty(Nerdio) and (Caller =~ Nerdio or AppId =~ Nerdio), 'Nerdio Manager',\n        'Automation'),\n    StatusMessage = tostring(Props.statusMessage)\n| extend Error = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.code),\n        tostring(parse_json(StatusMessage).Code), substring(StatusMessage, 0, 200)), ''),\n    ErrorMessage = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.message),\n        tostring(parse_json(StatusMessage).Message)), '');\nActions\n| where CallerKind != 'User' and Status == 'Succeeded'\n| summarize Actions = count() by bin(TimeGenerated, $__interval), Action",
+                "resultFormat": "time_series",
+                "resources": [
+                  "$Workspace"
+                ],
+                "dashboardTime": false,
+                "timeColumn": "TimeGenerated"
+              }
+            }
+          ],
+          "options": {
+            "legend": {
+              "displayMode": "list",
+              "placement": "bottom",
+              "showLegend": true
+            },
+            "tooltip": {
+              "mode": "multi",
+              "sort": "desc"
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "drawStyle": "line",
+                "fillOpacity": 10,
+                "stacking": {
+                  "mode": "none",
+                  "group": "A"
+                },
+                "showPoints": "never",
+                "lineWidth": 1
+              },
+              "noValue": "No automated actions on session hosts in the time range (needs AzureActivity)."
+            },
+            "overrides": []
+          },
+          "id": 165,
+          "gridPos": {
+            "h": 8,
+            "w": 12,
+            "x": 0,
+            "y": 176
+          }
+        },
+        {
+          "type": "table",
+          "title": "Who acts on the session hosts",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Log Analytics",
+              "azureLogAnalytics": {
+                "query": "let AvdHosts = WVDAgentHealthStatus\n| where $__timeFilter(TimeGenerated)\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Nerdio = trim(@'\\s+', @'${NerdioCaller:raw}');\nlet Actions = AzureActivity\n| where $__timeFilter(TimeGenerated)\n| where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/', 'MICROSOFT.DESKTOPVIRTUALIZATION/HOSTPOOLS/SESSIONAvdHosts')\n| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failure', 'Failed')\n| extend Op = tolower(OperationNameValue)\n| extend Action = case(Op endswith 'virtualmachines/start/action', 'Started',\n    Op endswith 'virtualmachines/deallocate/action', 'Deallocated',\n    Op endswith 'virtualmachines/poweroff/action', 'Powered off (still billed)',\n    Op endswith 'virtualmachines/restart/action', 'Restarted',\n    Op endswith 'virtualmachines/reimage/action', 'Re-imaged',\n    Op endswith 'virtualmachines/delete', 'VM deleted',\n    Op endswith 'virtualmachines/write', 'VM created or changed',\n    Op endswith 'usersessions/delete', 'User logged off',\n    Op endswith 'usersessions/disconnect/action', 'User disconnected',\n    Op endswith 'usersessions/sendmessage/action', 'Message sent to user',\n    Op endswith 'sessionhosts/write', 'Session host changed (drain mode)',\n    Op endswith 'sessionhosts/delete', 'Removed from host pool',\n    '')\n| where isnotempty(Action)\n| extend HostShort = tolower(tostring(split(extract(@'(?i)/(virtualmachines|sessionhosts)/([^/]+)', 2, _ResourceId), '.')[0]))\n| where HostShort in (AvdHosts)\n| extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', '')))),\n    AppId = tostring(coalesce(column_ifexists('Claims_d', dynamic(null)).appid, parse_json(tostring(column_ifexists('Claims', ''))).appid))\n| extend Status = iff(ActivityStatusValue in~ ('Failure', 'Failed'), 'Failed', 'Succeeded'),\n    CallerKind = case(Caller has '@', 'User',\n        isnotempty(Nerdio) and (Caller =~ Nerdio or AppId =~ Nerdio), 'Nerdio Manager',\n        'Automation'),\n    StatusMessage = tostring(Props.statusMessage)\n| extend Error = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.code),\n        tostring(parse_json(StatusMessage).Code), substring(StatusMessage, 0, 200)), ''),\n    ErrorMessage = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.message),\n        tostring(parse_json(StatusMessage).Message)), '');\nActions\n| summarize Actions = count(), Failed = countif(Status == 'Failed'), Hosts = dcount(HostShort), LastSeen = max(TimeGenerated),\n    TopActions = strcat_array(make_set(Action, 4), ', ') by CallerKind, Caller, AppId\n| order by Actions desc",
+                "resultFormat": "table",
+                "resources": [
+                  "$Workspace"
+                ],
+                "dashboardTime": false,
+                "timeColumn": "TimeGenerated"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No activity on session hosts in the time range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Failed"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 1.0
+                        },
+                        {
+                          "color": "red",
+                          "value": 10.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CallerKind"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Kind"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "AppId"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "App id"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LastSeen"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Last seen"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "TopActions"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Actions taken"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 166,
+          "gridPos": {
+            "h": 9,
+            "w": 12,
+            "x": 12,
+            "y": 176
+          }
+        },
+        {
+          "type": "table",
+          "title": "Failed scaling and session host actions",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Log Analytics",
+              "azureLogAnalytics": {
+                "query": "let AvdHosts = WVDAgentHealthStatus\n| where $__timeFilter(TimeGenerated)\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Nerdio = trim(@'\\s+', @'${NerdioCaller:raw}');\nlet Actions = AzureActivity\n| where $__timeFilter(TimeGenerated)\n| where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/', 'MICROSOFT.DESKTOPVIRTUALIZATION/HOSTPOOLS/SESSIONAvdHosts')\n| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failure', 'Failed')\n| extend Op = tolower(OperationNameValue)\n| extend Action = case(Op endswith 'virtualmachines/start/action', 'Started',\n    Op endswith 'virtualmachines/deallocate/action', 'Deallocated',\n    Op endswith 'virtualmachines/poweroff/action', 'Powered off (still billed)',\n    Op endswith 'virtualmachines/restart/action', 'Restarted',\n    Op endswith 'virtualmachines/reimage/action', 'Re-imaged',\n    Op endswith 'virtualmachines/delete', 'VM deleted',\n    Op endswith 'virtualmachines/write', 'VM created or changed',\n    Op endswith 'usersessions/delete', 'User logged off',\n    Op endswith 'usersessions/disconnect/action', 'User disconnected',\n    Op endswith 'usersessions/sendmessage/action', 'Message sent to user',\n    Op endswith 'sessionhosts/write', 'Session host changed (drain mode)',\n    Op endswith 'sessionhosts/delete', 'Removed from host pool',\n    '')\n| where isnotempty(Action)\n| extend HostShort = tolower(tostring(split(extract(@'(?i)/(virtualmachines|sessionhosts)/([^/]+)', 2, _ResourceId), '.')[0]))\n| where HostShort in (AvdHosts)\n| extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', '')))),\n    AppId = tostring(coalesce(column_ifexists('Claims_d', dynamic(null)).appid, parse_json(tostring(column_ifexists('Claims', ''))).appid))\n| extend Status = iff(ActivityStatusValue in~ ('Failure', 'Failed'), 'Failed', 'Succeeded'),\n    CallerKind = case(Caller has '@', 'User',\n        isnotempty(Nerdio) and (Caller =~ Nerdio or AppId =~ Nerdio), 'Nerdio Manager',\n        'Automation'),\n    StatusMessage = tostring(Props.statusMessage)\n| extend Error = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.code),\n        tostring(parse_json(StatusMessage).Code), substring(StatusMessage, 0, 200)), ''),\n    ErrorMessage = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.message),\n        tostring(parse_json(StatusMessage).Message)), '');\nActions\n| where Status == 'Failed'\n| project Time = TimeGenerated, Host = HostShort, Action, Error, ErrorMessage, CallerKind, Caller, CorrelationId\n| order by Time desc\n| take 200",
+                "resultFormat": "table",
+                "resources": [
+                  "$Workspace"
+                ],
+                "dashboardTime": false,
+                "timeColumn": "TimeGenerated"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No failed actions on session hosts in the time range."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "Status"
+                },
+                "properties": [
+                  {
+                    "id": "mappings",
+                    "value": [
+                      {
+                        "type": "value",
+                        "options": {
+                          "Succeeded": {
+                            "index": 0,
+                            "text": "Succeeded",
+                            "color": "green"
+                          },
+                          "Failed": {
+                            "index": 1,
+                            "text": "Failed",
+                            "color": "red"
+                          }
+                        }
+                      }
+                    ]
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "ErrorMessage"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Message"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CallerKind"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Kind"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "CorrelationId"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Correlation id"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 167,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 185
+          }
+        },
+        {
+          "type": "text",
+          "title": "",
+          "transparent": true,
+          "options": {
+            "mode": "markdown",
+            "content": "*AllocationFailed*, *ZonalAllocationFailed* and *SkuNotAvailable* mean Azure had no capacity for that size: scale-out stalls and users queue or fail with *no healthy session host*. *OperationNotAllowed* is usually a vCPU quota (see the Capacity tab)."
+          },
+          "id": 168,
+          "gridPos": {
+            "h": 3,
+            "w": 24,
+            "x": 0,
+            "y": 194
+          }
+        },
+        {
+          "type": "table",
+          "title": "Nerdio Manager application errors",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Log Analytics",
+              "azureLogAnalytics": {
+                "query": "union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Kind: string, What: string, Detail: string)[]),\n    (AppExceptions | where $__timeFilter(TimeGenerated)\n        | where extract(@'[^/]+$', 0, tostring(_ResourceId)) matches regex @'${NerdioPattern:raw}'\n        | extend Kind = 'Exception', What = tostring(column_ifexists('OuterMessage', '')),\n            Detail = tostring(column_ifexists('ProblemId', ''))),\n    (AppRequests | where $__timeFilter(TimeGenerated)\n        | where extract(@'[^/]+$', 0, tostring(_ResourceId)) matches regex @'${NerdioPattern:raw}'\n        | where tostring(column_ifexists('Success', true)) =~ 'false'\n        | extend Kind = 'Failed request', What = tostring(column_ifexists('Name', '')),\n            Detail = strcat('HTTP ', tostring(column_ifexists('ResultCode', ''))))\n| summarize Count = count(), LastSeen = max(TimeGenerated), Detail = take_any(Detail) by Kind, What = substring(What, 0, 300)\n| top 25 by Count desc",
+                "resultFormat": "table",
+                "resources": [
+                  "$Workspace"
+                ],
+                "dashboardTime": false,
+                "timeColumn": "TimeGenerated"
+              }
+            }
+          ],
+          "options": {
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No errors from Nerdio Manager's Application Insights in this workspace (it must be workspace-based, and its workspace selected at the top)."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LastSeen"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Last seen"
+                  }
+                ]
+              }
+            ]
+          },
+          "id": 169,
+          "gridPos": {
+            "h": 9,
+            "w": 24,
+            "x": 0,
+            "y": 197
+          }
         }
       ]
     },
@@ -12255,7 +13214,7 @@
       "type": "row",
       "title": "Storage",
       "collapsed": true,
-      "id": 160,
+      "id": 170,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -12271,7 +13230,7 @@
             "mode": "markdown",
             "content": "Azure Files capacity is reported hourly, so the two charts below need a time range of at least a few hours. A share whose used capacity is close to its quota stops FSLogix profiles from growing."
           },
-          "id": 161,
+          "id": 171,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -12460,7 +13419,7 @@
               }
             ]
           },
-          "id": 162,
+          "id": 172,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -12476,7 +13435,7 @@
             "mode": "markdown",
             "content": "**Not shown here:** 7 metric charts from this tab of the workbook. A Grafana metrics query covers one subscription and region, and the data source cannot call Resource Manager; open the workbook for these."
           },
-          "id": 163,
+          "id": 173,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -12490,7 +13449,7 @@
       "type": "row",
       "title": "Governance",
       "collapsed": true,
-      "id": 164,
+      "id": 174,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -12506,7 +13465,7 @@
             "mode": "markdown",
             "content": "### Expiry & retirement"
           },
-          "id": 165,
+          "id": 175,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -12640,7 +13599,7 @@
               }
             ]
           },
-          "id": 166,
+          "id": 176,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -12736,7 +13695,7 @@
               }
             ]
           },
-          "id": 167,
+          "id": 177,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -12867,7 +13826,7 @@
               }
             ]
           },
-          "id": 168,
+          "id": 178,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -12965,7 +13924,7 @@
               }
             ]
           },
-          "id": 169,
+          "id": 179,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -13059,7 +14018,7 @@
               }
             ]
           },
-          "id": 170,
+          "id": 180,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -13075,7 +14034,7 @@
             "mode": "markdown",
             "content": "An expired exemption no longer applies, so the resources it covered count as non-compliant again. One with no expiry hides them from the compliance figure for good. *Waiver* means the non-compliance is accepted; *Mitigated* means the intent is met another way."
           },
-          "id": 171,
+          "id": 181,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -13091,7 +14050,7 @@
             "mode": "markdown",
             "content": "### Azure Policy"
           },
-          "id": 172,
+          "id": 182,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -13183,7 +14142,7 @@
               }
             ]
           },
-          "id": 173,
+          "id": 183,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -13232,7 +14191,7 @@
             },
             "overrides": []
           },
-          "id": 174,
+          "id": 184,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -13248,7 +14207,7 @@
             "mode": "markdown",
             "content": "### Landing zone hygiene"
           },
-          "id": 175,
+          "id": 185,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -13393,7 +14352,7 @@
               }
             ]
           },
-          "id": 176,
+          "id": 186,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -13497,7 +14456,7 @@
               }
             ]
           },
-          "id": 177,
+          "id": 187,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -13584,7 +14543,7 @@
               }
             ]
           },
-          "id": 178,
+          "id": 188,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -13671,7 +14630,7 @@
               }
             ]
           },
-          "id": 179,
+          "id": 189,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -13687,7 +14646,7 @@
             "mode": "markdown",
             "content": "A lock at the resource, its resource group or its subscription counts. A resource group is *empty* when Resource Graph sees no resources in it; a few resource types are not indexed, so check before deleting one."
           },
-          "id": 180,
+          "id": 190,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -13703,7 +14662,7 @@
             "mode": "markdown",
             "content": "### Patch compliance (Azure Update Manager)"
           },
-          "id": 181,
+          "id": 191,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -13719,7 +14678,7 @@
             "mode": "markdown",
             "content": "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not assess Uniform scale set instances. Machines show as *Not assessed* until periodic assessment is turned on."
           },
-          "id": 182,
+          "id": 192,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -13773,7 +14732,7 @@
             },
             "overrides": []
           },
-          "id": 183,
+          "id": 193,
           "gridPos": {
             "h": 6,
             "w": 24,
@@ -14023,7 +14982,7 @@
               }
             ]
           },
-          "id": 184,
+          "id": 194,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14039,7 +14998,7 @@
             "mode": "markdown",
             "content": "### Azure Advisor"
           },
-          "id": 185,
+          "id": 195,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -14156,7 +15115,7 @@
               }
             ]
           },
-          "id": 186,
+          "id": 196,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14170,7 +15129,7 @@
       "type": "row",
       "title": "Security",
       "collapsed": true,
-      "id": 187,
+      "id": 197,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -14186,7 +15145,7 @@
             "mode": "markdown",
             "content": "### Microsoft Defender for Cloud"
           },
-          "id": 188,
+          "id": 198,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -14278,7 +15237,7 @@
               }
             ]
           },
-          "id": 189,
+          "id": 199,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -14327,7 +15286,7 @@
             },
             "overrides": []
           },
-          "id": 190,
+          "id": 200,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -14421,7 +15380,7 @@
               }
             ]
           },
-          "id": 191,
+          "id": 201,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14515,7 +15474,7 @@
               }
             ]
           },
-          "id": 192,
+          "id": 202,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14631,7 +15590,7 @@
               }
             ]
           },
-          "id": 193,
+          "id": 203,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -14680,7 +15639,7 @@
             },
             "overrides": []
           },
-          "id": 194,
+          "id": 204,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -14696,7 +15655,7 @@
             "mode": "markdown",
             "content": "### Privileged access"
           },
-          "id": 195,
+          "id": 205,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -14750,7 +15709,7 @@
             },
             "overrides": []
           },
-          "id": 196,
+          "id": 206,
           "gridPos": {
             "h": 6,
             "w": 24,
@@ -14862,7 +15821,7 @@
               }
             ]
           },
-          "id": 197,
+          "id": 207,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14878,7 +15837,7 @@
             "mode": "markdown",
             "content": "Counts role assignments that are active now, for Owner, User Access Administrator and Role Based Access Control Administrator. Eligible assignments in Privileged Identity Management are not role assignments until activated, so they are not counted. Resource Graph holds principal IDs only: it cannot name the principals or tell whether one has been deleted."
           },
-          "id": 198,
+          "id": 208,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -14894,7 +15853,7 @@
             "mode": "markdown",
             "content": "### Microsoft Sentinel"
           },
-          "id": 199,
+          "id": 209,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -15035,7 +15994,7 @@
               }
             ]
           },
-          "id": 200,
+          "id": 210,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15091,7 +16050,7 @@
             },
             "overrides": []
           },
-          "id": 201,
+          "id": 211,
           "gridPos": {
             "h": 6,
             "w": 24,
@@ -15250,7 +16209,7 @@
               }
             ]
           },
-          "id": 202,
+          "id": 212,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15311,7 +16270,7 @@
             },
             "overrides": []
           },
-          "id": 203,
+          "id": 213,
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -15423,7 +16382,7 @@
               }
             ]
           },
-          "id": 204,
+          "id": 214,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -15526,7 +16485,7 @@
               }
             ]
           },
-          "id": 205,
+          "id": 215,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15542,7 +16501,7 @@
             "mode": "markdown",
             "content": "Incidents are read from the selected workspace for the time range, so an incident that has not changed within it is not listed: use a longer range to see old open incidents."
           },
-          "id": 206,
+          "id": 216,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -15556,7 +16515,7 @@
       "type": "row",
       "title": "Monitoring",
       "collapsed": true,
-      "id": 207,
+      "id": 217,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -15572,7 +16531,7 @@
             "mode": "markdown",
             "content": "### Log Analytics"
           },
-          "id": 208,
+          "id": 218,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -15708,7 +16667,7 @@
               }
             ]
           },
-          "id": 209,
+          "id": 219,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15769,7 +16728,7 @@
             },
             "overrides": []
           },
-          "id": 210,
+          "id": 220,
           "gridPos": {
             "h": 8,
             "w": 14,
@@ -15820,7 +16779,7 @@
             },
             "overrides": []
           },
-          "id": 211,
+          "id": 221,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -15906,7 +16865,7 @@
               }
             ]
           },
-          "id": 212,
+          "id": 222,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -16025,7 +16984,7 @@
               }
             ]
           },
-          "id": 213,
+          "id": 223,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -16041,7 +17000,7 @@
             "mode": "markdown",
             "content": "### Agents and data collection"
           },
-          "id": 214,
+          "id": 224,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -16208,7 +17167,7 @@
               }
             ]
           },
-          "id": 215,
+          "id": 225,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -16373,7 +17332,7 @@
               }
             ]
           },
-          "id": 216,
+          "id": 226,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -16389,7 +17348,7 @@
             "mode": "markdown",
             "content": "Scale sets show whether the agent is in the scale set model; their instances are not listed individually. A rule with no associations collects nothing, which is expected only for workspace transformation and direct-ingestion rules."
           },
-          "id": 217,
+          "id": 227,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -16405,7 +17364,7 @@
             "mode": "markdown",
             "content": "### Log sources"
           },
-          "id": 218,
+          "id": 228,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -16421,7 +17380,7 @@
             "mode": "markdown",
             "content": "Shows whether each platform resource is actually writing to the selected workspace. *No logs* means nothing arrived in the time range: the diagnostic setting is missing, points at another workspace, or the resource stopped sending. *Stale* means nothing in the last day. The inventory covers every subscription you can read (up to 1,000 resources), not only the ones selected at the top, and both queries scan every table, so they are slow on long time ranges."
           },
-          "id": 219,
+          "id": 229,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -16561,7 +17520,7 @@
               }
             ]
           },
-          "id": 220,
+          "id": 230,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -16691,7 +17650,7 @@
               }
             ]
           },
-          "id": 221,
+          "id": 231,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -16707,7 +17666,7 @@
             "mode": "markdown",
             "content": "### Alerting coverage"
           },
-          "id": 222,
+          "id": 232,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -16723,7 +17682,7 @@
             "mode": "markdown",
             "content": "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by **inheritance** from a metric rule scoped to its resource group or subscription that targets its type. Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped to a subscription can't be tied to one resource, so they aren't counted; *Notification path* below shows which subscriptions have them. A rule with no action group may still notify through an alert processing rule."
           },
-          "id": 223,
+          "id": 233,
           "gridPos": {
             "h": 5,
             "w": 24,
@@ -16873,7 +17832,7 @@
               }
             ]
           },
-          "id": 224,
+          "id": 234,
           "gridPos": {
             "h": 9,
             "w": 13,
@@ -16999,7 +17958,7 @@
               }
             ]
           },
-          "id": 225,
+          "id": 235,
           "gridPos": {
             "h": 9,
             "w": 11,
@@ -17066,7 +18025,7 @@
               }
             }
           ],
-          "id": 226,
+          "id": 236,
           "gridPos": {
             "h": 8,
             "w": 10,
@@ -17174,7 +18133,7 @@
               }
             ]
           },
-          "id": 227,
+          "id": 237,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -17190,7 +18149,7 @@
             "mode": "markdown",
             "content": "### Notification path"
           },
-          "id": 228,
+          "id": 238,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -17364,7 +18323,7 @@
               }
             ]
           },
-          "id": 229,
+          "id": 239,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -17482,7 +18441,7 @@
               }
             ]
           },
-          "id": 230,
+          "id": 240,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -17498,7 +18457,7 @@
             "mode": "markdown",
             "content": "### Backup & Site Recovery"
           },
-          "id": 231,
+          "id": 241,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -17722,7 +18681,7 @@
               }
             ]
           },
-          "id": 232,
+          "id": 242,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -17816,7 +18775,7 @@
               }
             ]
           },
-          "id": 233,
+          "id": 243,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -17944,7 +18903,7 @@
               }
             ]
           },
-          "id": 234,
+          "id": 244,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -18077,7 +19036,7 @@
               }
             ]
           },
-          "id": 235,
+          "id": 245,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -18093,7 +19052,7 @@
             "mode": "markdown",
             "content": "Pooled AVD session hosts and scale set build agents are normally rebuilt from an image, so *Not protected* is expected for them."
           },
-          "id": 236,
+          "id": 246,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -18182,7 +19141,7 @@
               }
             ]
           },
-          "id": 237,
+          "id": 247,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -18196,7 +19155,7 @@
       "type": "row",
       "title": "Capacity",
       "collapsed": true,
-      "id": 238,
+      "id": 248,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -18212,7 +19171,7 @@
             "mode": "markdown",
             "content": "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Firewall), circuit utilisation (ExpressRoute), Private DNS zone limits (Shared), vSAN (AVS) and Azure Files share quota (Storage)."
           },
-          "id": 239,
+          "id": 249,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -18228,7 +19187,7 @@
             "mode": "markdown",
             "content": "### Compute quotas"
           },
-          "id": 240,
+          "id": 250,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -18320,7 +19279,7 @@
               }
             ]
           },
-          "id": 241,
+          "id": 251,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -18336,7 +19295,7 @@
             "mode": "markdown",
             "content": "### Network quotas"
           },
-          "id": 242,
+          "id": 252,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -18352,7 +19311,7 @@
             "mode": "markdown",
             "content": "Network usage is not in Resource Graph, so this reads it from Azure Resource Manager for one subscription and region at a time."
           },
-          "id": 243,
+          "id": 253,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -18368,7 +19327,7 @@
             "mode": "markdown",
             "content": "### Cost"
           },
-          "id": 244,
+          "id": 254,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -18384,7 +19343,7 @@
             "mode": "markdown",
             "content": "Month-to-date spend for the subscription selected under *Network quotas*, read from Cost Management. It covers everything in that subscription, so it is platform cost only when the subscription holds only platform resources."
           },
-          "id": 245,
+          "id": 255,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -18400,7 +19359,7 @@
             "mode": "markdown",
             "content": "### Subnet address space"
           },
-          "id": 246,
+          "id": 256,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -18416,7 +19375,7 @@
             "mode": "markdown",
             "content": "*Used* counts the IP configurations attached to each subnet (NICs, private endpoints, load balancer front ends). Application Gateway instances and delegated services such as SQL Managed Instance take addresses that are not counted, and Virtual WAN hubs do not expose their address usage at all."
           },
-          "id": 247,
+          "id": 257,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -18545,7 +19504,7 @@
               }
             ]
           },
-          "id": 248,
+          "id": 258,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -18561,7 +19520,7 @@
             "mode": "markdown",
             "content": "**Not shown here:** 3 Resource Manager panels from this tab of the workbook. A Grafana metrics query covers one subscription and region, and the data source cannot call Resource Manager; open the workbook for these."
           },
-          "id": 249,
+          "id": 259,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -18575,7 +19534,7 @@
       "type": "row",
       "title": "Throughput",
       "collapsed": true,
-      "id": 250,
+      "id": 260,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -18591,7 +19550,7 @@
             "mode": "markdown",
             "content": "Traffic across the platform's network edge and data services for the selected time range."
           },
-          "id": 251,
+          "id": 261,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -18652,7 +19611,7 @@
             },
             "overrides": []
           },
-          "id": 252,
+          "id": 262,
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -18668,7 +19627,7 @@
             "mode": "markdown",
             "content": "**Not shown here:** 8 metric charts from this tab of the workbook. A Grafana metrics query covers one subscription and region, and the data source cannot call Resource Manager; open the workbook for these."
           },
-          "id": 253,
+          "id": 263,
           "gridPos": {
             "h": 2,
             "w": 24,

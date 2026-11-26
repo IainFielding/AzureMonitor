@@ -656,6 +656,57 @@ AVD_STATUS_TILES = {
     "showBorder": True,
 }
 
+# Nerdio Manager for Enterprise. It tags what it manages with a prefix (NMW_ unless changed at install), names its
+# own resources nmw-app-*, and scales host pools through Resource Manager as its app registration, so its
+# auto-scale shows in the activity log as a service principal starting, deallocating and draining session hosts.
+NERDIO_TAGGED = "| where tostring(tags) contains '\"{NerdioPrefix}'"
+
+
+def avd_host_actions(hosts):
+    """`let Actions = ...;`: Resource Manager actions on the session hosts in `hosts` (a tabular let with a
+    HostShort column) that change what users can reach: power, rebuilds, drain mode, log-offs and messages.
+
+    CallerKind says who did it: a user, Nerdio Manager (when {NerdioCaller} is set and matches), or other automation
+    (Nerdio when no id is given, AVD scaling plans, runbooks). Only completed operations are kept, not their
+    Start and Accept events."""
+    return r"""let Nerdio = trim(@'\s+', @'{NerdioCaller}');
+let Actions = AzureActivity
+| where TimeGenerated {TimeRange}
+| where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/', 'MICROSOFT.DESKTOPVIRTUALIZATION/HOSTPOOLS/SESSIONHOSTS')
+| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failure', 'Failed')
+| extend Op = tolower(OperationNameValue)
+| extend Action = case(Op endswith 'virtualmachines/start/action', 'Started',
+    Op endswith 'virtualmachines/deallocate/action', 'Deallocated',
+    Op endswith 'virtualmachines/poweroff/action', 'Powered off (still billed)',
+    Op endswith 'virtualmachines/restart/action', 'Restarted',
+    Op endswith 'virtualmachines/reimage/action', 'Re-imaged',
+    Op endswith 'virtualmachines/delete', 'VM deleted',
+    Op endswith 'virtualmachines/write', 'VM created or changed',
+    Op endswith 'usersessions/delete', 'User logged off',
+    Op endswith 'usersessions/disconnect/action', 'User disconnected',
+    Op endswith 'usersessions/sendmessage/action', 'Message sent to user',
+    Op endswith 'sessionhosts/write', 'Session host changed (drain mode)',
+    Op endswith 'sessionhosts/delete', 'Removed from host pool',
+    '')
+| where isnotempty(Action)
+| extend HostShort = tolower(tostring(split(extract(@'(?i)/(virtualmachines|sessionhosts)/([^/]+)', 2, _ResourceId), '.')[0]))
+| where HostShort in (HOSTS)
+| extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', '')))),
+    AppId = tostring(coalesce(column_ifexists('Claims_d', dynamic(null)).appid, parse_json(tostring(column_ifexists('Claims', ''))).appid))
+| extend Status = iff(ActivityStatusValue in~ ('Failure', 'Failed'), 'Failed', 'Succeeded'),
+    CallerKind = case(Caller has '@', 'User',
+        isnotempty(Nerdio) and (Caller =~ Nerdio or AppId =~ Nerdio), 'Nerdio Manager',
+        'Automation'),
+    StatusMessage = tostring(Props.statusMessage)
+| extend Error = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.code),
+        tostring(parse_json(StatusMessage).Code), substring(StatusMessage, 0, 200)), ''),
+    ErrorMessage = iff(Status == 'Failed', coalesce(tostring(parse_json(StatusMessage).error.message),
+        tostring(parse_json(StatusMessage).Message)), '');
+""".replace("HOSTS", hosts)
+
+
+AVD_ACTION_STATUS = status_fmt("Status", good=["Succeeded"], bad=["Failed"])
+
 SUBSCRIPTION_NAMES = """
 | join kind=leftouter (
     resourcecontainers
@@ -1108,6 +1159,14 @@ union isfuzzy=true
         | summarize arg_max(TimeGenerated, Status) by SessionHostName
         | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))
         | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),
+    (AzureActivity | where TimeGenerated {{TimeRange}}
+        | where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/START/ACTION', 'MICROSOFT.COMPUTE/VIRTUALMACHINES/DEALLOCATE/ACTION')
+        | where ActivityStatusValue in~ ('Failure', 'Failed') and Caller !has '@'
+        | extend HostShort = tolower(extract(@'(?i)/virtualmachines/([^/]+)', 1, _ResourceId))
+        | where HostShort in ((WVDAgentHealthStatus | where TimeGenerated {{TimeRange}}
+            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))
+        | summarize Count = count()
+        | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),
     (Heartbeat | where TimeGenerated {{TimeRange}}
         | summarize lastSeen = max(TimeGenerated) by Computer
         | summarize Count = countif(lastSeen < ago(15m))
@@ -2518,7 +2577,86 @@ resources
     AppGroupType = tostring(properties.preferredAppGroupType),
     StartVmOnConnect = tostring(properties.startVMOnConnect),
     Validation = tostring(properties.validationEnvironment),
+    ManagedBy = iff(tostring(tags) contains '"{NerdioPrefix}', 'Nerdio Manager', ''),
     ResourceGroup = resourceGroup, Location = location
+"""
+    # --- Nerdio Manager ---------------------------------------------------------------------------------------
+    nerdio_app_q = """
+resources
+| where name matches regex @'{NerdioPattern}'
+| project id = tolower(id), Type = type,
+    State = coalesce(tostring(properties.state), tostring(properties.status), tostring(properties.provisioningState)),
+    ResourceGroup = resourceGroup, Location = location
+| join kind=leftouter (
+    healthresources
+    | where type =~ 'microsoft.resourcehealth/availabilitystatuses'
+    | project id = tostring(split(tolower(id), '/providers/microsoft.resourcehealth/')[0]),
+        Health = tostring(properties.availabilityState), Reason = tostring(properties.summary)
+  ) on id
+| project-away id1
+| order by Type asc
+"""
+    nerdio_vms = """
+resources
+| where type =~ 'microsoft.compute/virtualmachines'
+""" + NERDIO_TAGGED + """
+| extend ObjectType = tostring(tags['{NerdioPrefix}OBJECT_TYPE']),
+    AutoscaleRestriction = tostring(tags['{NerdioPrefix}AUTOSCALE_RESTRICTION']),
+    ScaleInRestriction = tostring(tags['{NerdioPrefix}SCALE_IN_RESTRICTION']),
+    Power = tostring(properties.extended.instanceView.powerState.code)
+| extend Power = iff(isempty(Power), 'Unknown', tostring(split(Power, '/')[1]))
+"""
+    nerdio_tiles_q = nerdio_vms + """| where ObjectType =~ 'SESSION_HOST'
+| summarize Hosts = count(), Running = countif(Power =~ 'running'), Deallocated = countif(Power =~ 'deallocated'),
+    Stopped = countif(Power =~ 'stopped'), Restricted = countif(isnotempty(AutoscaleRestriction) or isnotempty(ScaleInRestriction))
+| extend rows = pack_array(
+    pack('Signal', 'Nerdio session hosts', 'Value', Hosts, 'Detail', strcat(Running, ' running'), 'State', 'Unknown'),
+    pack('Signal', 'Deallocated', 'Value', Deallocated, 'Detail', 'scaled in, not billed for compute', 'State', 'Unknown'),
+    pack('Signal', 'Stopped, not deallocated', 'Value', Stopped, 'Detail', 'still billed for compute',
+        'State', iff(Stopped > 0, 'Degraded', 'Available')),
+    pack('Signal', 'Held out of auto-scale', 'Value', Restricted, 'Detail', 'auto-scale or scale-in restriction tag',
+        'State', iff(Restricted > 0, 'Degraded', 'Available')))
+| mv-expand r = rows
+| project Signal = tostring(r.Signal), Value = tolong(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)
+"""
+    nerdio_hosts_q = nerdio_vms + """| project id, ObjectType, Power, AutoscaleRestriction, ScaleInRestriction,
+    Size = tostring(properties.hardwareProfile.vmSize), ResourceGroup = resourceGroup, Location = location
+| order by AutoscaleRestriction desc, ScaleInRestriction desc, Power asc
+"""
+    avd_hosts = """let AvdHosts = WVDAgentHealthStatus
+| where TimeGenerated {TimeRange}
+| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));
+"""
+    actions = avd_hosts + avd_host_actions("AvdHosts")
+    scaling_q = actions + """Actions
+| where CallerKind != 'User' and Status == 'Succeeded'
+| summarize Actions = count() by bin(TimeGenerated, {TimeRange:grain}), Action
+"""
+    callers_q = actions + """Actions
+| summarize Actions = count(), Failed = countif(Status == 'Failed'), Hosts = dcount(HostShort), LastSeen = max(TimeGenerated),
+    TopActions = strcat_array(make_set(Action, 4), ', ') by CallerKind, Caller, AppId
+| order by Actions desc
+"""
+    failures_q = actions + """Actions
+| where Status == 'Failed'
+| project Time = TimeGenerated, Host = HostShort, Action, Error, ErrorMessage, CallerKind, Caller, CorrelationId
+| order by Time desc
+| take 200
+"""
+    # Nerdio Manager's own Application Insights, when it is workspace-based (App* tables).
+    nerdio_errors_q = r"""union isfuzzy=true
+    (datatable(TimeGenerated: datetime, Kind: string, What: string, Detail: string)[]),
+    (AppExceptions | where TimeGenerated {TimeRange}
+        | where extract(@'[^/]+$', 0, tostring(_ResourceId)) matches regex @'{NerdioPattern}'
+        | extend Kind = 'Exception', What = tostring(column_ifexists('OuterMessage', '')),
+            Detail = tostring(column_ifexists('ProblemId', ''))),
+    (AppRequests | where TimeGenerated {TimeRange}
+        | where extract(@'[^/]+$', 0, tostring(_ResourceId)) matches regex @'{NerdioPattern}'
+        | where tostring(column_ifexists('Success', true)) =~ 'false'
+        | extend Kind = 'Failed request', What = tostring(column_ifexists('Name', '')),
+            Detail = strcat('HTTP ', tostring(column_ifexists('ResultCode', ''))))
+| summarize Count = count(), LastSeen = max(TimeGenerated), Detail = take_any(Detail) by Kind, What = substring(What, 0, 300)
+| top 25 by Count desc
 """
     hosts_q = AVD_LATEST_HOSTS + """
 | project SessionHost = SessionHostName, HostPool, Status, LastHeartbeat = TimeGenerated,
@@ -2623,6 +2761,42 @@ WVDCheckpoints
              "table at the top: a host at its limit takes no more users. The slowest logon stages are usually "
              "profile load (FSLogix), group policy and logon scripts.", "info", visible_when=WORKSPACE_SET),
         la("avd-errors", "Top connection errors", errors_q, no_data="No AVD errors in the time range."),
+        text("avd-nerdio-h", "### Nerdio Manager"),
+        text("avd-nerdio-note", "For host pools run by **Nerdio Manager for Enterprise**. Its own resources are found by "
+             "the *Nerdio Manager name pattern* and the hosts it manages by the *Nerdio tag prefix* (both at the top). "
+             "Auto-scale runs as Nerdio's app registration, so its work shows in the activity log as automation "
+             "starting, deallocating, draining and logging users off session hosts. Put Nerdio's application "
+             "(client) id in *Nerdio Manager app id* to tell it apart from scaling plans and runbooks; *Who acts on "
+             "the session hosts* shows the ids to choose from.", "info"),
+        arg("avd-nerdio-app", "Nerdio Manager resources", nerdio_app_q,
+            formatters=[resource_link(), health_fmt(),
+                        status_fmt("State", good=["Running", "Online", "Succeeded", "Ok"], warn=["Updating", "Paused"],
+                                   bad=["Stopped", "Failed", "Disabled", "Offline", "Suspended"])],
+            labels={"id": "Resource"}, width=50,
+            no_data="No resources match the Nerdio Manager name pattern in the selected subscriptions."),
+        arg("avd-nerdio-tiles", "", nerdio_tiles_q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail"),
+            width=50, no_data="No session hosts carry Nerdio's tags."),
+        arg("avd-nerdio-hosts", "Virtual machines managed by Nerdio", nerdio_hosts_q,
+            formatters=[resource_link(), status_fmt("Power", good=["running"], warn=["stopped"], neutral=["deallocated", "Unknown"])],
+            labels={"id": "Virtual machine", "ObjectType": "Nerdio object", "AutoscaleRestriction": "Auto-scale restriction",
+                    "ScaleInRestriction": "Scale-in restriction"},
+            no_data="No virtual machines carry Nerdio's tags. Check the tag prefix at the top."),
+        la("avd-nerdio-scaling", "Automated actions on session hosts", scaling_q, vis="timechart", width=50,
+           no_data="No automated actions on session hosts in the time range (needs AzureActivity)."),
+        la("avd-nerdio-callers", "Who acts on the session hosts", callers_q, width=50,
+           formatters=[low_is_good("Failed", 1, 10)],
+           labels={"CallerKind": "Kind", "AppId": "App id", "LastSeen": "Last seen", "TopActions": "Actions taken"},
+           no_data="No activity on session hosts in the time range."),
+        la("avd-nerdio-failures", "Failed scaling and session host actions", failures_q, formatters=[AVD_ACTION_STATUS],
+           labels={"ErrorMessage": "Message", "CallerKind": "Kind", "CorrelationId": "Correlation id"},
+           no_data="No failed actions on session hosts in the time range."),
+        text("avd-nerdio-failures-note", "*AllocationFailed*, *ZonalAllocationFailed* and *SkuNotAvailable* mean Azure had "
+             "no capacity for that size: scale-out stalls and users queue or fail with *no healthy session host*. "
+             "*OperationNotAllowed* is usually a vCPU quota (see the Capacity tab).", "info", visible_when=WORKSPACE_SET),
+        la("avd-nerdio-errors", "Nerdio Manager application errors", nerdio_errors_q,
+           labels={"LastSeen": "Last seen"},
+           no_data="No errors from Nerdio Manager's Application Insights in this workspace (it must be workspace-based, "
+                   "and its workspace selected at the top)."),
     ], tab="avd")
 
 
@@ -3779,6 +3953,39 @@ def global_params():
             "value": "(?i)(fslogix|profile|avd|wvd)",
             "description": "Regex matched against storage account and resource group names on the Storage and "
                            "Throughput tabs. Metric charts handle at most 200 accounts; use '.' for all.",
+        },
+        {
+            "id": gid("param-NerdioPattern"),
+            "version": "KqlParameterItem/1.0",
+            "name": "NerdioPattern",
+            "label": "Nerdio Manager name pattern",
+            "type": 1,
+            "isRequired": True,
+            "value": "(?i)^nmw-app",
+            "description": "Regex matched against resource names to find Nerdio Manager's own app service, database, "
+                           "key vault, automation account and Application Insights (AVD tab).",
+        },
+        {
+            "id": gid("param-NerdioPrefix"),
+            "version": "KqlParameterItem/1.0",
+            "name": "NerdioPrefix",
+            "label": "Nerdio tag prefix",
+            "type": 1,
+            "isRequired": True,
+            "value": "NMW_",
+            "description": "The prefix of the tags Nerdio Manager puts on what it manages: NMW_ unless it was changed "
+                           "at install. Case-sensitive (AVD tab).",
+        },
+        {
+            "id": gid("param-NerdioCaller"),
+            "version": "KqlParameterItem/1.0",
+            "name": "NerdioCaller",
+            "label": "Nerdio Manager app id",
+            "type": 1,
+            "isRequired": False,
+            "value": "",
+            "description": "Optional. The application (client) id of Nerdio Manager's app registration, to label its "
+                           "actions on session hosts apart from other automation (AVD tab).",
         },
         {
             "id": gid("param-selectedTab"),
