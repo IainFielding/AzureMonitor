@@ -44,10 +44,11 @@ jobs:
           python3 src/build_ccoe.py
           python3 src/build_well_architected.py
           python3 src/build_grafana.py
+          python3 src/build_docs.py
 
       - name: Fail if the committed files differ
         run: |
-          if ! git diff --exit-code --stat -- workbook grafana; then
+          if ! git diff --exit-code --stat -- workbook grafana docs || [ -n "$(git status --porcelain -- workbook grafana docs)" ]; then
             echo ""
             echo "::error::The generated files are out of date."
             echo "Run these and commit the result:"
@@ -71,6 +72,7 @@ jobs:
             echo "    python src/build_ccoe.py"
             echo "    python src/build_well_architected.py"
             echo "    python src/build_grafana.py"
+            echo "    python src/build_docs.py"
             exit 1
           fi
           echo "Generated files match the scripts."

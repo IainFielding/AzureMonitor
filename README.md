@@ -14,6 +14,8 @@ There are two kinds of workbook:
 
 ## The workbooks
 
+Each workbook has a reference page in [docs/](docs/README.md) listing every tab and panel, what it reports, where its data comes from and what its columns mean.
+
 | Workbook | Kind | Use it to answer | Main users |
 |---|---|---|---|
 | [Platform health](workbook/alz-platform-health.workbook.json) | Dashboard | Is the platform healthy, and where are the problems? Covers health, capacity, throughput, governance, security and monitoring coverage across 19 tabs | Whole platform team; the daily check |
@@ -703,6 +705,7 @@ python src/build_policy_compliance.py
 python src/build_ccoe.py
 python src/build_well_architected.py
 python src/build_grafana.py
+python src/build_docs.py
 ```
 
 Commit the scripts and every generated JSON file (eighteen workbooks, two dashboards). A check on every pull request regenerates them and fails
