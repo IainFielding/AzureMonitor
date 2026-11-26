@@ -16,7 +16,7 @@ activity log (Resource Health events). Built from the helpers in build_workbook.
 
 import pathlib
 
-from build_workbook import (DAY_MS, Q_FIREWALLS, WORKSPACE_SET, WORKSPACE_UNSET, big_number_tiles, choice_param,
+from build_workbook import (AVG, DAY_MS, MAX, SUM, Q_FIREWALLS, m, metrics, WORKSPACE_SET, WORKSPACE_UNSET, big_number_tiles, choice_param,
                             high_is_good, la, low_is_good, notebook, params, resource_param, status_fmt,
                             subscription_param, text, time_param, workspace_param, write_workbook)
 
@@ -25,6 +25,7 @@ OUT = pathlib.Path(__file__).resolve().parent.parent / "workbook" / "avd-firewal
 P = "avdfw"
 HOUR_MS = 3600000
 
+FW = "microsoft.network/azurefirewalls"
 Q_HOST_POOLS = "resources\n| where type =~ 'microsoft.desktopvirtualization/hostpools'"
 
 # Error codes that mean the connection broke or never got through on the network, rather than a sign-in or
@@ -113,7 +114,7 @@ Bins
 | extend rows = pack_array(
     pack('Signal', 'Dropped sessions', 'Value', Drops, 'Detail', strcat(Affected, ' users affected in all'), 'State', iff(Drops > 0, 'Degraded', 'Available')),
     pack('Signal', 'Failed connections', 'Value', Failed, 'Detail', 'network errors before connecting', 'State', iff(Failed > 0, 'Degraded', 'Available')),
-    pack('Signal', 'Lowest firewall health', 'Value', round(Health), 'Detail', iff(MetricBins == 0, 'no firewall metrics (AzureMetrics)', '%'),
+    pack('Signal', 'Lowest firewall health', 'Value', round(Health), 'Detail', iff(MetricBins == 0, 'no AllMetrics in the selected workspaces', '%'),
         'State', case(isnull(Health), 'Unknown', Health < 90, 'Unavailable', Health < 100, 'Degraded', 'Available')),
     pack('Signal', 'Peak SNAT port use', 'Value', round(Snat), 'Detail', '%',
         'State', case(isnull(Snat), 'Unknown', Snat >= 90, 'Unavailable', Snat >= 70, 'Degraded', 'Available')),
@@ -148,36 +149,28 @@ Bins
 | summarize DataBins = countif(isnotnull(x)), BinsHit = countif(Hit), WithHit = avgif(y, Hit), Without = avgif(y, not(Hit) and isnotnull(x)),
     n = countif(isnotnull(x)), sx = sumif(x, isnotnull(x)), sy = sumif(y, isnotnull(x)), sxy = sumif(x * y, isnotnull(x)),
     sxx = sumif(x * x, isnotnull(x)), syy = sumif(y * y, isnotnull(x)) by Signal
-| extend Pearson = round((n * sxy - sx * sy) / sqrt((n * sxx - sx * sx) * (n * syy - sy * sy)), 2),
-    Ratio = round(iff(Without > 0, WithHit / Without, real(null)), 1)
+| extend Quiet = DataBins - BinsHit,
+    Pearson = (n * sxy - sx * sy) / sqrt((n * sxx - sx * sx) * (n * syy - sy * sy))
+| extend Pearson = iff(isfinite(Pearson), round(Pearson, 2), real(null)),
+    WithHit = iff(BinsHit > 0, WithHit, real(null)), Without = iff(Quiet > 0, Without, real(null))
+| extend Ratio = iff(BinsHit > 0 and Without > 0, round(WithHit / Without, 1), real(null))
+// A signal that is on in nearly every bin leaves too few quiet bins to compare against: only the correlation says
+// anything then.
 | extend Verdict = case(DataBins == 0, 'No data for this signal',
     Signal startswith 'Throughput', iff(Pearson >= 0.5, 'Disconnections rise with load', 'No sign of a link'),
     BinsHit == 0, 'Did not happen in the time range',
+    Quiet < 10 or BinsHit * 10 > DataBins * 8, iff(Pearson >= 0.3, 'Too common to compare, but rises with disconnections',
+        'Too common to compare'),
     BinsHit >= 3 and (Ratio >= 2 or (Without == 0 and WithHit > 0)), 'Likely related',
     Ratio >= 1.3 or Pearson >= 0.3, 'Possibly related',
     'No sign of a link')
 | project Signal, Verdict, BinsHit, DataBins, WithHit = round(WithHit, 2), Without = round(Without, 2), Ratio, Pearson
-| order by case(Verdict == 'Likely related', 0, Verdict == 'Possibly related', 1, Verdict == 'Disconnections rise with load', 1, 2) asc, Ratio desc
+| order by case(Verdict == 'Likely related', 0, Verdict in ('Possibly related', 'Disconnections rise with load',
+    'Too common to compare, but rises with disconnections'), 1, Verdict == 'Too common to compare', 2, 3) asc, Ratio desc
 """
 
 DROPS_CHART_Q = BINS + r"""Bins
 | project T, ['Dropped sessions'] = Drops, ['Failed connections'] = FailedConnects
-"""
-
-SNAT_HEALTH_Q = BINS + r"""Bins
-| project T, ['SNAT port use %'] = SnatPct, ['Health %'] = Health
-"""
-
-LATENCY_Q = BINS + r"""Bins
-| project T, ['Latency probe (ms)'] = LatencyMs
-"""
-
-CAPACITY_Q = ERRS + FIREWALL + r"""CapChanges
-| project T, Firewall = tostring(split(Firewall, '/')[8]), Cap
-"""
-
-THROUGHPUT_Q = BINS + r"""Bins
-| project T, ['Throughput (Mbps)'] = ThroughputMbps, ['Users disconnected'] = Users
 """
 
 # Bins where disconnections jumped: at least three, and three times the average bin. Alongside, the firewall's state
@@ -186,12 +179,13 @@ SPIKES_Q = BINS + r"""let AvgY = toscalar(Bins | summarize avg(Y));
 let BinCodes = Errs | summarize Codes = strcat_array(make_set(Code, 4), ', ') by T = bin(At, Grain);
 Bins
 | order by T asc
-| extend PrevSnat = prev(SnatPct), PrevHealth = prev(Health), PrevScale = prev(ScaleOut + ScaleIn)
+| extend ScaleOps = ScaleOut + ScaleIn
+| extend PrevSnat = prev(SnatPct), PrevHealth = prev(Health), PrevScale = prev(ScaleOps)
 | where Y >= 3 and Y >= 3 * AvgY
 | join kind=leftouter BinCodes on T
 | project Time = T, Disconnections = Y, Users, Health = round(min_of(coalesce(Health, 100.0), coalesce(PrevHealth, 100.0))),
     SnatPct = round(max_of(coalesce(SnatPct, 0.0), coalesce(PrevSnat, 0.0))), LatencyMs = round(LatencyMs, 1), Capacity,
-    ScaleOps = ScaleOut + ScaleIn + coalesce(PrevScale, 0), RhEvents, Denies, Codes
+    ScaleOps = ScaleOps + coalesce(PrevScale, 0), RhEvents, Denies, Codes
 | order by Disconnections desc
 | take 100
 """
@@ -202,8 +196,8 @@ EVENTS_Q = ERRS + FIREWALL + r"""let Events = union
         | project Time = T, Firewall, Event = strcat(iff(Change > 0, 'Scaled out to ', 'Scaled in to '), Cap, ' capacity units')),
     (Rh | extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', ''))))
         | project Time = TimeGenerated, Firewall = tolower(_ResourceId),
-            Event = strcat('Resource Health: ', coalesce(tostring(Props.title), tostring(Props.currentHealthStatus), 'event'),
-                iff(isnotempty(tostring(Props.cause)), strcat(' (', tostring(Props.cause), ')'), ''))));
+            Event = strcat('Resource Health: ', coalesce(tostring(Props['title']), tostring(Props['currentHealthStatus']), 'event'),
+                iff(isnotempty(tostring(Props['cause'])), strcat(' (', tostring(Props['cause']), ')'), ''))));
 let Window = 15m;
 Events
 | extend k = 1
@@ -237,11 +231,35 @@ DENIES_Q = ERRS + r"""union isfuzzy=true
 | take 100
 """
 
+def rising(col, warn, crit, digits):
+    """Amber and red as the value rises; blank, not a tick, when there is no value."""
+    grid = [{"operator": ">=", "thresholdValue": str(crit), "representation": "4", "text": "{0}{1}"},
+            {"operator": ">=", "thresholdValue": str(warn), "representation": "2", "text": "{0}{1}"},
+            {"operator": "<", "thresholdValue": str(warn), "representation": "success", "text": "{0}{1}"},
+            {"operator": "Default", "thresholdValue": None, "representation": "Blank", "text": "{0}{1}"}]
+    return {"columnMatch": col, "formatter": 18, "formatOptions": {"thresholdsOptions": "icons", "thresholdsGrid": grid},
+            "numberFormat": {"unit": 0, "options": {"style": "decimal", "maximumFractionDigits": digits}}}
+
+
+SIGNALS_LEGEND = """\
+**Reading the table.** The time range is cut into bins (the *Time bin* at the top). A bin is *under stress* for a
+signal when the signal was bad in that bin or the one before. **Disconnections per bin, under stress** and
+**otherwise** are the average disconnections in those two sets of bins. **Times as many** divides the first by the
+second: 7 means users dropped seven times as often while that signal was bad. **Correlation** (-1 to 1) says whether
+the signal's value and the disconnections rise and fall together across every bin: above 0.3 is a link worth
+following, near 0 is none. **Likely related** needs at least three bins under stress with twice the usual
+disconnections. A signal that is bad in nearly every bin (*Too common to compare*) leaves no quiet time to compare
+against: fix or explain it first, then look again. The table needs the firewalls' **AllMetrics** (`AzureMetrics`)
+in one of the selected workspaces; the charts below do not."""
+
+
 VERDICT = status_fmt("Verdict", good=["No sign of a link"], warn=["Possibly related", "Disconnections rise with load"],
-                     bad=["Likely related"], neutral=["Did not happen in the time range", "No data for this signal"])
+                     bad=["Likely related"], neutral=["Did not happen in the time range", "No data for this signal",
+                                                     "Too common to compare",
+                                                     "Too common to compare, but rises with disconnections"])
 
 HOW_TO = """\
-Pick the workspace, the **host pools** whose session hosts send their traffic through the firewall, and the
+Pick the workspaces (both, if the firewalls log to a different one from the host pools), the **host pools** whose session hosts send their traffic through the firewall, and the
 **firewalls** on that path. Each disconnection is a connection that hit a network error: a **dropped session** (the
 user was connected) or a **failed connection** (they never got on; *ReverseConnect* codes are the session host
 failing to reach the gateway, the leg that crosses the firewall). *Count* chooses which the comparison uses.
@@ -254,7 +272,7 @@ in them with the rest. *Likely related* means at least three such bins with twic
 the drops and the firewall's stress could both come from the same burst of users, such as the Monday morning sign-in.
 
 Needs the host pools' diagnostic settings (`WVDConnections`, `WVDErrors`) and the firewalls' diagnostic setting with
-**AllMetrics** (`AzureMetrics`) sent to the same workspace. The rule logs (`AZFWNetworkRule`, `AZFWApplicationRule`)
+**AllMetrics** (`AzureMetrics`) sent to one of the selected workspaces. The rule logs (`AZFWNetworkRule`, `AZFWApplicationRule`)
 add the denies, and the activity log (`AzureActivity`) adds Resource Health events."""
 
 WHAT_NEXT = """\
@@ -278,7 +296,9 @@ ExpressRoute or VPN path. The *Firewalls: blocked connections* workbook shows wh
 def parameters():
     return params(f"{P}-params", [
         subscription_param(P),
-        workspace_param(P, "The workspace your host pools and firewalls send their logs and metrics to.", required=True),
+        {**workspace_param(P, "Every workspace involved: the one your host pools send their diagnostics to and the one "
+                              "your firewalls send their logs and AllMetrics to, if different. Queries run across all "
+                              "of them.", required=True), "label": "Log Analytics workspaces"},
         time_param(P, DAY_MS, (4 * HOUR_MS, 12 * HOUR_MS, DAY_MS, 3 * DAY_MS, 7 * DAY_MS, 14 * DAY_MS, 30 * DAY_MS)),
         resource_param("HostPools", "Host pools", Q_HOST_POOLS),
         resource_param("Firewalls", "Firewalls", Q_FIREWALLS),
@@ -299,22 +319,28 @@ def workbook():
              "scaling? The disconnections and the firewall's signals on the same timeline, and how strongly each "
              "signal lines up with them."),
         parameters(),
-        text(f"{P}-ws-hint", "Select the **Log Analytics workspace** your host pools and firewalls send to.", "info",
+        text(f"{P}-ws-hint", "Select the **Log Analytics workspaces** your host pools and your firewalls send to. If they are different, "
+             "select both: every query runs across all the workspaces selected.", "info",
              visible_when=WORKSPACE_UNSET),
         text(f"{P}-howto", HOW_TO, "info", visible_when=WORKSPACE_SET),
         la(f"{P}-tiles", "", TILES_Q, vis="tiles", tiles=big_number_tiles("Signal", "State", "Value", "Detail")),
         la(f"{P}-signals", "Does the firewall explain the disconnections?", SIGNALS_Q,
-           formatters=[VERDICT, low_is_good("Ratio", 1.3, 2, digits=1), low_is_good("Pearson", 0.3, 0.5, digits=2)],
+           formatters=[VERDICT, rising("Ratio", 1.3, 2, 1), rising("Pearson", 0.3, 0.5, 2)],
            labels={"BinsHit": "Bins under stress", "DataBins": "Bins with data", "WithHit": "Disconnections per bin, under stress",
-                   "Without": "Disconnections per bin, otherwise", "Ratio": "Times as many", "Pearson": "Correlation"},
+                   "Without": "Disconnections per bin, otherwise", "Ratio": "Times as many (under stress ÷ otherwise)", "Pearson": "Correlation"},
            no_data="No data. Check the host pools and firewalls picked, and that the firewalls send AllMetrics."),
-        la(f"{P}-drops", "Disconnections", DROPS_CHART_Q, vis="timechart", width=50),
-        la(f"{P}-snat", "Firewall SNAT port use and health (%)", SNAT_HEALTH_Q, vis="timechart", width=50,
-           no_data="No firewall metrics: send the firewalls' AllMetrics to this workspace."),
-        la(f"{P}-capacity", "Firewall capacity units (a step is a scale operation)", CAPACITY_Q, vis="timechart", width=50,
-           no_data="No ObservedCapacity metric from these firewalls."),
-        la(f"{P}-latency", "Firewall latency probe (ms)", LATENCY_Q, vis="timechart", width=50),
-        la(f"{P}-throughput", "Firewall throughput and users disconnected", THROUGHPUT_Q, vis="timechart"),
+        text(f"{P}-signals-legend", SIGNALS_LEGEND, "info", visible_when=WORKSPACE_SET),
+        la(f"{P}-drops", "Disconnections", DROPS_CHART_Q, vis="timechart"),
+        text(f"{P}-charts-h", "### The firewalls over the same time range\n"
+             "These charts read Azure Monitor metrics straight from the firewalls, so they work whatever the "
+             "diagnostic settings. Line them up by eye with *Disconnections* above."),
+        metrics(f"{P}-snat", "SNAT port use % (max)", FW, "Firewalls", [m(FW, "SNATPortUtilization", MAX)], width=50),
+        metrics(f"{P}-health", "Health state %", FW, "Firewalls", [m(FW, "FirewallHealth", AVG)], width=50),
+        metrics(f"{P}-capacity", "Capacity units (a step is a scale operation)", FW, "Firewalls",
+                [m(FW, "ObservedCapacity", MAX)], width=50),
+        metrics(f"{P}-latency", "Latency probe (ms)", FW, "Firewalls", [m(FW, "FirewallLatencyPng", AVG)], width=50),
+        metrics(f"{P}-throughput", "Throughput", FW, "Firewalls", [m(FW, "Throughput", AVG)], width=50),
+        metrics(f"{P}-data", "Data processed", FW, "Firewalls", [m(FW, "DataProcessed", SUM)], width=50),
         la(f"{P}-spikes", "Disconnection spikes and the firewall at the time", SPIKES_Q,
            formatters=[high_is_good("Health", 100, 90), low_is_good("SnatPct", 70, 90),
                        low_is_good("ScaleOps", 1, 3), low_is_good("RhEvents", 1, 1), low_is_good("Denies", 1, 100)],
