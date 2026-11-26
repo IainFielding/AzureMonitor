@@ -707,6 +707,58 @@ let Actions = AzureActivity
 
 AVD_ACTION_STATUS = status_fmt("Status", good=["Succeeded"], bad=["Failed"])
 
+# Free disk space on session hosts, one row per sample: TimeGenerated, HostShort, Volume, Metric (FreePct or FreeMB),
+# Value. From the LogicalDisk performance counters (Perf) or VM insights (InsightsMetrics). Besides the drives, a
+# volume with no letter (HarddiskVolumeN) is a mounted virtual disk: an FSLogix profile or Office container, or an
+# app attach package. AVD Insights collects only LogicalDisk(C:); collect LogicalDisk(*) to see those too.
+AVD_DISK_ROWS = r"""union isfuzzy=true
+    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)
+    | where TimeGenerated {TimeRange}
+    | where tostring(column_ifexists('ObjectName', '')) == 'LogicalDisk'
+    | extend Counter = tostring(column_ifexists('CounterName', '')), Volume = tostring(column_ifexists('InstanceName', ''))
+    | where Counter in ('% Free Space', 'Free Megabytes') and Volume != '_Total'
+    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])), Volume,
+        Metric = iff(Counter == '% Free Space', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('CounterValue', real(null)))),
+    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)
+    | where TimeGenerated {TimeRange}
+    | where tostring(column_ifexists('Namespace', '')) == 'LogicalDisk'
+    | extend Name = tostring(column_ifexists('Name', ''))
+    | where Name in ('FreeSpacePercentage', 'FreeSpaceMB')
+    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])),
+        Volume = tostring(parse_json(tostring(column_ifexists('Tags', '')))['vm.azm.ms/mountId']),
+        Metric = iff(Name == 'FreeSpacePercentage', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('Val', real(null))))
+"""
+
+
+def avd_disk_q(hosts):
+    """The latest and lowest free space on each volume of the session hosts in `hosts` (a tabular let with a
+    HostShort column), and how many times Windows warned the disk was at or near capacity (srv event 2013, from the
+    System event log)."""
+    return f"""let Disk = {AVD_DISK_ROWS.strip()}
+| where HostShort in ({hosts});
+let LowDiskEvents = union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Event)
+    | where TimeGenerated {{TimeRange}}
+    | where tostring(column_ifexists('Source', '')) == 'srv' and toint(column_ifexists('EventID', int(null))) == 2013
+    | summarize LowDiskWarnings = count(), LastWarning = max(TimeGenerated) by HostShort = tolower(tostring(split(Computer, '.')[0]));
+Disk
+| summarize arg_max(TimeGenerated, Value) by HostShort, Volume, Metric
+| summarize FreePct = round(take_anyif(Value, Metric == 'FreePct'), 1), FreeGB = round(take_anyif(Value, Metric == 'FreeMB') / 1024, 1),
+    LastReport = max(TimeGenerated) by HostShort, Volume
+| join kind=leftouter (Disk | where Metric == 'FreePct' | summarize LowestPct = round(min(Value), 1) by HostShort, Volume) on HostShort, Volume
+| join kind=leftouter LowDiskEvents on HostShort
+| extend Kind = case(Volume =~ 'C:', 'OS disk (C:)', Volume =~ 'D:', 'D: (usually the temporary disk)',
+    Volume matches regex @'^[A-Za-z]:$', 'Data disk',
+    'Mounted virtual disk (FSLogix profile or app attach)')
+| project Host = HostShort, Volume, Kind, FreePct, LowestPct, FreeGB, LowDiskWarnings = coalesce(LowDiskWarnings, 0), LastWarning, LastReport
+| order by FreePct asc
+"""
+
+
+AVD_DISK_FORMATTERS = [high_is_good("FreePct", 20, 10, digits=1), high_is_good("LowestPct", 20, 10, digits=1),
+                       low_is_good("LowDiskWarnings", 1, 10)]
+AVD_DISK_LABELS = {"FreePct": "Free % (latest)", "LowestPct": "Lowest free %", "FreeGB": "Free GB (latest)",
+                   "LowDiskWarnings": "Low disk warnings", "LastWarning": "Last warning", "LastReport": "Last report"}
+
 SUBSCRIPTION_NAMES = """
 | join kind=leftouter (
     resourcecontainers
@@ -1148,6 +1200,7 @@ policyresources
     issues_defender_q = counts_defender + issue_rows([("Defender plans off", "PlansOff", "Security", "Degraded")])
     issues_access_q = counts_access + issue_rows([("Owners set on users", "DirectOwners", "Security", "Degraded")])
     # Log checks. A leg whose table is missing from the workspace is skipped, so its tile is simply absent.
+    avd_disk_rows = AVD_DISK_ROWS.strip()
     issues_logs_q = f"""
 union isfuzzy=true
     (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),
@@ -1167,6 +1220,13 @@ union isfuzzy=true
             | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))
         | summarize Count = count()
         | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),
+    ({avd_disk_rows}
+        | where Volume =~ 'C:' and Metric == 'FreePct'
+        | where HostShort in ((WVDAgentHealthStatus | where TimeGenerated {{TimeRange}}
+            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))
+        | summarize arg_max(TimeGenerated, Value) by HostShort
+        | summarize Count = countif(Value < 10)
+        | extend Check = 'AVD hosts low on disk', Tab = 'AVD', Severity = 'Degraded'),
     (Heartbeat | where TimeGenerated {{TimeRange}}
         | summarize lastSeen = max(TimeGenerated) by Computer
         | summarize Count = countif(lastSeen < ago(15m))
@@ -2627,6 +2687,7 @@ resources
 | where TimeGenerated {TimeRange}
 | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));
 """
+    disk_q = avd_hosts + avd_disk_q("AvdHosts") + "| take 500\n"
     actions = avd_hosts + avd_host_actions("AvdHosts")
     scaling_q = actions + """Actions
 | where CallerKind != 'User' and Status == 'Succeeded'
@@ -2761,6 +2822,13 @@ WVDCheckpoints
              "table at the top: a host at its limit takes no more users. The slowest logon stages are usually "
              "profile load (FSLogix), group policy and logon scripts.", "info", visible_when=WORKSPACE_SET),
         la("avd-errors", "Top connection errors", errors_q, no_data="No AVD errors in the time range."),
+        la("avd-disk", "Session host disk space (fullest first)", disk_q, formatters=AVD_DISK_FORMATTERS,
+           labels=AVD_DISK_LABELS, no_data="No disk counters from the session hosts (LogicalDisk in Perf, or VM insights)."),
+        text("avd-disk-note", "A *mounted virtual disk* is a user's FSLogix profile or Office container (or an app attach "
+             "package): when one fills, the user gets a low disk space warning in their session even though C: is "
+             "fine. Grow it with FSLogix's *SizeInMBs* (new containers) or by expanding the VHDX. AVD Insights collects "
+             "only `LogicalDisk(C:)`: add `LogicalDisk(*)` to the data collection rule to see the mounted disks, and "
+             "the System event log (warnings) for the low disk warnings.", "info", visible_when=WORKSPACE_SET),
         text("avd-nerdio-h", "### Nerdio Manager"),
         text("avd-nerdio-note", "For host pools run by **Nerdio Manager for Enterprise**. Its own resources are found by "
              "the *Nerdio Manager name pattern* and the hosts it manages by the *Nerdio tag prefix* (both at the top). "

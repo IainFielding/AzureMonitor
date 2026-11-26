@@ -676,7 +676,7 @@
           },
           "queryType": "Azure Log Analytics",
           "azureLogAnalytics": {
-            "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/START/ACTION', 'MICROSOFT.COMPUTE/VIRTUALMACHINES/DEALLOCATE/ACTION')\n        | where ActivityStatusValue in~ ('Failure', 'Failed') and Caller !has '@'\n        | extend HostShort = tolower(extract(@'(?i)/virtualmachines/([^/]+)', 1, _ResourceId))\n        | where HostShort in ((WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize Count = count()\n        | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),\n    (Heartbeat | where $__timeFilter(TimeGenerated)\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
+            "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/START/ACTION', 'MICROSOFT.COMPUTE/VIRTUALMACHINES/DEALLOCATE/ACTION')\n        | where ActivityStatusValue in~ ('Failure', 'Failed') and Caller !has '@'\n        | extend HostShort = tolower(extract(@'(?i)/virtualmachines/([^/]+)', 1, _ResourceId))\n        | where HostShort in ((WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize Count = count()\n        | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),\n    (union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)\n    | where $__timeFilter(TimeGenerated)\n    | where tostring(column_ifexists('ObjectName', '')) == 'LogicalDisk'\n    | extend Counter = tostring(column_ifexists('CounterName', '')), Volume = tostring(column_ifexists('InstanceName', ''))\n    | where Counter in ('% Free Space', 'Free Megabytes') and Volume != '_Total'\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])), Volume,\n        Metric = iff(Counter == '% Free Space', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('CounterValue', real(null)))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)\n    | where $__timeFilter(TimeGenerated)\n    | where tostring(column_ifexists('Namespace', '')) == 'LogicalDisk'\n    | extend Name = tostring(column_ifexists('Name', ''))\n    | where Name in ('FreeSpacePercentage', 'FreeSpaceMB')\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])),\n        Volume = tostring(parse_json(tostring(column_ifexists('Tags', '')))['vm.azm.ms/mountId']),\n        Metric = iff(Name == 'FreeSpacePercentage', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('Val', real(null))))\n        | where Volume =~ 'C:' and Metric == 'FreePct'\n        | where HostShort in ((WVDAgentHealthStatus | where $__timeFilter(TimeGenerated)\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize arg_max(TimeGenerated, Value) by HostShort\n        | summarize Count = countif(Value < 10)\n        | extend Check = 'AVD hosts low on disk', Tab = 'AVD', Severity = 'Degraded'),\n    (Heartbeat | where $__timeFilter(TimeGenerated)\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where $__timeFilter(TimeGenerated)\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where $__timeFilter(TimeGenerated)\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc\n| extend TileName = strcat(case(State == 'Available', '🟢 ', State == 'Degraded', '🟠 ', State == 'Unavailable', '🔴 ', State == 'Unknown', '⚪ ', ''), tostring(Check))\n| project Name = TileName, Value = todouble(Count)",
             "resultFormat": "table",
             "resources": [
               "$Workspace"
@@ -12349,16 +12349,210 @@
           }
         },
         {
-          "type": "text",
-          "title": "",
-          "transparent": true,
+          "type": "table",
+          "title": "Session host disk space (fullest first)",
+          "datasource": {
+            "type": "grafana-azure-monitor-datasource",
+            "uid": "${ds}"
+          },
+          "targets": [
+            {
+              "refId": "A",
+              "datasource": {
+                "type": "grafana-azure-monitor-datasource",
+                "uid": "${ds}"
+              },
+              "queryType": "Azure Log Analytics",
+              "azureLogAnalytics": {
+                "query": "let AvdHosts = WVDAgentHealthStatus\n| where $__timeFilter(TimeGenerated)\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Disk = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)\n    | where $__timeFilter(TimeGenerated)\n    | where tostring(column_ifexists('ObjectName', '')) == 'LogicalDisk'\n    | extend Counter = tostring(column_ifexists('CounterName', '')), Volume = tostring(column_ifexists('InstanceName', ''))\n    | where Counter in ('% Free Space', 'Free Megabytes') and Volume != '_Total'\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])), Volume,\n        Metric = iff(Counter == '% Free Space', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('CounterValue', real(null)))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)\n    | where $__timeFilter(TimeGenerated)\n    | where tostring(column_ifexists('Namespace', '')) == 'LogicalDisk'\n    | extend Name = tostring(column_ifexists('Name', ''))\n    | where Name in ('FreeSpacePercentage', 'FreeSpaceMB')\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])),\n        Volume = tostring(parse_json(tostring(column_ifexists('Tags', '')))['vm.azm.ms/mountId']),\n        Metric = iff(Name == 'FreeSpacePercentage', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('Val', real(null))))\n| where HostShort in (AvdHosts);\nlet LowDiskEvents = union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Event)\n    | where $__timeFilter(TimeGenerated)\n    | where tostring(column_ifexists('Source', '')) == 'srv' and toint(column_ifexists('EventID', int(null))) == 2013\n    | summarize LowDiskWarnings = count(), LastWarning = max(TimeGenerated) by HostShort = tolower(tostring(split(Computer, '.')[0]));\nDisk\n| summarize arg_max(TimeGenerated, Value) by HostShort, Volume, Metric\n| summarize FreePct = round(take_anyif(Value, Metric == 'FreePct'), 1), FreeGB = round(take_anyif(Value, Metric == 'FreeMB') / 1024, 1),\n    LastReport = max(TimeGenerated) by HostShort, Volume\n| join kind=leftouter (Disk | where Metric == 'FreePct' | summarize LowestPct = round(min(Value), 1) by HostShort, Volume) on HostShort, Volume\n| join kind=leftouter LowDiskEvents on HostShort\n| extend Kind = case(Volume =~ 'C:', 'OS disk (C:)', Volume =~ 'D:', 'D: (usually the temporary disk)',\n    Volume matches regex @'^[A-Za-z]:$', 'Data disk',\n    'Mounted virtual disk (FSLogix profile or app attach)')\n| project Host = HostShort, Volume, Kind, FreePct, LowestPct, FreeGB, LowDiskWarnings = coalesce(LowDiskWarnings, 0), LastWarning, LastReport\n| order by FreePct asc\n| take 500",
+                "resultFormat": "table",
+                "resources": [
+                  "$Workspace"
+                ],
+                "dashboardTime": false,
+                "timeColumn": "TimeGenerated"
+              }
+            }
+          ],
           "options": {
-            "mode": "markdown",
-            "content": "### Nerdio Manager"
+            "showHeader": true,
+            "cellHeight": "sm",
+            "footer": {
+              "show": false
+            }
+          },
+          "fieldConfig": {
+            "defaults": {
+              "custom": {
+                "filterable": true,
+                "inspect": true
+              },
+              "noValue": "No disk counters from the session hosts (LogicalDisk in Perf, or VM insights)."
+            },
+            "overrides": [
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "FreePct"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 10.0
+                        },
+                        {
+                          "color": "green",
+                          "value": 20.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Free % (latest)"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LowestPct"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "red",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 10.0
+                        },
+                        {
+                          "color": "green",
+                          "value": 20.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "decimals",
+                    "value": 1
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Lowest free %"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LowDiskWarnings"
+                },
+                "properties": [
+                  {
+                    "id": "thresholds",
+                    "value": {
+                      "mode": "absolute",
+                      "steps": [
+                        {
+                          "color": "green",
+                          "value": null
+                        },
+                        {
+                          "color": "orange",
+                          "value": 1.0
+                        },
+                        {
+                          "color": "red",
+                          "value": 10.0
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "id": "custom.cellOptions",
+                    "value": {
+                      "type": "color-text"
+                    }
+                  },
+                  {
+                    "id": "displayName",
+                    "value": "Low disk warnings"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "FreeGB"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Free GB (latest)"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LastWarning"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Last warning"
+                  }
+                ]
+              },
+              {
+                "matcher": {
+                  "id": "byName",
+                  "options": "LastReport"
+                },
+                "properties": [
+                  {
+                    "id": "displayName",
+                    "value": "Last report"
+                  }
+                ]
+              }
+            ]
           },
           "id": 160,
           "gridPos": {
-            "h": 2,
+            "h": 9,
             "w": 24,
             "x": 0,
             "y": 151
@@ -12370,14 +12564,46 @@
           "transparent": true,
           "options": {
             "mode": "markdown",
-            "content": "For host pools run by **Nerdio Manager for Enterprise**. Its own resources are found by the *Nerdio Manager name pattern* and the hosts it manages by the *Nerdio tag prefix* (both at the top). Auto-scale runs as Nerdio's app registration, so its work shows in the activity log as automation starting, deallocating, draining and logging users off session hosts. Put Nerdio's application (client) id in *Nerdio Manager app id* to tell it apart from scaling plans and runbooks; *Who acts on the session hosts* shows the ids to choose from."
+            "content": "A *mounted virtual disk* is a user's FSLogix profile or Office container (or an app attach package): when one fills, the user gets a low disk space warning in their session even though C: is fine. Grow it with FSLogix's *SizeInMBs* (new containers) or by expanding the VHDX. AVD Insights collects only `LogicalDisk(C:)`: add `LogicalDisk(*)` to the data collection rule to see the mounted disks, and the System event log (warnings) for the low disk warnings."
           },
           "id": 161,
+          "gridPos": {
+            "h": 4,
+            "w": 24,
+            "x": 0,
+            "y": 160
+          }
+        },
+        {
+          "type": "text",
+          "title": "",
+          "transparent": true,
+          "options": {
+            "mode": "markdown",
+            "content": "### Nerdio Manager"
+          },
+          "id": 162,
+          "gridPos": {
+            "h": 2,
+            "w": 24,
+            "x": 0,
+            "y": 164
+          }
+        },
+        {
+          "type": "text",
+          "title": "",
+          "transparent": true,
+          "options": {
+            "mode": "markdown",
+            "content": "For host pools run by **Nerdio Manager for Enterprise**. Its own resources are found by the *Nerdio Manager name pattern* and the hosts it manages by the *Nerdio tag prefix* (both at the top). Auto-scale runs as Nerdio's app registration, so its work shows in the activity log as automation starting, deallocating, draining and logging users off session hosts. Put Nerdio's application (client) id in *Nerdio Manager app id* to tell it apart from scaling plans and runbooks; *Who acts on the session hosts* shows the ids to choose from."
+          },
+          "id": 163,
           "gridPos": {
             "h": 5,
             "w": 24,
             "x": 0,
-            "y": 153
+            "y": 166
           }
         },
         {
@@ -12582,12 +12808,12 @@
               }
             ]
           },
-          "id": 162,
+          "id": 164,
           "gridPos": {
             "h": 9,
             "w": 12,
             "x": 0,
-            "y": 158
+            "y": 171
           }
         },
         {
@@ -12636,12 +12862,12 @@
             },
             "overrides": []
           },
-          "id": 163,
+          "id": 165,
           "gridPos": {
             "h": 6,
             "w": 12,
             "x": 12,
-            "y": 158
+            "y": 171
           }
         },
         {
@@ -12803,12 +13029,12 @@
               }
             ]
           },
-          "id": 164,
+          "id": 166,
           "gridPos": {
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 167
+            "y": 180
           }
         },
         {
@@ -12864,12 +13090,12 @@
             },
             "overrides": []
           },
-          "id": 165,
+          "id": 167,
           "gridPos": {
             "h": 8,
             "w": 12,
             "x": 0,
-            "y": 176
+            "y": 189
           }
         },
         {
@@ -12998,12 +13224,12 @@
               }
             ]
           },
-          "id": 166,
+          "id": 168,
           "gridPos": {
             "h": 9,
             "w": 12,
             "x": 12,
-            "y": 176
+            "y": 189
           }
         },
         {
@@ -13120,12 +13346,12 @@
               }
             ]
           },
-          "id": 167,
+          "id": 169,
           "gridPos": {
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 185
+            "y": 198
           }
         },
         {
@@ -13136,12 +13362,12 @@
             "mode": "markdown",
             "content": "*AllocationFailed*, *ZonalAllocationFailed* and *SkuNotAvailable* mean Azure had no capacity for that size: scale-out stalls and users queue or fail with *no healthy session host*. *OperationNotAllowed* is usually a vCPU quota (see the Capacity tab)."
           },
-          "id": 168,
+          "id": 170,
           "gridPos": {
             "h": 3,
             "w": 24,
             "x": 0,
-            "y": 194
+            "y": 207
           }
         },
         {
@@ -13200,12 +13426,12 @@
               }
             ]
           },
-          "id": 169,
+          "id": 171,
           "gridPos": {
             "h": 9,
             "w": 24,
             "x": 0,
-            "y": 197
+            "y": 210
           }
         }
       ]
@@ -13214,7 +13440,7 @@
       "type": "row",
       "title": "Storage",
       "collapsed": true,
-      "id": 170,
+      "id": 172,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -13230,7 +13456,7 @@
             "mode": "markdown",
             "content": "Azure Files capacity is reported hourly, so the two charts below need a time range of at least a few hours. A share whose used capacity is close to its quota stops FSLogix profiles from growing."
           },
-          "id": 171,
+          "id": 173,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -13419,7 +13645,7 @@
               }
             ]
           },
-          "id": 172,
+          "id": 174,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -13435,7 +13661,7 @@
             "mode": "markdown",
             "content": "**Not shown here:** 7 metric charts from this tab of the workbook. A Grafana metrics query covers one subscription and region, and the data source cannot call Resource Manager; open the workbook for these."
           },
-          "id": 173,
+          "id": 175,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -13449,7 +13675,7 @@
       "type": "row",
       "title": "Governance",
       "collapsed": true,
-      "id": 174,
+      "id": 176,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -13465,7 +13691,7 @@
             "mode": "markdown",
             "content": "### Expiry & retirement"
           },
-          "id": 175,
+          "id": 177,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -13599,7 +13825,7 @@
               }
             ]
           },
-          "id": 176,
+          "id": 178,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -13695,7 +13921,7 @@
               }
             ]
           },
-          "id": 177,
+          "id": 179,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -13826,7 +14052,7 @@
               }
             ]
           },
-          "id": 178,
+          "id": 180,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -13924,7 +14150,7 @@
               }
             ]
           },
-          "id": 179,
+          "id": 181,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14018,7 +14244,7 @@
               }
             ]
           },
-          "id": 180,
+          "id": 182,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14034,7 +14260,7 @@
             "mode": "markdown",
             "content": "An expired exemption no longer applies, so the resources it covered count as non-compliant again. One with no expiry hides them from the compliance figure for good. *Waiver* means the non-compliance is accepted; *Mitigated* means the intent is met another way."
           },
-          "id": 181,
+          "id": 183,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -14050,7 +14276,7 @@
             "mode": "markdown",
             "content": "### Azure Policy"
           },
-          "id": 182,
+          "id": 184,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -14142,7 +14368,7 @@
               }
             ]
           },
-          "id": 183,
+          "id": 185,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -14191,7 +14417,7 @@
             },
             "overrides": []
           },
-          "id": 184,
+          "id": 186,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -14207,7 +14433,7 @@
             "mode": "markdown",
             "content": "### Landing zone hygiene"
           },
-          "id": 185,
+          "id": 187,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -14352,7 +14578,7 @@
               }
             ]
           },
-          "id": 186,
+          "id": 188,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -14456,7 +14682,7 @@
               }
             ]
           },
-          "id": 187,
+          "id": 189,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -14543,7 +14769,7 @@
               }
             ]
           },
-          "id": 188,
+          "id": 190,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -14630,7 +14856,7 @@
               }
             ]
           },
-          "id": 189,
+          "id": 191,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -14646,7 +14872,7 @@
             "mode": "markdown",
             "content": "A lock at the resource, its resource group or its subscription counts. A resource group is *empty* when Resource Graph sees no resources in it; a few resource types are not indexed, so check before deleting one."
           },
-          "id": 190,
+          "id": 192,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -14662,7 +14888,7 @@
             "mode": "markdown",
             "content": "### Patch compliance (Azure Update Manager)"
           },
-          "id": 191,
+          "id": 193,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -14678,7 +14904,7 @@
             "mode": "markdown",
             "content": "Covers virtual machines and Arc-enabled servers in the selected subscriptions: AVD session hosts, domain controllers and build agents on Flexible scale sets. Update Manager does not assess Uniform scale set instances. Machines show as *Not assessed* until periodic assessment is turned on."
           },
-          "id": 192,
+          "id": 194,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -14732,7 +14958,7 @@
             },
             "overrides": []
           },
-          "id": 193,
+          "id": 195,
           "gridPos": {
             "h": 6,
             "w": 24,
@@ -14982,7 +15208,7 @@
               }
             ]
           },
-          "id": 194,
+          "id": 196,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -14998,7 +15224,7 @@
             "mode": "markdown",
             "content": "### Azure Advisor"
           },
-          "id": 195,
+          "id": 197,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -15115,7 +15341,7 @@
               }
             ]
           },
-          "id": 196,
+          "id": 198,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15129,7 +15355,7 @@
       "type": "row",
       "title": "Security",
       "collapsed": true,
-      "id": 197,
+      "id": 199,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -15145,7 +15371,7 @@
             "mode": "markdown",
             "content": "### Microsoft Defender for Cloud"
           },
-          "id": 198,
+          "id": 200,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -15237,7 +15463,7 @@
               }
             ]
           },
-          "id": 199,
+          "id": 201,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -15286,7 +15512,7 @@
             },
             "overrides": []
           },
-          "id": 200,
+          "id": 202,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -15380,7 +15606,7 @@
               }
             ]
           },
-          "id": 201,
+          "id": 203,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15474,7 +15700,7 @@
               }
             ]
           },
-          "id": 202,
+          "id": 204,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15590,7 +15816,7 @@
               }
             ]
           },
-          "id": 203,
+          "id": 205,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -15639,7 +15865,7 @@
             },
             "overrides": []
           },
-          "id": 204,
+          "id": 206,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -15655,7 +15881,7 @@
             "mode": "markdown",
             "content": "### Privileged access"
           },
-          "id": 205,
+          "id": 207,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -15709,7 +15935,7 @@
             },
             "overrides": []
           },
-          "id": 206,
+          "id": 208,
           "gridPos": {
             "h": 6,
             "w": 24,
@@ -15821,7 +16047,7 @@
               }
             ]
           },
-          "id": 207,
+          "id": 209,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -15837,7 +16063,7 @@
             "mode": "markdown",
             "content": "Counts role assignments that are active now, for Owner, User Access Administrator and Role Based Access Control Administrator. Eligible assignments in Privileged Identity Management are not role assignments until activated, so they are not counted. Resource Graph holds principal IDs only: it cannot name the principals or tell whether one has been deleted."
           },
-          "id": 208,
+          "id": 210,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -15853,7 +16079,7 @@
             "mode": "markdown",
             "content": "### Microsoft Sentinel"
           },
-          "id": 209,
+          "id": 211,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -15994,7 +16220,7 @@
               }
             ]
           },
-          "id": 210,
+          "id": 212,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -16050,7 +16276,7 @@
             },
             "overrides": []
           },
-          "id": 211,
+          "id": 213,
           "gridPos": {
             "h": 6,
             "w": 24,
@@ -16209,7 +16435,7 @@
               }
             ]
           },
-          "id": 212,
+          "id": 214,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -16270,7 +16496,7 @@
             },
             "overrides": []
           },
-          "id": 213,
+          "id": 215,
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -16382,7 +16608,7 @@
               }
             ]
           },
-          "id": 214,
+          "id": 216,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -16485,7 +16711,7 @@
               }
             ]
           },
-          "id": 215,
+          "id": 217,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -16501,7 +16727,7 @@
             "mode": "markdown",
             "content": "Incidents are read from the selected workspace for the time range, so an incident that has not changed within it is not listed: use a longer range to see old open incidents."
           },
-          "id": 216,
+          "id": 218,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -16515,7 +16741,7 @@
       "type": "row",
       "title": "Monitoring",
       "collapsed": true,
-      "id": 217,
+      "id": 219,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -16531,7 +16757,7 @@
             "mode": "markdown",
             "content": "### Log Analytics"
           },
-          "id": 218,
+          "id": 220,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -16667,7 +16893,7 @@
               }
             ]
           },
-          "id": 219,
+          "id": 221,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -16728,7 +16954,7 @@
             },
             "overrides": []
           },
-          "id": 220,
+          "id": 222,
           "gridPos": {
             "h": 8,
             "w": 14,
@@ -16779,7 +17005,7 @@
             },
             "overrides": []
           },
-          "id": 221,
+          "id": 223,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -16865,7 +17091,7 @@
               }
             ]
           },
-          "id": 222,
+          "id": 224,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -16984,7 +17210,7 @@
               }
             ]
           },
-          "id": 223,
+          "id": 225,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -17000,7 +17226,7 @@
             "mode": "markdown",
             "content": "### Agents and data collection"
           },
-          "id": 224,
+          "id": 226,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -17167,7 +17393,7 @@
               }
             ]
           },
-          "id": 225,
+          "id": 227,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -17332,7 +17558,7 @@
               }
             ]
           },
-          "id": 226,
+          "id": 228,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -17348,7 +17574,7 @@
             "mode": "markdown",
             "content": "Scale sets show whether the agent is in the scale set model; their instances are not listed individually. A rule with no associations collects nothing, which is expected only for workspace transformation and direct-ingestion rules."
           },
-          "id": 227,
+          "id": 229,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -17364,7 +17590,7 @@
             "mode": "markdown",
             "content": "### Log sources"
           },
-          "id": 228,
+          "id": 230,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -17380,7 +17606,7 @@
             "mode": "markdown",
             "content": "Shows whether each platform resource is actually writing to the selected workspace. *No logs* means nothing arrived in the time range: the diagnostic setting is missing, points at another workspace, or the resource stopped sending. *Stale* means nothing in the last day. The inventory covers every subscription you can read (up to 1,000 resources), not only the ones selected at the top, and both queries scan every table, so they are slow on long time ranges."
           },
-          "id": 229,
+          "id": 231,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -17520,7 +17746,7 @@
               }
             ]
           },
-          "id": 230,
+          "id": 232,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -17650,7 +17876,7 @@
               }
             ]
           },
-          "id": 231,
+          "id": 233,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -17666,7 +17892,7 @@
             "mode": "markdown",
             "content": "### Alerting coverage"
           },
-          "id": 232,
+          "id": 234,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -17682,7 +17908,7 @@
             "mode": "markdown",
             "content": "*Fired alerts* on the Overview only shows rules that exist. This shows where nothing would fire. A resource is covered **directly** by an enabled metric or log search rule scoped to it, or by **inheritance** from a metric rule scoped to its resource group or subscription that targets its type. Log search rules scoped to a workspace and activity log (Resource Health, Service Health) alerts scoped to a subscription can't be tied to one resource, so they aren't counted; *Notification path* below shows which subscriptions have them. A rule with no action group may still notify through an alert processing rule."
           },
-          "id": 233,
+          "id": 235,
           "gridPos": {
             "h": 5,
             "w": 24,
@@ -17832,7 +18058,7 @@
               }
             ]
           },
-          "id": 234,
+          "id": 236,
           "gridPos": {
             "h": 9,
             "w": 13,
@@ -17958,7 +18184,7 @@
               }
             ]
           },
-          "id": 235,
+          "id": 237,
           "gridPos": {
             "h": 9,
             "w": 11,
@@ -18025,7 +18251,7 @@
               }
             }
           ],
-          "id": 236,
+          "id": 238,
           "gridPos": {
             "h": 8,
             "w": 10,
@@ -18133,7 +18359,7 @@
               }
             ]
           },
-          "id": 237,
+          "id": 239,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -18149,7 +18375,7 @@
             "mode": "markdown",
             "content": "### Notification path"
           },
-          "id": 238,
+          "id": 240,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -18323,7 +18549,7 @@
               }
             ]
           },
-          "id": 239,
+          "id": 241,
           "gridPos": {
             "h": 9,
             "w": 14,
@@ -18441,7 +18667,7 @@
               }
             ]
           },
-          "id": 240,
+          "id": 242,
           "gridPos": {
             "h": 9,
             "w": 10,
@@ -18457,7 +18683,7 @@
             "mode": "markdown",
             "content": "### Backup & Site Recovery"
           },
-          "id": 241,
+          "id": 243,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -18681,7 +18907,7 @@
               }
             ]
           },
-          "id": 242,
+          "id": 244,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -18775,7 +19001,7 @@
               }
             ]
           },
-          "id": 243,
+          "id": 245,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -18903,7 +19129,7 @@
               }
             ]
           },
-          "id": 244,
+          "id": 246,
           "gridPos": {
             "h": 9,
             "w": 12,
@@ -19036,7 +19262,7 @@
               }
             ]
           },
-          "id": 245,
+          "id": 247,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -19052,7 +19278,7 @@
             "mode": "markdown",
             "content": "Pooled AVD session hosts and scale set build agents are normally rebuilt from an image, so *Not protected* is expected for them."
           },
-          "id": 246,
+          "id": 248,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -19141,7 +19367,7 @@
               }
             ]
           },
-          "id": 247,
+          "id": 249,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -19155,7 +19381,7 @@
       "type": "row",
       "title": "Capacity",
       "collapsed": true,
-      "id": 248,
+      "id": 250,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -19171,7 +19397,7 @@
             "mode": "markdown",
             "content": "Headroom against limits that stop a deployment or a scale-out when they are reached. Capacity of the services themselves is on their own tabs: hub routing units (Virtual WAN), SNAT ports (Firewall), circuit utilisation (ExpressRoute), Private DNS zone limits (Shared), vSAN (AVS) and Azure Files share quota (Storage)."
           },
-          "id": 249,
+          "id": 251,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -19187,7 +19413,7 @@
             "mode": "markdown",
             "content": "### Compute quotas"
           },
-          "id": 250,
+          "id": 252,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -19279,7 +19505,7 @@
               }
             ]
           },
-          "id": 251,
+          "id": 253,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -19295,7 +19521,7 @@
             "mode": "markdown",
             "content": "### Network quotas"
           },
-          "id": 252,
+          "id": 254,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -19311,7 +19537,7 @@
             "mode": "markdown",
             "content": "Network usage is not in Resource Graph, so this reads it from Azure Resource Manager for one subscription and region at a time."
           },
-          "id": 253,
+          "id": 255,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -19327,7 +19553,7 @@
             "mode": "markdown",
             "content": "### Cost"
           },
-          "id": 254,
+          "id": 256,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -19343,7 +19569,7 @@
             "mode": "markdown",
             "content": "Month-to-date spend for the subscription selected under *Network quotas*, read from Cost Management. It covers everything in that subscription, so it is platform cost only when the subscription holds only platform resources."
           },
-          "id": 255,
+          "id": 257,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -19359,7 +19585,7 @@
             "mode": "markdown",
             "content": "### Subnet address space"
           },
-          "id": 256,
+          "id": 258,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -19375,7 +19601,7 @@
             "mode": "markdown",
             "content": "*Used* counts the IP configurations attached to each subnet (NICs, private endpoints, load balancer front ends). Application Gateway instances and delegated services such as SQL Managed Instance take addresses that are not counted, and Virtual WAN hubs do not expose their address usage at all."
           },
-          "id": 257,
+          "id": 259,
           "gridPos": {
             "h": 4,
             "w": 24,
@@ -19504,7 +19730,7 @@
               }
             ]
           },
-          "id": 258,
+          "id": 260,
           "gridPos": {
             "h": 9,
             "w": 24,
@@ -19520,7 +19746,7 @@
             "mode": "markdown",
             "content": "**Not shown here:** 3 Resource Manager panels from this tab of the workbook. A Grafana metrics query covers one subscription and region, and the data source cannot call Resource Manager; open the workbook for these."
           },
-          "id": 259,
+          "id": 261,
           "gridPos": {
             "h": 2,
             "w": 24,
@@ -19534,7 +19760,7 @@
       "type": "row",
       "title": "Throughput",
       "collapsed": true,
-      "id": 260,
+      "id": 262,
       "gridPos": {
         "h": 1,
         "w": 24,
@@ -19550,7 +19776,7 @@
             "mode": "markdown",
             "content": "Traffic across the platform's network edge and data services for the selected time range."
           },
-          "id": 261,
+          "id": 263,
           "gridPos": {
             "h": 3,
             "w": 24,
@@ -19611,7 +19837,7 @@
             },
             "overrides": []
           },
-          "id": 262,
+          "id": 264,
           "gridPos": {
             "h": 8,
             "w": 12,
@@ -19627,7 +19853,7 @@
             "mode": "markdown",
             "content": "**Not shown here:** 8 metric charts from this tab of the workbook. A Grafana metrics query covers one subscription and region, and the data source cannot call Resource Manager; open the workbook for these."
           },
-          "id": 263,
+          "id": 265,
           "gridPos": {
             "h": 2,
             "w": 24,

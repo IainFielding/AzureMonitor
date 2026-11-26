@@ -120,7 +120,7 @@ them) so new resources are included automatically:
 | DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints |
 | Azure Virtual Desktop (`WVD*`) | Each host pool's and AVD workspace's diagnostic setting | Azure Virtual Desktop: one user, AVD disconnections and Azure Firewall, Platform health |
 | Azure Firewall metrics (`AzureMetrics`), category *AllMetrics* | Each firewall's diagnostic setting | AVD disconnections and Azure Firewall |
-| Session host performance (`Perf` or `InsightsMetrics`) and FSLogix / User Profile Service events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user |
+| Session host performance (`Perf` or `InsightsMetrics`), including `LogicalDisk(*)` free space (AVD Insights collects only C:, which misses the FSLogix profile disks), and FSLogix / User Profile Service and System (low disk warning, event 2013) events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user, Platform health (AVD disk space) |
 | Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity), Privileged access (including `AADNonInteractiveUserSignInLogs` for break-glass accounts) |
 | Query audit (`LAQueryLogs`) | The workspace's own diagnostic setting, category *Audit* | Log Analytics: cost and noise (*Who reads it*) |
 | Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
@@ -164,7 +164,7 @@ gathers every problem the other tabs find into one Issues board.
 | Identity | Resource Graph, Metrics, Logs* | Entra ID sign-ins, failure reasons, Conditional Access blocks, failing service principals, users at risk and directory changes*, Entra Domain Services replica sets and health alerts, domain controller VMs (health, power, pending patches), CPU and memory, heartbeats*, directory/replication/DNS errors*, failed logons and lockouts* |
 | Agents | Resource Graph, Metrics, Logs* | Agent scale sets (instances running/deallocated, ADO config checks), CPU, memory, disk IOPS, heartbeats*, free disk* |
 | AVS (Azure VMware Solution) | Metrics | CPU and memory per cluster, vSAN usage per datastore (75% SLA threshold) |
-| AVD (Azure Virtual Desktop) | Resource Graph, Logs* | Host pools (and whether Nerdio Manager runs them), session host status, sessions/users, connection RTT, connection success rate, time to sign in, logon time by stage, sessions by host pool, top errors; **Nerdio Manager**: its own resources and their health, the session hosts it manages by power state, hosts held out of auto-scale, auto-scale actions over time*, who acts on the session hosts*, failed scaling actions with the reason*, and Nerdio Manager's application errors* |
+| AVD (Azure Virtual Desktop) | Resource Graph, Logs* | Host pools (and whether Nerdio Manager runs them), session host status, sessions/users, connection RTT, connection success rate, time to sign in, logon time by stage, sessions by host pool, top errors, session host disk space per volume (C:, data disks, and the mounted FSLogix profile disks) with Windows' low disk warnings*; **Nerdio Manager**: its own resources and their health, the session hosts it manages by power state, hosts held out of auto-scale, auto-scale actions over time*, who acts on the session hosts*, failed scaling actions with the reason*, and Nerdio Manager's application errors* |
 | Storage | Metrics | Availability, latency, transactions by response type (throttling), Azure Files (FSLogix) transactions, used capacity and quota by share |
 | Governance | Resource Graph, Logs* | Service retirements, planned maintenance, AVD registration tokens, Key Vault expiry events*, policy exemptions and their expiry, Policy compliance, subscriptions outside the management group hierarchy, resource locks by service, orphaned resources, empty resource groups, pending patches by machine (Azure Update Manager), Advisor recommendations |
 | Security | Resource Graph, Logs* | Defender for Cloud secure score, controls, active alerts and unhealthy recommendations, Defender plans on and off per subscription, Owner and access administrator assignments by scope, Sentinel open incidents, time to close and failing connectors or rules* |
@@ -569,6 +569,8 @@ first, with their error count. On a large estate, type part of the name in *Find
 - **The session hosts they used**: latest health report and failing health checks, drain mode and sessions; CPU,
   free memory and input delay; FSLogix and User Profile Service errors on those hosts, flagging ones that name the
   user.
+- **Disk space on those hosts**: free space on each volume, latest and lowest, and Windows' low disk warnings. A
+  low disk space warning in a session is usually the user's FSLogix profile disk (a *mounted virtual disk*), not C:.
 - **Auto-scale and other actions on those hosts**: starts, deallocations, drain mode, rebuilds, log-offs and
   messages from Nerdio Manager, scaling plans or admins, flagging the ones made while the user was on that host
   (set *Nerdio Manager app id* to label Nerdio's own).

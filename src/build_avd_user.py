@@ -13,7 +13,7 @@ build_workbook.py so the workbooks look alike.
 
 import pathlib
 
-from build_workbook import (AVD_ACTION_STATUS, DAY_MS, WORKSPACE_SET, WORKSPACE_UNSET, avd_host_actions,
+from build_workbook import (AVD_ACTION_STATUS, AVD_DISK_FORMATTERS, AVD_DISK_LABELS, DAY_MS, WORKSPACE_SET, WORKSPACE_UNSET, avd_disk_q, avd_host_actions,
                             big_number_tiles, free_text_param, gid, la, low_is_good, notebook, params, resource_link,
                             status_fmt, subscription_param, text, time_param, when_empty, when_set, workspace_param,
                             write_workbook)
@@ -286,6 +286,10 @@ Actions
 | take 300
 """
 
+# Free space on every volume of the hosts they used, fullest first. Their own FSLogix profile disk is one of the
+# mounted virtual disks on the host they were on; the counters do not say whose each one is.
+HOST_DISK_Q = USER + avd_disk_q("Hosts")
+
 # The user picker: everyone who connected or hit an error in the time range, most recent first, narrowed by the
 # search box. A drop-down holds a limited number of entries, so on a large estate the search box does the narrowing.
 USER_LIST_Q = r"""let Find = trim(@'\s+', @'{Find}');
@@ -320,7 +324,8 @@ Needs the host pool's and workspace's diagnostic settings (`WVDConnections`, `WV
 `WVDConnectionNetworkData`, `WVDAgentHealthStatus`). Host load needs the hosts' performance counters (`Perf`) or VM
 insights (`InsightsMetrics`); profile events need the FSLogix and User Profile Service event logs collected
 (`Event`); sign-ins need the Entra ID sign-in logs (`SigninLogs`), and actions on the hosts (Nerdio Manager
-auto-scale, scaling plans) the subscription activity log (`AzureActivity`), in the same workspace."""
+auto-scale, scaling plans) the subscription activity log (`AzureActivity`), in the same workspace. Disk space
+needs the `LogicalDisk(*)` counters (AVD Insights collects only C:) and low disk warnings the System event log."""
 
 
 def parameters():
@@ -400,6 +405,15 @@ def workbook():
                 no_data="No performance counters from these hosts (Perf or InsightsMetrics).")),
         user(la(f"{P}-host-cpu", "Host CPU % over time", HOST_CPU_Q, vis="timechart", width=55,
                 no_data="No CPU counters from these hosts.")),
+        user(la(f"{P}-disk", "Disk space on those hosts (fullest first)", HOST_DISK_Q, formatters=AVD_DISK_FORMATTERS,
+                labels=AVD_DISK_LABELS,
+                no_data="No disk counters from these hosts (LogicalDisk in Perf, or VM insights).")),
+        user(text(f"{P}-disk-note", "**A low disk space warning in the session** is usually the user's FSLogix profile "
+                  "disk (a *mounted virtual disk* here) filling up, not C:. Personal desktops: look at C:. Pooled hosts "
+                  "show one mounted disk per signed-in user and the counters do not say whose is whose, so a full one on "
+                  "the host the user was on is a strong lead. FSLogix errors about the profile disk show in the profile "
+                  "panel below. Grow the container by expanding the VHDX, or raise FSLogix's *SizeInMBs* for new ones.",
+                  "info")),
         user(la(f"{P}-profile", "Profile (FSLogix) and User Profile Service errors on those hosts", PROFILE_Q,
                 formatters=[status_fmt("Level", warn=["Warning"], bad=["Error"]), status_fmt("ThisUser", bad=["Yes"])],
                 labels={"EventId": "Event", "ThisUser": "Names this user"},
