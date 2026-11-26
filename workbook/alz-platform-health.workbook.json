@@ -956,7 +956,7 @@
             "type": 3,
             "content": {
               "version": "KqlItem/1.0",
-              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/START/ACTION', 'MICROSOFT.COMPUTE/VIRTUALMACHINES/DEALLOCATE/ACTION')\n        | where ActivityStatusValue in~ ('Failure', 'Failed') and Caller !has '@'\n        | extend HostShort = tolower(extract(@'(?i)/virtualmachines/([^/]+)', 1, _ResourceId))\n        | where HostShort in ((WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize Count = count()\n        | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
+              "query": "union isfuzzy=true\n    (datatable(Check:string, Count:long, Tab:string, Severity:string)[]),\n    (NWConnectionMonitorTestResult | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, TestResult) by ConnectionMonitorResourceId, TestGroupName, SourceName, DestinationName\n        | summarize Count = countif(TestResult == 'Fail')\n        | extend Check = 'Connectivity failing', Tab = 'Connectivity', Severity = 'Unavailable'),\n    (WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status) by SessionHostName\n        | summarize Count = countif(TimeGenerated > ago(30m) and Status in ('Unavailable', 'UpgradeFailed', 'NoHeartbeat'))\n        | extend Check = 'AVD hosts unavailable', Tab = 'AVD', Severity = 'Unavailable'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where OperationNameValue has_any ('MICROSOFT.COMPUTE/VIRTUALMACHINES/START/ACTION', 'MICROSOFT.COMPUTE/VIRTUALMACHINES/DEALLOCATE/ACTION')\n        | where ActivityStatusValue in~ ('Failure', 'Failed') and Caller !has '@'\n        | extend HostShort = tolower(extract(@'(?i)/virtualmachines/([^/]+)', 1, _ResourceId))\n        | where HostShort in ((WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize Count = count()\n        | extend Check = 'AVD scaling failures', Tab = 'AVD', Severity = 'Degraded'),\n    (union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('ObjectName', '')) == 'LogicalDisk'\n    | extend Counter = tostring(column_ifexists('CounterName', '')), Volume = tostring(column_ifexists('InstanceName', ''))\n    | where Counter in ('% Free Space', 'Free Megabytes') and Volume != '_Total'\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])), Volume,\n        Metric = iff(Counter == '% Free Space', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('CounterValue', real(null)))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Namespace', '')) == 'LogicalDisk'\n    | extend Name = tostring(column_ifexists('Name', ''))\n    | where Name in ('FreeSpacePercentage', 'FreeSpaceMB')\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])),\n        Volume = tostring(parse_json(tostring(column_ifexists('Tags', '')))['vm.azm.ms/mountId']),\n        Metric = iff(Name == 'FreeSpacePercentage', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('Val', real(null))))\n        | where Volume =~ 'C:' and Metric == 'FreePct'\n        | where HostShort in ((WVDAgentHealthStatus | where TimeGenerated {TimeRange}\n            | summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]))))\n        | summarize arg_max(TimeGenerated, Value) by HostShort\n        | summarize Count = countif(Value < 10)\n        | extend Check = 'AVD hosts low on disk', Tab = 'AVD', Severity = 'Degraded'),\n    (Heartbeat | where TimeGenerated {TimeRange}\n        | summarize lastSeen = max(TimeGenerated) by Computer\n        | summarize Count = countif(lastSeen < ago(15m))\n        | extend Check = 'Machines not reporting', Tab = 'Monitoring', Severity = 'Degraded'),\n    (AzureActivity | where TimeGenerated {TimeRange}\n        | where CategoryValue =~ 'Administrative' and ActivityStatusValue in~ ('Failure', 'Failed')\n        | extend parts = split(tolower(_ResourceId), '/')\n        | extend type = iff(tostring(parts[3]) == 'providers', strcat(tostring(parts[4]), '/', tostring(parts[5])),\n            strcat(tostring(parts[6]), '/', tostring(parts[7])))\n        | where type in~ ('microsoft.network/virtualwans', 'microsoft.network/virtualhubs', 'microsoft.network/azurefirewalls', 'microsoft.network/expressroutecircuits', 'microsoft.network/expressroutegateways', 'microsoft.network/vpngateways', 'microsoft.network/p2svpngateways', 'microsoft.network/vpnsites', 'microsoft.network/virtualnetworkgateways', 'microsoft.network/bastionhosts', 'microsoft.network/ddosprotectionplans', 'microsoft.network/privatednszones', 'microsoft.network/dnsresolvers', 'microsoft.keyvault/vaults', 'microsoft.avs/privateclouds', 'microsoft.desktopvirtualization/hostpools', 'microsoft.storage/storageaccounts', 'microsoft.compute/virtualmachinescalesets', 'microsoft.operationalinsights/workspaces', 'microsoft.recoveryservices/vaults', 'microsoft.cdn/profiles', 'microsoft.network/frontdoors', 'microsoft.apimanagement/service', 'microsoft.cognitiveservices/accounts', 'microsoft.machinelearningservices/workspaces', 'microsoft.resources/deployments')\n        | summarize Count = count()\n        | extend Check = 'Failed operations', Tab = 'Overview, History', Severity = 'Degraded'),\n    (SecurityIncident | where TimeGenerated {TimeRange}\n        | summarize arg_max(TimeGenerated, Status, Severity) by IncidentNumber\n        | summarize Count = countif(Status != 'Closed' and Severity == 'High')\n        | extend Check = 'High incidents open', Tab = 'Security', Severity = 'Unavailable')\n| project Check, Count, Where = strcat('See ', Tab), State = iff(Count > 0, Severity, 'Available')\n| order by Count desc",
               "size": 3,
               "title": "",
               "queryType": 0,
@@ -14531,6 +14531,172 @@
               }
             },
             "name": "avd-errors",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let AvdHosts = WVDAgentHealthStatus\n| where TimeGenerated {TimeRange}\n| summarize by HostShort = tolower(tostring(split(SessionHostName, '.')[0]));\nlet Disk = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('ObjectName', '')) == 'LogicalDisk'\n    | extend Counter = tostring(column_ifexists('CounterName', '')), Volume = tostring(column_ifexists('InstanceName', ''))\n    | where Counter in ('% Free Space', 'Free Megabytes') and Volume != '_Total'\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])), Volume,\n        Metric = iff(Counter == '% Free Space', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('CounterValue', real(null)))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Namespace', '')) == 'LogicalDisk'\n    | extend Name = tostring(column_ifexists('Name', ''))\n    | where Name in ('FreeSpacePercentage', 'FreeSpaceMB')\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])),\n        Volume = tostring(parse_json(tostring(column_ifexists('Tags', '')))['vm.azm.ms/mountId']),\n        Metric = iff(Name == 'FreeSpacePercentage', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('Val', real(null))))\n| where HostShort in (AvdHosts);\nlet LowDiskEvents = union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'srv' and toint(column_ifexists('EventID', int(null))) == 2013\n    | summarize LowDiskWarnings = count(), LastWarning = max(TimeGenerated) by HostShort = tolower(tostring(split(Computer, '.')[0]));\nDisk\n| summarize arg_max(TimeGenerated, Value) by HostShort, Volume, Metric\n| summarize FreePct = round(take_anyif(Value, Metric == 'FreePct'), 1), FreeGB = round(take_anyif(Value, Metric == 'FreeMB') / 1024, 1),\n    LastReport = max(TimeGenerated) by HostShort, Volume\n| join kind=leftouter (Disk | where Metric == 'FreePct' | summarize LowestPct = round(min(Value), 1) by HostShort, Volume) on HostShort, Volume\n| join kind=leftouter LowDiskEvents on HostShort\n| extend Kind = case(Volume =~ 'C:', 'OS disk (C:)', Volume =~ 'D:', 'D: (usually the temporary disk)',\n    Volume matches regex @'^[A-Za-z]:$', 'Data disk',\n    'Mounted virtual disk (FSLogix profile or app attach)')\n| project Host = HostShort, Volume, Kind, FreePct, LowestPct, FreeGB, LowDiskWarnings = coalesce(LowDiskWarnings, 0), LastWarning, LastReport\n| order by FreePct asc\n| take 500",
+              "size": 0,
+              "title": "Session host disk space (fullest first)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No disk counters from the session hosts (LogicalDisk in Perf, or VM insights).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "FreePct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "20",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "LowestPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "20",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    },
+                    "numberFormat": {
+                      "unit": 0,
+                      "options": {
+                        "style": "decimal",
+                        "maximumFractionDigits": 1
+                      }
+                    }
+                  },
+                  {
+                    "columnMatch": "LowDiskWarnings",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "10",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "FreePct",
+                    "label": "Free % (latest)"
+                  },
+                  {
+                    "columnId": "LowestPct",
+                    "label": "Lowest free %"
+                  },
+                  {
+                    "columnId": "FreeGB",
+                    "label": "Free GB (latest)"
+                  },
+                  {
+                    "columnId": "LowDiskWarnings",
+                    "label": "Low disk warnings"
+                  },
+                  {
+                    "columnId": "LastWarning",
+                    "label": "Last warning"
+                  },
+                  {
+                    "columnId": "LastReport",
+                    "label": "Last report"
+                  }
+                ]
+              }
+            },
+            "name": "avd-disk",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A *mounted virtual disk* is a user's FSLogix profile or Office container (or an app attach package): when one fills, the user gets a low disk space warning in their session even though C: is fine. Grow it with FSLogix's *SizeInMBs* (new containers) or by expanding the VHDX. AVD Insights collects only `LogicalDisk(C:)`: add `LogicalDisk(*)` to the data collection rule to see the mounted disks, and the System event log (warnings) for the low disk warnings.",
+              "style": "info"
+            },
+            "name": "avd-disk-note",
             "conditionalVisibility": {
               "parameterName": "Workspace",
               "comparison": "isNotEqualTo",

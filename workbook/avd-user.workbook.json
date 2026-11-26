@@ -185,7 +185,7 @@
     {
       "type": 1,
       "content": {
-        "json": "Pick the user from the list, typing part of their name in *Find user* first to narrow it. The list holds the users\nwho connected or hit an error in the time range, most recent first. Every panel follows the connections that user\nmade: when, from which client, to which session host, how they ended, and why.\n\n**Reading it.** *Never connected* attempts carry the error: *Side* says whether Azure Virtual Desktop itself failed\nor the host, its configuration or the client did, and *Likely cause* explains the common codes. A slow sign-in\nshows in *Time to the desktop* with its slowest Windows stages: *Profile* is usually FSLogix (see the profile\nevents), *GroupPolicy* is policy processing, *Shell* is the desktop starting. A laggy session is usually the\nnetwork (round-trip time above about 150 ms, or low bandwidth) or the host (high CPU, low free memory, input delay).\n\nNeeds the host pool's and workspace's diagnostic settings (`WVDConnections`, `WVDErrors`, `WVDCheckpoints`,\n`WVDConnectionNetworkData`, `WVDAgentHealthStatus`). Host load needs the hosts' performance counters (`Perf`) or VM\ninsights (`InsightsMetrics`); profile events need the FSLogix and User Profile Service event logs collected\n(`Event`); sign-ins need the Entra ID sign-in logs (`SigninLogs`), and actions on the hosts (Nerdio Manager\nauto-scale, scaling plans) the subscription activity log (`AzureActivity`), in the same workspace.",
+        "json": "Pick the user from the list, typing part of their name in *Find user* first to narrow it. The list holds the users\nwho connected or hit an error in the time range, most recent first. Every panel follows the connections that user\nmade: when, from which client, to which session host, how they ended, and why.\n\n**Reading it.** *Never connected* attempts carry the error: *Side* says whether Azure Virtual Desktop itself failed\nor the host, its configuration or the client did, and *Likely cause* explains the common codes. A slow sign-in\nshows in *Time to the desktop* with its slowest Windows stages: *Profile* is usually FSLogix (see the profile\nevents), *GroupPolicy* is policy processing, *Shell* is the desktop starting. A laggy session is usually the\nnetwork (round-trip time above about 150 ms, or low bandwidth) or the host (high CPU, low free memory, input delay).\n\nNeeds the host pool's and workspace's diagnostic settings (`WVDConnections`, `WVDErrors`, `WVDCheckpoints`,\n`WVDConnectionNetworkData`, `WVDAgentHealthStatus`). Host load needs the hosts' performance counters (`Perf`) or VM\ninsights (`InsightsMetrics`); profile events need the FSLogix and User Profile Service event logs collected\n(`Event`); sign-ins need the Entra ID sign-in logs (`SigninLogs`), and actions on the hosts (Nerdio Manager\nauto-scale, scaling plans) the subscription activity log (`AzureActivity`), in the same workspace. Disk space\nneeds the `LogicalDisk(*)` counters (AVD Insights collects only C:) and low disk warnings the System event log.",
         "style": "info"
       },
       "name": "avdu-howto",
@@ -1144,6 +1144,179 @@
           "value": ""
         }
       ]
+    },
+    {
+      "type": 3,
+      "content": {
+        "version": "KqlItem/1.0",
+        "query": "let User = trim(@'\\s+', @'{User}');\nlet Connections = WVDConnections\n| where TimeGenerated {TimeRange}\n| where isnotempty(User) and UserName =~ User\n| summarize Started = min(TimeGenerated), ConnectedAt = minif(TimeGenerated, State == 'Connected'),\n    Ended = maxif(TimeGenerated, State == 'Completed'), LastSeen = max(TimeGenerated),\n    UserName = take_any(UserName), Host = take_anyif(SessionHostName, isnotempty(SessionHostName)),\n    HostPoolId = take_any(tolower(_ResourceId)), ClientType = take_anyif(ClientType, isnotempty(ClientType)),\n    ClientVersion = take_anyif(ClientVersion, isnotempty(ClientVersion)), ClientOS = take_anyif(ClientOS, isnotempty(ClientOS)),\n    ClientIp = take_anyif(ClientSideIPAddress, isnotempty(ClientSideIPAddress)),\n    ConnectionType = take_anyif(ConnectionType, isnotempty(ConnectionType)),\n    GatewayRegion = take_any(tostring(column_ifexists('GatewayRegion', ''))), UdpUse = take_any(tostring(column_ifexists('UdpUse', '')))\n    by CorrelationId\n| extend HostShort = tolower(tostring(split(Host, '.')[0]))\n| extend Outcome = case(isnotnull(ConnectedAt) and isnotnull(Ended), 'Connected, then ended',\n    isnotnull(ConnectedAt), 'Connected (still on, or end not logged)', isnotnull(Ended), 'Never connected', 'In progress or abandoned');\nlet Ids = Connections | project CorrelationId;\nlet Hosts = Connections | where isnotempty(HostShort) | summarize by HostShort;\nlet Disk = union isfuzzy=true\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Perf)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('ObjectName', '')) == 'LogicalDisk'\n    | extend Counter = tostring(column_ifexists('CounterName', '')), Volume = tostring(column_ifexists('InstanceName', ''))\n    | where Counter in ('% Free Space', 'Free Megabytes') and Volume != '_Total'\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])), Volume,\n        Metric = iff(Counter == '% Free Space', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('CounterValue', real(null)))),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (InsightsMetrics)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Namespace', '')) == 'LogicalDisk'\n    | extend Name = tostring(column_ifexists('Name', ''))\n    | where Name in ('FreeSpacePercentage', 'FreeSpaceMB')\n    | project TimeGenerated, HostShort = tolower(tostring(split(Computer, '.')[0])),\n        Volume = tostring(parse_json(tostring(column_ifexists('Tags', '')))['vm.azm.ms/mountId']),\n        Metric = iff(Name == 'FreeSpacePercentage', 'FreePct', 'FreeMB'), Value = toreal(column_ifexists('Val', real(null))))\n| where HostShort in (Hosts);\nlet LowDiskEvents = union isfuzzy=true (datatable(TimeGenerated: datetime, Computer: string)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'srv' and toint(column_ifexists('EventID', int(null))) == 2013\n    | summarize LowDiskWarnings = count(), LastWarning = max(TimeGenerated) by HostShort = tolower(tostring(split(Computer, '.')[0]));\nDisk\n| summarize arg_max(TimeGenerated, Value) by HostShort, Volume, Metric\n| summarize FreePct = round(take_anyif(Value, Metric == 'FreePct'), 1), FreeGB = round(take_anyif(Value, Metric == 'FreeMB') / 1024, 1),\n    LastReport = max(TimeGenerated) by HostShort, Volume\n| join kind=leftouter (Disk | where Metric == 'FreePct' | summarize LowestPct = round(min(Value), 1) by HostShort, Volume) on HostShort, Volume\n| join kind=leftouter LowDiskEvents on HostShort\n| extend Kind = case(Volume =~ 'C:', 'OS disk (C:)', Volume =~ 'D:', 'D: (usually the temporary disk)',\n    Volume matches regex @'^[A-Za-z]:$', 'Data disk',\n    'Mounted virtual disk (FSLogix profile or app attach)')\n| project Host = HostShort, Volume, Kind, FreePct, LowestPct, FreeGB, LowDiskWarnings = coalesce(LowDiskWarnings, 0), LastWarning, LastReport\n| order by FreePct asc",
+        "size": 0,
+        "title": "Disk space on those hosts (fullest first)",
+        "queryType": 0,
+        "resourceType": "microsoft.operationalinsights/workspaces",
+        "crossComponentResources": [
+          "{Workspace}"
+        ],
+        "visualization": "table",
+        "timeContextFromParameter": "TimeRange",
+        "timeContext": {
+          "durationMs": 86400000
+        },
+        "noDataMessage": "No disk counters from these hosts (LogicalDisk in Perf, or VM insights).",
+        "showExportToExcel": true,
+        "gridSettings": {
+          "formatters": [
+            {
+              "columnMatch": "FreePct",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "<",
+                    "thresholdValue": "10",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "<",
+                    "thresholdValue": "20",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "maximumFractionDigits": 1
+                }
+              }
+            },
+            {
+              "columnMatch": "LowestPct",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": "<",
+                    "thresholdValue": "10",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "<",
+                    "thresholdValue": "20",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              },
+              "numberFormat": {
+                "unit": 0,
+                "options": {
+                  "style": "decimal",
+                  "maximumFractionDigits": 1
+                }
+              }
+            },
+            {
+              "columnMatch": "LowDiskWarnings",
+              "formatter": 18,
+              "formatOptions": {
+                "thresholdsOptions": "icons",
+                "thresholdsGrid": [
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "10",
+                    "representation": "4",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": ">=",
+                    "thresholdValue": "1",
+                    "representation": "2",
+                    "text": "{0}{1}"
+                  },
+                  {
+                    "operator": "Default",
+                    "thresholdValue": null,
+                    "representation": "success",
+                    "text": "{0}{1}"
+                  }
+                ]
+              }
+            }
+          ],
+          "filter": true,
+          "labelSettings": [
+            {
+              "columnId": "FreePct",
+              "label": "Free % (latest)"
+            },
+            {
+              "columnId": "LowestPct",
+              "label": "Lowest free %"
+            },
+            {
+              "columnId": "FreeGB",
+              "label": "Free GB (latest)"
+            },
+            {
+              "columnId": "LowDiskWarnings",
+              "label": "Low disk warnings"
+            },
+            {
+              "columnId": "LastWarning",
+              "label": "Last warning"
+            },
+            {
+              "columnId": "LastReport",
+              "label": "Last report"
+            }
+          ]
+        }
+      },
+      "name": "avdu-disk",
+      "conditionalVisibilities": [
+        {
+          "parameterName": "Workspace",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        },
+        {
+          "parameterName": "User",
+          "comparison": "isNotEqualTo",
+          "value": ""
+        }
+      ]
+    },
+    {
+      "type": 1,
+      "content": {
+        "json": "**A low disk space warning in the session** is usually the user's FSLogix profile disk (a *mounted virtual disk* here) filling up, not C:. Personal desktops: look at C:. Pooled hosts show one mounted disk per signed-in user and the counters do not say whose is whose, so a full one on the host the user was on is a strong lead. FSLogix errors about the profile disk show in the profile panel below. Grow the container by expanding the VHDX, or raise FSLogix's *SizeInMBs* for new ones.",
+        "style": "info"
+      },
+      "name": "avdu-disk-note",
+      "conditionalVisibility": {
+        "parameterName": "User",
+        "comparison": "isNotEqualTo",
+        "value": ""
+      }
     },
     {
       "type": 3,
