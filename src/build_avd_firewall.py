@@ -197,7 +197,7 @@ EVENTS_Q = ERRS + FIREWALL + r"""let Events = union
     (Rh | extend Props = coalesce(column_ifexists('Properties_d', dynamic(null)), parse_json(tostring(column_ifexists('Properties', ''))))
         | project Time = TimeGenerated, Firewall = tolower(_ResourceId),
             Event = strcat('Resource Health: ', coalesce(tostring(Props['title']), tostring(Props['currentHealthStatus']), 'event'),
-                iff(isnotempty(tostring(Props['cause'])), strcat(' (', tostring(Props['cause']), ')'), ''))));
+                iff(isnotempty(tostring(Props['cause'])), strcat(' (', tostring(Props['cause']), ')'), '')));
 let Window = 15m;
 Events
 | extend k = 1
