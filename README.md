@@ -129,7 +129,7 @@ them) so new resources are included automatically:
 | Azure Firewall, resource-specific (`AZFW*`), including *DNS query* (`AZFWDnsQuery`) and *FQDN Resolution Failure* (`AZFWInternalFqdnResolutionFailure`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Azure Firewall, Firewalls, DNS and private endpoints, DNS, Platform health |
 | Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
 | VNet flow logs with Traffic Analytics (`NTANetAnalytics`) | Network Watcher | Firewalls (NSG decisions), Platform health (Connectivity) |
-| DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints, DNS |
+| DNS security policy (`DNSQueryLogs`), Windows DNS server events (`ASimDnsActivityLogs`, `Microsoft-Windows-DNSServer` in `Event`, or `DnsEvents`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints, DNS |
 | Azure Virtual Desktop (`WVD*`) | Each host pool's and AVD workspace's diagnostic setting | Azure Virtual Desktop: one user, AVD disconnections and Azure Firewall, Platform health |
 | Azure Firewall metrics (`AzureMetrics`), category *AllMetrics* | Each firewall's diagnostic setting | AVD disconnections and Azure Firewall |
 | Session host performance (`Perf` or `InsightsMetrics`), including `LogicalDisk(*)` free space (AVD Insights collects only C:, which misses the FSLogix profile disks), and FSLogix / User Profile Service and System (low disk warning, event 2013) events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user, Platform health (AVD disk space) |
@@ -486,6 +486,7 @@ troubleshooter follows one name.
 | Resolvers & policies | Resource Graph, Resource Manager, Logs* | DNS Private Resolvers with their inbound addresses and outbound endpoints; forwarding rulesets, and for a chosen ruleset its rules and linked VNets; DNS security policies and domain lists; lookups a policy blocked or alerted on* |
 | VNet DNS settings | Resource Graph | The DNS servers every VNet hands out and what each is (Azure DNS, firewall proxy, resolver, VM, outside Azure), with findings (proxy off, mixed servers, servers outside Azure, a single DNS VM); NICs that override their VNet's servers |
 | Queries | Logs* | Lookups from every DNS log in one shape: by result over time, by log and server, Private Link names that returned NXDOMAIN, names that failed, busiest clients |
+| Windows DNS servers | Logs* | What the domain controllers answer from their own zones (internal) and what they forward (external): which DNS server logs the workspace holds, lookups by how they were answered, every forwarder with forwards, timeouts and kind (Azure DNS, private, public, watched), internal zones, forwarded domains, the names sent to the *Watched forwarders* (Cisco Umbrella / OpenDNS by default) and the clients that asked for them, and port 53 straight to those forwarders through Azure Firewall from anything that is not a DNS server |
 
 \* Needs a Log Analytics workspace that receives the Azure Firewall DNS logs (resource-specific), DNS security
 policy logs or DNS server logs.
@@ -495,6 +496,8 @@ proxy is off, FQDN network rules on a firewall without the proxy (they never mat
 (clients and firewall can get different answers), and secured virtual hub firewalls that forward to Azure DNS, which
 cannot resolve private DNS zones because a Virtual WAN hub cannot be linked to them. *Name contains* and *Client IP*
 at the top filter every log panel.
+
+The *Windows DNS servers* tab needs the DNS server's query events (analytical log, event IDs 256 to 262), from Sentinel's *Windows DNS Events via AMA* connector (`ASimDnsActivityLogs`) or `Microsoft-Windows-DNSServer` events in `Event` or `WindowsEvent`. The DNS Server event log records server and zone changes, not lookups. `DnsEvents` (DNS Analytics) has lookups but nothing on forwarding, so set *Internal suffixes* to split those.
 
 ## Azure Policy compliance workbook
 

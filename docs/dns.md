@@ -4,7 +4,7 @@
 
 DNS across the estate: Azure Firewall DNS proxy, private DNS zones and their links, DNS Private Resolvers, forwarding rulesets and DNS security policies, the DNS servers each VNet uses, and what the DNS servers are answering. To follow one name, use the **DNS and private endpoints** workbook.
 
-It has 41 panels across 6 tabs. Each is listed below with what kind of panel it is, where its data comes from and, for tables, its columns. Log Analytics panels need the named tables in the selected workspace; see *Logs to collect* in the [main README](../README.md#logs-to-collect).
+It has 51 panels across 7 tabs. Each is listed below with what kind of panel it is, where its data comes from and, for tables, its columns. Log Analytics panels need the named tables in the selected workspace; see *Logs to collect* in the [main README](../README.md#logs-to-collect).
 
 ## Parameters
 
@@ -17,6 +17,8 @@ It has 41 panels across 6 tabs. Each is listed below with what kind of panel it 
 | Client IP | Optional. Only lookups from this address. |
 | Zones to chart | Which zones to chart to include. |
 | Ruleset | Pick a ruleset to see its rules and the VNets linked to it. |
+| Watched forwarders | Forwarder addresses to follow, separated by commas. Cisco Umbrella / OpenDNS by default. |
+| Internal suffixes | Optional. Your internal domains, separated by commas (contoso.local, corp.contoso.com). A name ending in one counts as internal, on top of what the servers answered from their own zones. |
 
 ## Tab: Overview
 
@@ -334,3 +336,86 @@ When there is nothing to show: *Every lookup returned NOERROR.*
 *Table · Log Analytics* · reads `AZFWDnsQuery`, `DNSQueryLogs`, `DnsEvents`, `ASimDnsActivityLogs`
 
 When there is nothing to show: *No lookups.*
+
+## Tab: Windows DNS servers
+
+> Select a **Log Analytics workspace** at the top for what the DNS servers are answering: Azure Firewall DNS proxy, DNS security policy and Windows DNS server logs.
+
+> What the Windows DNS servers (the domain controllers) are doing, from their query events. **Internal** lookups are
+> answered from a zone the server holds, such as the AD domain. **External** lookups are forwarded to another server.
+> Each name a server forwards is counted, with where it went. List the **Watched forwarders** (by default the
+> Cisco Umbrella / OpenDNS resolvers) to see exactly which names go to them, and which clients asked for them.
+>
+> The query events come from the DNS server's analytical log (event IDs 256 to 262). They reach the workspace in one
+> of these ways:
+>
+> - Sentinel's **Windows DNS Events via AMA** connector (`ASimDnsActivityLogs`).
+> - `Microsoft-Windows-DNSServer` events in `Event` or `WindowsEvent`.
+> - The retired DNS Analytics solution (`DnsEvents`). This gives lookups only, so it can't show forwarding. Use
+>   **Internal suffixes** to split those lookups.
+>
+> The **DNS Server** event log (event 4013 and the like) and the Audit log record server and zone changes, not
+> lookups. The first table shows which of these logs this workspace holds.
+
+#### DNS server logs in this workspace
+
+*Table · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`, `Usage`
+
+Columns: Table, Detail, Events, Servers, Last, Event Id.
+
+When there is nothing to show: *No DNS server logs in the time range.*
+
+#### Windns tiles
+
+*Tiles · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+#### How lookups were answered
+
+*Time chart · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+#### Internal and external
+
+*Pie chart · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+#### Where the DNS servers forward
+
+*Table · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+When there is nothing to show: *No forwarding events (260). DnsEvents and the DNS Server event log don't record forwarding.*
+
+#### Internal: zones the DNS servers answered from
+
+*Table · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+When there is nothing to show: *No lookups answered from the servers' own zones.*
+
+#### External: domains the DNS servers forwarded
+
+*Table · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+When there is nothing to show: *No forwarded names.*
+
+#### Names sent to the watched forwarders
+
+*Table · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+When there is nothing to show: *Nothing was forwarded to the watched forwarders.*
+
+#### Clients behind those names
+
+*Table · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`
+
+When there is nothing to show: *No client lookups (256) match names sent to the watched forwarders.*
+
+> Port 53 connections straight to a watched forwarder, from Azure Firewall's network rule log (`AZFWNetworkRule`). The
+> DNS servers sending their forwards should be the only sources. Any other source is a client that bypasses them,
+> through its own DNS settings or a hard-coded resolver. Each of these connections, like each forward, takes a SNAT
+> port on the firewall. The **Azure Firewall** workbook's **Sources by destination** tab breaks them down further.
+
+#### Port 53 to the watched forwarders through Azure Firewall
+
+*Table · Log Analytics* · reads `ASimDnsActivityLogs`, `Event`, `DnsEvents`, `AZFWNetworkRule`
+
+Columns: Source, Is it a DNS server?, Connections, Denied, Destination, Firewalls, Last.
+
+When there is nothing to show: *No port 53 connections to the watched forwarders in AZFWNetworkRule.*

@@ -33,6 +33,7 @@ TABS = [
     ("resolvers", "Resolvers & policies"),
     ("vnets", "VNet DNS settings"),
     ("queries", "Queries"),
+    ("windns", "Windows DNS servers"),
 ]
 
 VNET_OF = r"tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, SUBNET))"
@@ -536,6 +537,246 @@ RESULT = status_fmt("Result", good=["NOERROR"], warn=["NXDOMAIN"], bad=["SERVFAI
 FAIL_PCT = low_is_good("FailPct", 5, 20)
 
 # ---------------------------------------------------------------------------
+# Windows DNS servers: internal, forwarded, and what goes to the watched forwarders (Log Analytics)
+# ---------------------------------------------------------------------------
+
+# Every query event a Windows DNS server (an AD domain controller) logs, in one shape. Three ways the events reach a
+# workspace: Sentinel's "Windows DNS Events via AMA" connector (ASimDnsActivityLogs), Microsoft-Windows-DNSServer
+# events in the Event or WindowsEvent table, and the retired DNS Analytics solution (DnsEvents, lookups only, with
+# nothing on forwarding). The analytical log's event IDs: 256 query received, 257 response sent, 258 failure sent,
+# 259 query ignored, 260 query forwarded or recursed out (Peer is where it went), 261 answer back from there,
+# 262 no answer from there. Internal means a server answered from a zone it holds (the AA flag, or a zone name on
+# the response), or the name ends in one of the Internal suffixes.
+WINDNS = r"""let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',
+    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };
+let QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',
+    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',
+    t == '255', 'ANY', t) };
+let DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);
+    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,
+        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };
+let Watch = set_difference(split(replace_regex(trim(@'[\s,;]+', @'{Forwarders}'), @'[\s,;]+', ','), ','), dynamic(['']));
+let Suffixes = set_difference(split(replace_regex(trim(@'[\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\s,;]+', ','), ','),
+    dynamic(['']));
+let WinDns = union isfuzzy=true
+    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,
+        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),
+    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)
+    | where TimeGenerated {TimeRange}
+    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),
+        Dst = tostring(column_ifexists('DstIpAddr', ''))
+    | where EventId between (256 .. 262)
+    | project TimeGenerated, Log = 'ASimDnsActivityLogs',
+        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),
+        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,
+        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),
+        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),
+        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',
+        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),
+    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)
+    | where TimeGenerated {TimeRange}
+    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'
+    | extend EventId = toint(column_ifexists('EventID', 0))
+    | where EventId between (256 .. 262)
+    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))
+    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)
+    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))
+    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),
+        ServerIp = tostring(F.InterfaceIP), EventId,
+        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),
+        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),
+        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),
+        Authoritative = tostring(F.AA) == '1'),
+    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)
+    | where TimeGenerated {TimeRange}
+    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'
+    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))
+    | where EventId between (256 .. 262)
+    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),
+        ServerIp = tostring(F.InterfaceIP), EventId,
+        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),
+        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),
+        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),
+        Authoritative = tostring(F.AA) == '1'),
+    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)
+    | where TimeGenerated {TimeRange}
+    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'
+    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',
+        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',
+        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),
+        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)
+    | extend Query = tolower(trim_end(@'\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)
+    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\s.]+', @'{Name}'))
+    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')
+        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),
+        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',
+            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',
+            'Other public DNS');
+"""
+
+# Each lookup a client made (event 256), with how its server got the answer: from a zone it holds, by forwarding
+# the name (to which kind of server, the watched forwarders first), or neither, which is the cache.
+ANSWERED = WINDNS + r"""let Forwarded = WinDns
+    | where EventId == 260
+    | summarize Rank = min(case(PeerKind == 'Watched forwarder', 1, PeerKind startswith 'Azure', 2,
+        PeerKind == 'Private address', 3, 4)) by Server, Query;
+let Own = WinDns
+    | where Internal
+    | summarize Own = true, OwnZone = take_anyif(Zone, isnotempty(Zone) and Zone !startswith '..') by Query;
+let Received = WinDns
+    | where EventId == 256
+    | lookup kind=leftouter Forwarded on Server, Query
+    | lookup kind=leftouter Own on Query
+    | extend Answer = case(Own == true, 'Own zone (internal)', Rank == 1, 'Forwarded to a watched forwarder',
+        Rank == 2, 'Forwarded to Azure DNS', Rank == 3, 'Forwarded to a private DNS server',
+        Rank == 4, 'Forwarded to other public DNS', 'From cache, or the forward was not logged');
+"""
+
+WINDNS_SOURCES_Q = WINDNS + r"""let Found = WinDns
+    | summarize Events = count(), Servers = dcount(Server), Last = max(TimeGenerated) by Table = Log, EventId
+    | extend Detail = case(EventId == 256, '256 query received', EventId == 257, '257 response sent',
+        EventId == 258, '258 failure sent', EventId == 259, '259 query ignored', EventId == 260, '260 forwarded or recursed out',
+        EventId == 261, '261 answer from forwarder', EventId == 262, '262 forwarder timed out', tostring(EventId))
+    | extend Detail = iff(Table == 'DnsEvents', 'Lookups (DNS Analytics, no forwarding detail)', Detail);
+let OtherDnsEvents = union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)
+    | where TimeGenerated {TimeRange}
+    | where tostring(column_ifexists('Source', '')) has 'DNS' or tostring(column_ifexists('EventLog', '')) has 'DNS'
+    | where not(tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'
+        and toint(column_ifexists('EventID', 0)) between (256 .. 262))
+    | summarize Events = count(), Servers = dcount(tostring(column_ifexists('Computer', ''))), Last = max(TimeGenerated)
+        by Detail = strcat(tostring(column_ifexists('EventLog', '')), ' (not query events)')
+    | extend Table = 'Event', EventId = toint(0);
+let CustomTables = union isfuzzy=true (datatable(TimeGenerated: datetime, DataType: string, Quantity: real)[]), (Usage)
+    | where TimeGenerated {TimeRange}
+    | where DataType has 'dns' and DataType !in ('ASimDnsActivityLogs', 'DnsEvents', 'AZFWDnsQuery', 'DNSQueryLogs')
+    | summarize MB = sum(Quantity), Last = max(TimeGenerated) by Table = DataType
+    | extend Events = long(null), Servers = long(null), EventId = toint(0), Detail = strcat(round(MB, 1), ' MB: not read here');
+union Found, OtherDnsEvents, (CustomTables | project-away MB)
+| project Table, Detail, Events, Servers, Last, EventId
+| order by Table asc, EventId asc
+| project-away EventId
+"""
+
+WINDNS_TILES_Q = ANSWERED + r"""let Out = WinDns
+    | summarize Watched = countif(EventId == 260 and PeerKind == 'Watched forwarder'),
+        WatchedNames = dcountif(Query, EventId == 260 and PeerKind == 'Watched forwarder'),
+        Timeouts = countif(EventId == 262);
+Received
+| summarize Lookups = count(), Internal = countif(Answer startswith 'Own'), Forwarded = countif(Answer startswith 'Forwarded'),
+    Clients = dcount(Client), Servers = dcount(Server)
+| extend placeholder = 1
+| join kind=inner (Out | extend placeholder = 1) on placeholder
+| extend rows = pack_array(
+    pack('Order', 1, 'Signal', 'Lookups received', 'Value', Lookups, 'State', 'Unknown',
+        'Detail', strcat('from ', Clients, ' clients on ', Servers, ' DNS servers')),
+    pack('Order', 2, 'Signal', 'Answered from own zones', 'Value', Internal, 'State', 'Unknown',
+        'Detail', iff(Lookups > 0, strcat(round(100.0 * Internal / Lookups, 1), '% internal'), '')),
+    pack('Order', 3, 'Signal', 'Forwarded', 'Value', Forwarded, 'State', 'Unknown',
+        'Detail', iff(Lookups > 0, strcat(round(100.0 * Forwarded / Lookups, 1), '% external'), '')),
+    pack('Order', 4, 'Signal', 'Sent to watched forwarders', 'Value', Watched, 'State', 'Unknown',
+        'Detail', strcat(WatchedNames, ' distinct names')),
+    pack('Order', 5, 'Signal', 'Forwarder timeouts', 'Value', Timeouts, 'State', iff(Timeouts > 0, 'Degraded', 'Available'),
+        'Detail', 'no answer from where a name was sent'))
+| mv-expand r = rows
+| project Order = toint(r.Order), Signal = tostring(r.Signal), Value = tolong(r.Value), State = tostring(r.State),
+    Detail = tostring(r.Detail)
+| order by Order asc
+"""
+
+WINDNS_TREND_Q = ANSWERED + "Received\n| summarize Lookups = count() by bin(TimeGenerated, {TimeRange:grain}), Answer\n"
+
+WINDNS_ANSWER_PIE_Q = ANSWERED + "Received\n| summarize Lookups = count() by Answer\n| order by Lookups desc\n"
+
+WINDNS_FORWARDERS_Q = WINDNS + r"""WinDns
+| where EventId in (260, 261, 262) and isnotempty(Peer)
+| summarize Sent = countif(EventId == 260), Answered = countif(EventId == 261), Timeouts = countif(EventId == 262),
+    Names = dcountif(Query, EventId == 260), Servers = strcat_array(make_set(Server, 5), ', '), Last = max(TimeGenerated)
+    by Peer, PeerKind
+| extend TimeoutPct = round(100.0 * Timeouts / max_of(Sent, 1), 1)
+| order by Sent desc
+"""
+
+WINDNS_INTERNAL_Q = ANSWERED + r"""Received
+| where Answer startswith 'Own'
+| summarize Lookups = count(), Names = dcount(Query), Clients = dcount(Client), Failed = countif(Rcode !in ('NOERROR', '')),
+    Servers = strcat_array(make_set(Server, 5), ', '), Examples = strcat_array(make_set(Query, 3), ', ')
+    by Zone = iff(isnotempty(OwnZone), tolower(OwnZone), DomainOf(Query))
+| order by Lookups desc
+"""
+
+WINDNS_EXTERNAL_Q = WINDNS + r"""WinDns
+| where EventId == 260 and not(Internal)
+| summarize Forwards = count(), Names = dcount(Query), To = strcat_array(make_set(PeerKind), ', '),
+    Watched = countif(PeerKind == 'Watched forwarder'), Servers = strcat_array(make_set(Server, 5), ', '),
+    Examples = strcat_array(make_set(Query, 3), ', ') by Domain = DomainOf(Query)
+| top 200 by Forwards desc
+"""
+
+WINDNS_WATCHED_Q = WINDNS + r"""WinDns
+| where EventId in (260, 262) and PeerKind == 'Watched forwarder'
+| summarize Sent = countif(EventId == 260), Timeouts = countif(EventId == 262), To = strcat_array(make_set(Peer), ', '),
+    Servers = strcat_array(make_set(Server, 5), ', '), Last = max(TimeGenerated) by Query, QueryType, Domain = DomainOf(Query)
+| top 500 by Sent desc
+"""
+
+WINDNS_WATCHED_CLIENTS_Q = WINDNS + r"""let Sent = WinDns
+    | where EventId == 260 and PeerKind == 'Watched forwarder'
+    | distinct Server, Query;
+WinDns
+| where EventId == 256
+| join kind=inner Sent on Server, Query
+| summarize Lookups = count(), Names = dcount(Query), Examples = strcat_array(make_set(Query, 5), ', '),
+    Servers = strcat_array(make_set(Server, 3), ', '), Last = max(TimeGenerated) by Client
+| top 200 by Lookups desc
+"""
+
+# Port 53 straight to a watched forwarder through Azure Firewall. A source that is not one of the DNS servers in
+# these logs is a client bypassing them (its own DNS settings, or hard-coded resolvers).
+WINDNS_FIREWALL_Q = WINDNS + r"""let ServerIps = WinDns
+    | where isnotempty(ServerIp)
+    | distinct ServerIp;
+union isfuzzy=true
+    (datatable(TimeGenerated: datetime, SourceIp: string, DestinationIp: string, DestinationPort: int, Action: string,
+        _ResourceId: string)[]),
+    (AZFWNetworkRule | where TimeGenerated {TimeRange})
+| where set_has_element(Watch, DestinationIp) and DestinationPort == 53
+| summarize Connections = count(), Denied = countif(Action =~ 'Deny'), To = strcat_array(make_set(DestinationIp), ', '),
+    Firewalls = strcat_array(make_set(tostring(split(_ResourceId, '/')[-1]), 3), ', '), Last = max(TimeGenerated) by SourceIp
+| join kind=leftouter (ServerIps | extend IsServer = true) on $left.SourceIp == $right.ServerIp
+| extend Source = iff(IsServer == true, 'DNS server in these logs', 'Not a DNS server in these logs')
+| project SourceIp, Source, Connections, Denied, To, Firewalls, Last
+| order by Connections desc
+"""
+
+WINDNS_NOTE = """\
+What the Windows DNS servers (the domain controllers) are doing, from their query events. **Internal** lookups are
+answered from a zone the server holds, such as the AD domain. **External** lookups are forwarded to another server.
+Each name a server forwards is counted, with where it went. List the **Watched forwarders** (by default the
+Cisco Umbrella / OpenDNS resolvers) to see exactly which names go to them, and which clients asked for them.
+
+The query events come from the DNS server's analytical log (event IDs 256 to 262). They reach the workspace in one
+of these ways:
+
+- Sentinel's **Windows DNS Events via AMA** connector (`ASimDnsActivityLogs`).
+- `Microsoft-Windows-DNSServer` events in `Event` or `WindowsEvent`.
+- The retired DNS Analytics solution (`DnsEvents`). This gives lookups only, so it can't show forwarding. Use
+  **Internal suffixes** to split those lookups.
+
+The **DNS Server** event log (event 4013 and the like) and the Audit log record server and zone changes, not
+lookups. The first table shows which of these logs this workspace holds."""
+
+WINDNS_FIREWALL_NOTE = """\
+Port 53 connections straight to a watched forwarder, from Azure Firewall's network rule log (`AZFWNetworkRule`). The
+DNS servers sending their forwards should be the only sources. Any other source is a client that bypasses them,
+through its own DNS settings or a hard-coded resolver. Each of these connections, like each forward, takes a SNAT
+port on the firewall. The **Azure Firewall** workbook's **Sources by destination** tab breaks them down further."""
+
+PEER_KIND = status_fmt("PeerKind", good=["Azure DNS (168.63.129.16)", "Private address"], warn=["Watched forwarder"],
+                       neutral=["Other public DNS"])
+SOURCE_KIND = status_fmt("Source", good=["DNS server in these logs"], warn=["Not a DNS server in these logs"])
+TIMEOUT_PCT = low_is_good("TimeoutPct", 1, 5)
+
+# ---------------------------------------------------------------------------
 # Overview tiles (Resource Graph)
 # ---------------------------------------------------------------------------
 
@@ -788,6 +1029,52 @@ def queries_tab():
     ], tab="queries")
 
 
+def windns_tab():
+    return group(f"{P}-tab-windns", [
+        text(f"{P}-windns-hint", WORKSPACE_HINT, "info", visible_when=WORKSPACE_UNSET),
+        text(f"{P}-windns-note", WINDNS_NOTE, "info"),
+        params(f"{P}-windns-params", [
+            free_text_param(P, "Forwarders", "Watched forwarders",
+                            "Forwarder addresses to follow, separated by commas. Cisco Umbrella / OpenDNS by default.",
+                            value="208.67.222.222, 208.67.220.220"),
+            free_text_param(P, "InternalSuffixes", "Internal suffixes",
+                            "Optional. Your internal domains, separated by commas (contoso.local, corp.contoso.com). "
+                            "A name ending in one counts as internal, on top of what the servers answered from their "
+                            "own zones."),
+        ]),
+        la(f"{P}-windns-sources", "DNS server logs in this workspace", WINDNS_SOURCES_Q,
+           no_data="No DNS server logs in the time range."),
+        la(f"{P}-windns-tiles", "", WINDNS_TILES_Q, vis="tiles", tiles=TILES),
+        la(f"{P}-windns-trend", "How lookups were answered", WINDNS_TREND_Q, vis="timechart", width=67),
+        la(f"{P}-windns-pie", "Internal and external", WINDNS_ANSWER_PIE_Q, vis="piechart", width=33),
+        la(f"{P}-windns-forwarders", "Where the DNS servers forward", WINDNS_FORWARDERS_Q,
+           formatters=[PEER_KIND, TIMEOUT_PCT],
+           labels={"Peer": "Forwarded to", "PeerKind": "Kind", "Names": "Distinct names", "TimeoutPct": "Timeouts %",
+                   "Servers": "From DNS servers"},
+           no_data="No forwarding events (260). DnsEvents and the DNS Server event log don't record forwarding."),
+        la(f"{P}-windns-internal", "Internal: zones the DNS servers answered from", WINDNS_INTERNAL_Q, width=50,
+           labels={"Names": "Distinct names", "Failed": "Not NOERROR", "Examples": "Example names"},
+           no_data="No lookups answered from the servers' own zones."),
+        la(f"{P}-windns-external", "External: domains the DNS servers forwarded", WINDNS_EXTERNAL_Q, width=50,
+           labels={"Names": "Distinct names", "To": "Forwarded to", "Watched": "To watched forwarders",
+                   "Examples": "Example names"},
+           no_data="No forwarded names."),
+        la(f"{P}-windns-watched", "Names sent to the watched forwarders", WINDNS_WATCHED_Q, width=50,
+           labels={"Query": "Name", "QueryType": "Type", "Sent": "Forwards", "To": "Sent to",
+                   "Servers": "From DNS servers"},
+           no_data="Nothing was forwarded to the watched forwarders."),
+        la(f"{P}-windns-watched-clients", "Clients behind those names", WINDNS_WATCHED_CLIENTS_Q, width=50,
+           labels={"Client": "Client", "Names": "Distinct names", "Examples": "Example names",
+                   "Servers": "Asked DNS servers"},
+           no_data="No client lookups (256) match names sent to the watched forwarders."),
+        text(f"{P}-windns-fw-note", WINDNS_FIREWALL_NOTE, "info"),
+        la(f"{P}-windns-firewall", "Port 53 to the watched forwarders through Azure Firewall", WINDNS_FIREWALL_Q,
+           formatters=[SOURCE_KIND], labels={"SourceIp": "Source", "Source": "Is it a DNS server?",
+                                             "To": "Destination"},
+           no_data="No port 53 connections to the watched forwarders in AZFWNetworkRule."),
+    ], tab="windns")
+
+
 def workbook():
     return notebook([
         text(f"{P}-header", "# DNS\n"
@@ -802,6 +1089,7 @@ def workbook():
         resolvers_tab(),
         vnets_tab(),
         queries_tab(),
+        windns_tab(),
     ])
 
 

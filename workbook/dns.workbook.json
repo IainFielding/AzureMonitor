@@ -194,6 +194,14 @@
             "linkLabel": "Queries",
             "subTarget": "queries",
             "style": "link"
+          },
+          {
+            "id": "18dbb7c2-5ef3-5db8-8cd5-e5392848d23e",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Windows DNS servers",
+            "subTarget": "windns",
+            "style": "link"
           }
         ]
       },
@@ -3581,6 +3589,640 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "queries"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for what the DNS servers are answering: Azure Firewall DNS proxy, DNS security policy and Windows DNS server logs.",
+              "style": "info"
+            },
+            "name": "dnsh-windns-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "What the Windows DNS servers (the domain controllers) are doing, from their query events. **Internal** lookups are\nanswered from a zone the server holds, such as the AD domain. **External** lookups are forwarded to another server.\nEach name a server forwards is counted, with where it went. List the **Watched forwarders** (by default the\nCisco Umbrella / OpenDNS resolvers) to see exactly which names go to them, and which clients asked for them.\n\nThe query events come from the DNS server's analytical log (event IDs 256 to 262). They reach the workspace in one\nof these ways:\n\n- Sentinel's **Windows DNS Events via AMA** connector (`ASimDnsActivityLogs`).\n- `Microsoft-Windows-DNSServer` events in `Event` or `WindowsEvent`.\n- The retired DNS Analytics solution (`DnsEvents`). This gives lookups only, so it can't show forwarding. Use\n  **Internal suffixes** to split those lookups.\n\nThe **DNS Server** event log (event 4013 and the like) and the Audit log record server and zone changes, not\nlookups. The first table shows which of these logs this workspace holds.",
+              "style": "info"
+            },
+            "name": "dnsh-windns-note"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "7120c563-5757-5068-a2ff-c76a9d3f42e9",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Forwarders",
+                  "label": "Watched forwarders",
+                  "type": 1,
+                  "isRequired": false,
+                  "value": "208.67.222.222, 208.67.220.220",
+                  "description": "Forwarder addresses to follow, separated by commas. Cisco Umbrella / OpenDNS by default."
+                },
+                {
+                  "id": "3e9667e0-86d6-5334-a81e-9174f582d52a",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "InternalSuffixes",
+                  "label": "Internal suffixes",
+                  "type": 1,
+                  "isRequired": false,
+                  "value": "",
+                  "description": "Optional. Your internal domains, separated by commas (contoso.local, corp.contoso.com). A name ending in one counts as internal, on top of what the servers answered from their own zones."
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "dnsh-windns-params"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nlet Found = WinDns\n    | summarize Events = count(), Servers = dcount(Server), Last = max(TimeGenerated) by Table = Log, EventId\n    | extend Detail = case(EventId == 256, '256 query received', EventId == 257, '257 response sent',\n        EventId == 258, '258 failure sent', EventId == 259, '259 query ignored', EventId == 260, '260 forwarded or recursed out',\n        EventId == 261, '261 answer from forwarder', EventId == 262, '262 forwarder timed out', tostring(EventId))\n    | extend Detail = iff(Table == 'DnsEvents', 'Lookups (DNS Analytics, no forwarding detail)', Detail);\nlet OtherDnsEvents = union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) has 'DNS' or tostring(column_ifexists('EventLog', '')) has 'DNS'\n    | where not(tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n        and toint(column_ifexists('EventID', 0)) between (256 .. 262))\n    | summarize Events = count(), Servers = dcount(tostring(column_ifexists('Computer', ''))), Last = max(TimeGenerated)\n        by Detail = strcat(tostring(column_ifexists('EventLog', '')), ' (not query events)')\n    | extend Table = 'Event', EventId = toint(0);\nlet CustomTables = union isfuzzy=true (datatable(TimeGenerated: datetime, DataType: string, Quantity: real)[]), (Usage)\n    | where TimeGenerated {TimeRange}\n    | where DataType has 'dns' and DataType !in ('ASimDnsActivityLogs', 'DnsEvents', 'AZFWDnsQuery', 'DNSQueryLogs')\n    | summarize MB = sum(Quantity), Last = max(TimeGenerated) by Table = DataType\n    | extend Events = long(null), Servers = long(null), EventId = toint(0), Detail = strcat(round(MB, 1), ' MB: not read here');\nunion Found, OtherDnsEvents, (CustomTables | project-away MB)\n| project Table, Detail, Events, Servers, Last, EventId\n| order by Table asc, EventId asc\n| project-away EventId",
+              "size": 0,
+              "title": "DNS server logs in this workspace",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No DNS server logs in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "dnsh-windns-sources",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nlet Forwarded = WinDns\n    | where EventId == 260\n    | summarize Rank = min(case(PeerKind == 'Watched forwarder', 1, PeerKind startswith 'Azure', 2,\n        PeerKind == 'Private address', 3, 4)) by Server, Query;\nlet Own = WinDns\n    | where Internal\n    | summarize Own = true, OwnZone = take_anyif(Zone, isnotempty(Zone) and Zone !startswith '..') by Query;\nlet Received = WinDns\n    | where EventId == 256\n    | lookup kind=leftouter Forwarded on Server, Query\n    | lookup kind=leftouter Own on Query\n    | extend Answer = case(Own == true, 'Own zone (internal)', Rank == 1, 'Forwarded to a watched forwarder',\n        Rank == 2, 'Forwarded to Azure DNS', Rank == 3, 'Forwarded to a private DNS server',\n        Rank == 4, 'Forwarded to other public DNS', 'From cache, or the forward was not logged');\nlet Out = WinDns\n    | summarize Watched = countif(EventId == 260 and PeerKind == 'Watched forwarder'),\n        WatchedNames = dcountif(Query, EventId == 260 and PeerKind == 'Watched forwarder'),\n        Timeouts = countif(EventId == 262);\nReceived\n| summarize Lookups = count(), Internal = countif(Answer startswith 'Own'), Forwarded = countif(Answer startswith 'Forwarded'),\n    Clients = dcount(Client), Servers = dcount(Server)\n| extend placeholder = 1\n| join kind=inner (Out | extend placeholder = 1) on placeholder\n| extend rows = pack_array(\n    pack('Order', 1, 'Signal', 'Lookups received', 'Value', Lookups, 'State', 'Unknown',\n        'Detail', strcat('from ', Clients, ' clients on ', Servers, ' DNS servers')),\n    pack('Order', 2, 'Signal', 'Answered from own zones', 'Value', Internal, 'State', 'Unknown',\n        'Detail', iff(Lookups > 0, strcat(round(100.0 * Internal / Lookups, 1), '% internal'), '')),\n    pack('Order', 3, 'Signal', 'Forwarded', 'Value', Forwarded, 'State', 'Unknown',\n        'Detail', iff(Lookups > 0, strcat(round(100.0 * Forwarded / Lookups, 1), '% external'), '')),\n    pack('Order', 4, 'Signal', 'Sent to watched forwarders', 'Value', Watched, 'State', 'Unknown',\n        'Detail', strcat(WatchedNames, ' distinct names')),\n    pack('Order', 5, 'Signal', 'Forwarder timeouts', 'Value', Timeouts, 'State', iff(Timeouts > 0, 'Degraded', 'Available'),\n        'Detail', 'no answer from where a name was sent'))\n| mv-expand r = rows\n| project Order = toint(r.Order), Signal = tostring(r.Signal), Value = tolong(r.Value), State = tostring(r.State),\n    Detail = tostring(r.Detail)\n| order by Order asc",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "dnsh-windns-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nlet Forwarded = WinDns\n    | where EventId == 260\n    | summarize Rank = min(case(PeerKind == 'Watched forwarder', 1, PeerKind startswith 'Azure', 2,\n        PeerKind == 'Private address', 3, 4)) by Server, Query;\nlet Own = WinDns\n    | where Internal\n    | summarize Own = true, OwnZone = take_anyif(Zone, isnotempty(Zone) and Zone !startswith '..') by Query;\nlet Received = WinDns\n    | where EventId == 256\n    | lookup kind=leftouter Forwarded on Server, Query\n    | lookup kind=leftouter Own on Query\n    | extend Answer = case(Own == true, 'Own zone (internal)', Rank == 1, 'Forwarded to a watched forwarder',\n        Rank == 2, 'Forwarded to Azure DNS', Rank == 3, 'Forwarded to a private DNS server',\n        Rank == 4, 'Forwarded to other public DNS', 'From cache, or the forward was not logged');\nReceived\n| summarize Lookups = count() by bin(TimeGenerated, {TimeRange:grain}), Answer",
+              "size": 0,
+              "title": "How lookups were answered",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "dnsh-windns-trend",
+            "customWidth": "67",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nlet Forwarded = WinDns\n    | where EventId == 260\n    | summarize Rank = min(case(PeerKind == 'Watched forwarder', 1, PeerKind startswith 'Azure', 2,\n        PeerKind == 'Private address', 3, 4)) by Server, Query;\nlet Own = WinDns\n    | where Internal\n    | summarize Own = true, OwnZone = take_anyif(Zone, isnotempty(Zone) and Zone !startswith '..') by Query;\nlet Received = WinDns\n    | where EventId == 256\n    | lookup kind=leftouter Forwarded on Server, Query\n    | lookup kind=leftouter Own on Query\n    | extend Answer = case(Own == true, 'Own zone (internal)', Rank == 1, 'Forwarded to a watched forwarder',\n        Rank == 2, 'Forwarded to Azure DNS', Rank == 3, 'Forwarded to a private DNS server',\n        Rank == 4, 'Forwarded to other public DNS', 'From cache, or the forward was not logged');\nReceived\n| summarize Lookups = count() by Answer\n| order by Lookups desc",
+              "size": 0,
+              "title": "Internal and external",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "piechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "dnsh-windns-pie",
+            "customWidth": "33",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nWinDns\n| where EventId in (260, 261, 262) and isnotempty(Peer)\n| summarize Sent = countif(EventId == 260), Answered = countif(EventId == 261), Timeouts = countif(EventId == 262),\n    Names = dcountif(Query, EventId == 260), Servers = strcat_array(make_set(Server, 5), ', '), Last = max(TimeGenerated)\n    by Peer, PeerKind\n| extend TimeoutPct = round(100.0 * Timeouts / max_of(Sent, 1), 1)\n| order by Sent desc",
+              "size": 0,
+              "title": "Where the DNS servers forward",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No forwarding events (260). DnsEvents and the DNS Server event log don't record forwarding.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PeerKind",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Azure DNS (168.63.129.16)",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Private address",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Watched forwarder",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Other public DNS",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "TimeoutPct",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "5",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Peer",
+                    "label": "Forwarded to"
+                  },
+                  {
+                    "columnId": "PeerKind",
+                    "label": "Kind"
+                  },
+                  {
+                    "columnId": "Names",
+                    "label": "Distinct names"
+                  },
+                  {
+                    "columnId": "TimeoutPct",
+                    "label": "Timeouts %"
+                  },
+                  {
+                    "columnId": "Servers",
+                    "label": "From DNS servers"
+                  }
+                ]
+              }
+            },
+            "name": "dnsh-windns-forwarders",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nlet Forwarded = WinDns\n    | where EventId == 260\n    | summarize Rank = min(case(PeerKind == 'Watched forwarder', 1, PeerKind startswith 'Azure', 2,\n        PeerKind == 'Private address', 3, 4)) by Server, Query;\nlet Own = WinDns\n    | where Internal\n    | summarize Own = true, OwnZone = take_anyif(Zone, isnotempty(Zone) and Zone !startswith '..') by Query;\nlet Received = WinDns\n    | where EventId == 256\n    | lookup kind=leftouter Forwarded on Server, Query\n    | lookup kind=leftouter Own on Query\n    | extend Answer = case(Own == true, 'Own zone (internal)', Rank == 1, 'Forwarded to a watched forwarder',\n        Rank == 2, 'Forwarded to Azure DNS', Rank == 3, 'Forwarded to a private DNS server',\n        Rank == 4, 'Forwarded to other public DNS', 'From cache, or the forward was not logged');\nReceived\n| where Answer startswith 'Own'\n| summarize Lookups = count(), Names = dcount(Query), Clients = dcount(Client), Failed = countif(Rcode !in ('NOERROR', '')),\n    Servers = strcat_array(make_set(Server, 5), ', '), Examples = strcat_array(make_set(Query, 3), ', ')\n    by Zone = iff(isnotempty(OwnZone), tolower(OwnZone), DomainOf(Query))\n| order by Lookups desc",
+              "size": 0,
+              "title": "Internal: zones the DNS servers answered from",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No lookups answered from the servers' own zones.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Names",
+                    "label": "Distinct names"
+                  },
+                  {
+                    "columnId": "Failed",
+                    "label": "Not NOERROR"
+                  },
+                  {
+                    "columnId": "Examples",
+                    "label": "Example names"
+                  }
+                ]
+              }
+            },
+            "name": "dnsh-windns-internal",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nWinDns\n| where EventId == 260 and not(Internal)\n| summarize Forwards = count(), Names = dcount(Query), To = strcat_array(make_set(PeerKind), ', '),\n    Watched = countif(PeerKind == 'Watched forwarder'), Servers = strcat_array(make_set(Server, 5), ', '),\n    Examples = strcat_array(make_set(Query, 3), ', ') by Domain = DomainOf(Query)\n| top 200 by Forwards desc",
+              "size": 0,
+              "title": "External: domains the DNS servers forwarded",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No forwarded names.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Names",
+                    "label": "Distinct names"
+                  },
+                  {
+                    "columnId": "To",
+                    "label": "Forwarded to"
+                  },
+                  {
+                    "columnId": "Watched",
+                    "label": "To watched forwarders"
+                  },
+                  {
+                    "columnId": "Examples",
+                    "label": "Example names"
+                  }
+                ]
+              }
+            },
+            "name": "dnsh-windns-external",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nWinDns\n| where EventId in (260, 262) and PeerKind == 'Watched forwarder'\n| summarize Sent = countif(EventId == 260), Timeouts = countif(EventId == 262), To = strcat_array(make_set(Peer), ', '),\n    Servers = strcat_array(make_set(Server, 5), ', '), Last = max(TimeGenerated) by Query, QueryType, Domain = DomainOf(Query)\n| top 500 by Sent desc",
+              "size": 0,
+              "title": "Names sent to the watched forwarders",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "Nothing was forwarded to the watched forwarders.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Query",
+                    "label": "Name"
+                  },
+                  {
+                    "columnId": "QueryType",
+                    "label": "Type"
+                  },
+                  {
+                    "columnId": "Sent",
+                    "label": "Forwards"
+                  },
+                  {
+                    "columnId": "To",
+                    "label": "Sent to"
+                  },
+                  {
+                    "columnId": "Servers",
+                    "label": "From DNS servers"
+                  }
+                ]
+              }
+            },
+            "name": "dnsh-windns-watched",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nlet Sent = WinDns\n    | where EventId == 260 and PeerKind == 'Watched forwarder'\n    | distinct Server, Query;\nWinDns\n| where EventId == 256\n| join kind=inner Sent on Server, Query\n| summarize Lookups = count(), Names = dcount(Query), Examples = strcat_array(make_set(Query, 5), ', '),\n    Servers = strcat_array(make_set(Server, 3), ', '), Last = max(TimeGenerated) by Client\n| top 200 by Lookups desc",
+              "size": 0,
+              "title": "Clients behind those names",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No client lookups (256) match names sent to the watched forwarders.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Client",
+                    "label": "Client"
+                  },
+                  {
+                    "columnId": "Names",
+                    "label": "Distinct names"
+                  },
+                  {
+                    "columnId": "Examples",
+                    "label": "Example names"
+                  },
+                  {
+                    "columnId": "Servers",
+                    "label": "Asked DNS servers"
+                  }
+                ]
+              }
+            },
+            "name": "dnsh-windns-watched-clients",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Port 53 connections straight to a watched forwarder, from Azure Firewall's network rule log (`AZFWNetworkRule`). The\nDNS servers sending their forwards should be the only sources. Any other source is a client that bypasses them,\nthrough its own DNS settings or a hard-coded resolver. Each of these connections, like each forward, takes a SNAT\nport on the firewall. The **Azure Firewall** workbook's **Sources by destination** tab breaks them down further.",
+              "style": "info"
+            },
+            "name": "dnsh-windns-fw-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let RcodeName = (code: string) { case(code == '0', 'NOERROR', code == '1', 'FORMERR', code == '2', 'SERVFAIL',\n    code == '3', 'NXDOMAIN', code == '4', 'NOTIMP', code == '5', 'REFUSED', toupper(code)) };\nlet QtypeName = (t: string) { case(t == '1', 'A', t == '2', 'NS', t == '5', 'CNAME', t == '6', 'SOA', t == '12', 'PTR',\n    t == '15', 'MX', t == '16', 'TXT', t == '28', 'AAAA', t == '33', 'SRV', t == '64', 'SVCB', t == '65', 'HTTPS',\n    t == '255', 'ANY', t) };\nlet DomainOf = (q: string) { let l = split(q, '.'); let n = array_length(l);\n    iff(n <= 2, q, iff(strlen(tostring(l[n - 1])) == 2 and strlen(tostring(l[n - 2])) <= 3,\n        strcat_array(array_slice(l, n - 3, n - 1), '.'), strcat_array(array_slice(l, n - 2, n - 1), '.'))) };\nlet Watch = set_difference(split(replace_regex(trim(@'[\\s,;]+', @'{Forwarders}'), @'[\\s,;]+', ','), ','), dynamic(['']));\nlet Suffixes = set_difference(split(replace_regex(trim(@'[\\s,;.]+', tolower(@'{InternalSuffixes}')), @'[\\s,;]+', ','), ','),\n    dynamic(['']));\nlet WinDns = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Log: string, Server: string, ServerIp: string, EventId: int, Client: string,\n        Peer: string, Query: string, QueryType: string, Rcode: string, Zone: string, Authoritative: bool)[]),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (ASimDnsActivityLogs)\n    | where TimeGenerated {TimeRange}\n    | extend EventId = toint(column_ifexists('EventOriginalType', '')), Src = tostring(column_ifexists('SrcIpAddr', '')),\n        Dst = tostring(column_ifexists('DstIpAddr', ''))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'ASimDnsActivityLogs',\n        Server = coalesce(tostring(column_ifexists('DvcHostname', '')), tostring(column_ifexists('Dvc', ''))),\n        ServerIp = tostring(column_ifexists('DvcIpAddr', '')), EventId,\n        Client = iff(EventId between (256 .. 259), Src, ''), Peer = case(EventId in (260, 262), Dst, EventId == 261, Src, ''),\n        Query = tostring(column_ifexists('DnsQuery', '')), QueryType = tostring(column_ifexists('DnsQueryTypeName', '')),\n        Rcode = toupper(tostring(column_ifexists('DnsResponseCodeName', ''))), Zone = '',\n        Authoritative = tostring(column_ifexists('DnsFlagsAuthoritative', '')) in~ ('true', '1')),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (Event)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Source', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0))\n    | where EventId between (256 .. 262)\n    | extend X = parse_xml(tostring(column_ifexists('EventData', '')))\n    | extend D = iff(isnotempty(X.DataItem), X.DataItem.EventData.Data, X.EventData.Data)\n    | mv-apply D on (summarize F = make_bag(bag_pack(tostring(D['@Name']), tostring(D['#text']))))\n    | project TimeGenerated, Log = 'Event', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (WindowsEvent)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('Provider', '')) == 'Microsoft-Windows-DNSServer'\n    | extend EventId = toint(column_ifexists('EventID', 0)), F = todynamic(column_ifexists('EventData', dynamic(null)))\n    | where EventId between (256 .. 262)\n    | project TimeGenerated, Log = 'WindowsEvent', Server = tostring(column_ifexists('Computer', '')),\n        ServerIp = tostring(F.InterfaceIP), EventId,\n        Client = case(EventId == 256, tostring(F.Source), EventId between (257 .. 259), tostring(F.Destination), ''),\n        Peer = case(EventId in (260, 262), tostring(F.Destination), EventId == 261, tostring(F.Source), ''),\n        Query = tostring(F.QNAME), QueryType = tostring(F.QTYPE), Rcode = tostring(F.RCODE), Zone = tostring(F.Zone),\n        Authoritative = tostring(F.AA) == '1'),\n    (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)\n    | where TimeGenerated {TimeRange}\n    | where tostring(column_ifexists('SubType', '')) == 'LookupQuery'\n    | project TimeGenerated, Log = 'DnsEvents', Server = tostring(column_ifexists('Computer', '')), ServerIp = '',\n        EventId = toint(256), Client = tostring(column_ifexists('ClientIP', '')), Peer = '',\n        Query = tostring(column_ifexists('Name', '')), QueryType = tostring(column_ifexists('QueryType', '')),\n        Rcode = tostring(column_ifexists('ResultCode', '')), Zone = '', Authoritative = false)\n    | extend Query = tolower(trim_end(@'\\.', Query)), QueryType = QtypeName(QueryType), Rcode = RcodeName(Rcode)\n    | where isempty(@'{Name}') or Query contains tolower(trim(@'[\\s.]+', @'{Name}'))\n    | extend Internal = Authoritative or (isnotempty(Zone) and Zone !startswith '..')\n        or (array_length(Suffixes) > 0 and Query has_any (Suffixes)),\n        PeerKind = case(isempty(Peer), '', set_has_element(Watch, Peer), 'Watched forwarder',\n            Peer == '168.63.129.16', 'Azure DNS (168.63.129.16)', ipv4_is_private(Peer), 'Private address',\n            'Other public DNS');\nlet ServerIps = WinDns\n    | where isnotempty(ServerIp)\n    | distinct ServerIp;\nunion isfuzzy=true\n    (datatable(TimeGenerated: datetime, SourceIp: string, DestinationIp: string, DestinationPort: int, Action: string,\n        _ResourceId: string)[]),\n    (AZFWNetworkRule | where TimeGenerated {TimeRange})\n| where set_has_element(Watch, DestinationIp) and DestinationPort == 53\n| summarize Connections = count(), Denied = countif(Action =~ 'Deny'), To = strcat_array(make_set(DestinationIp), ', '),\n    Firewalls = strcat_array(make_set(tostring(split(_ResourceId, '/')[-1]), 3), ', '), Last = max(TimeGenerated) by SourceIp\n| join kind=leftouter (ServerIps | extend IsServer = true) on $left.SourceIp == $right.ServerIp\n| extend Source = iff(IsServer == true, 'DNS server in these logs', 'Not a DNS server in these logs')\n| project SourceIp, Source, Connections, Denied, To, Firewalls, Last\n| order by Connections desc",
+              "size": 0,
+              "title": "Port 53 to the watched forwarders through Azure Firewall",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No port 53 connections to the watched forwarders in AZFWNetworkRule.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Source",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "DNS server in these logs",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not a DNS server in these logs",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SourceIp",
+                    "label": "Source"
+                  },
+                  {
+                    "columnId": "Source",
+                    "label": "Is it a DNS server?"
+                  },
+                  {
+                    "columnId": "To",
+                    "label": "Destination"
+                  }
+                ]
+              }
+            },
+            "name": "dnsh-windns-firewall",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "dnsh-tab-windns",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "windns"
       }
     }
   ],
