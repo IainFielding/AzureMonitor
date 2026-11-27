@@ -171,6 +171,14 @@
             "style": "link"
           },
           {
+            "id": "ac23167b-373e-588f-a651-e5d1f30f7906",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Sources by destination",
+            "subTarget": "destination",
+            "style": "link"
+          },
+          {
             "id": "9f5aa4f7-60a0-5f93-b16e-8249ca0b04ae",
             "cellValue": "selectedTab",
             "linkTarget": "parameter",
@@ -1138,7 +1146,7 @@
           {
             "type": 1,
             "content": {
-              "json": "The logs record each **new** connection, so these panels show how fast ports are taken, not how many are held; a\nport stays taken for a while after its connection closes. Line the busiest minutes up with the SNAT chart above.\nApplication rule rows name the FQDN rather than the address it resolved to. To find what a source address is, use\nthe **Routing** workbook.",
+              "json": "The logs record each **new** connection, so these panels show how fast ports are taken, not how many are held; a\nport stays taken for a while after its connection closes. Line the busiest minutes up with the SNAT chart above.\nApplication rule rows name the FQDN rather than the address it resolved to. To find what a source address is, use\nthe **Routing** workbook. To see every source of one destination, and what each source is, use the\n**Sources by destination** tab.",
               "style": "info"
             },
             "name": "afw-snat-logs-note",
@@ -1162,6 +1170,337 @@
         "parameterName": "selectedTab",
         "comparison": "isEqualTo",
         "value": "snat"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Sources by destination\nType a destination at the top of this tab, as shown on the *SNAT ports* tab: an IP address, `IP:port`, or part of an\nFQDN (`208.67.222.222:53`, `208.67.222.222`, `events.data.microsoft.com`). An address matches from its start, so a\npartial one finds every address it begins. This shows who connects to it, how hard, through which rules, and what\neach source is in Azure."
+            },
+            "name": "afw-dest-intro"
+          },
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "16565a59-d792-5bab-b533-0b06c9a079dd",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Destination",
+                  "label": "Destination",
+                  "type": 1,
+                  "isRequired": false,
+                  "value": "",
+                  "description": "An IP, IP:port, or part of an FQDN, as listed on the SNAT ports tab."
+                },
+                {
+                  "id": "98cfbb96-41ca-58de-a589-6d45ce6a2e3b",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "SourceIps",
+                  "type": 1,
+                  "query": "let D = trim(@'\\s+', @'{Destination}');\nlet DHost = tostring(split(D, ':')[0]);\nlet DPort = toint(split(D, ':')[1]);\nlet Flows = materialize(union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string,\n        Action: string, RuleName: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(DHost) and DestinationIp startswith DHost and (isnull(DPort) or DestinationPort == DPort)\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', '')))),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(DHost) and Fqdn contains DHost and (isnull(DPort) or DestinationPort == DPort)\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', ''))))\n| where _ResourceId in~ ({Firewalls}));\nFlows\n| summarize Connections = count() by SourceIp\n| top 50 by Connections desc\n| summarize Ips = strcat_array(make_list(strcat(\"'\", SourceIp, \"'\")), ',')",
+                  "crossComponentResources": [
+                    "{Workspace}"
+                  ],
+                  "isHiddenWhenLocked": true,
+                  "queryType": 0,
+                  "resourceType": "microsoft.operationalinsights/workspaces"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "afw-dest-params"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for what the firewall logs show (needs the resource-specific firewall logs, such as `AZFWNetworkRule` and `AZFWApplicationRule`).",
+              "style": "info"
+            },
+            "name": "afw-dest-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let D = trim(@'\\s+', @'{Destination}');\nlet DHost = tostring(split(D, ':')[0]);\nlet DPort = toint(split(D, ':')[1]);\nlet Flows = materialize(union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string,\n        Action: string, RuleName: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(DHost) and DestinationIp startswith DHost and (isnull(DPort) or DestinationPort == DPort)\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', '')))),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(DHost) and Fqdn contains DHost and (isnull(DPort) or DestinationPort == DPort)\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', ''))))\n| where _ResourceId in~ ({Firewalls}));\nlet Total = toscalar(Flows | count);\nFlows\n| summarize Connections = count(), Allowed = countif(Action !~ 'Deny'), Denied = countif(Action =~ 'Deny'),\n    Destinations = strcat_array(make_set(Destination, 5), ', '), Rules = strcat_array(make_set(RuleName, 3), ', '),\n    FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated) by SourceIp\n| join kind=inner (\n    Flows\n    | summarize PerMinute = count() by SourceIp, bin(TimeGenerated, 1m)\n    | summarize PeakPerMinute = max(PerMinute) by SourceIp\n  ) on SourceIp\n| project SourceIp, Connections, Share = round(100.0 * Connections / Total, 1), PeakPerMinute, Allowed, Denied,\n    Destinations, Rules, FirstSeen, LastSeen\n| order by Connections desc\n| take 200",
+              "size": 0,
+              "title": "Sources connecting to {Destination}",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No connections to that destination in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PeakPerMinute",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "2000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "500",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Denied",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SourceIp",
+                    "label": "Source"
+                  },
+                  {
+                    "columnId": "Share",
+                    "label": "Share %"
+                  },
+                  {
+                    "columnId": "PeakPerMinute",
+                    "label": "Peak per minute"
+                  },
+                  {
+                    "columnId": "Rules",
+                    "label": "Rule collection / rule"
+                  },
+                  {
+                    "columnId": "FirstSeen",
+                    "label": "First seen"
+                  },
+                  {
+                    "columnId": "LastSeen",
+                    "label": "Last seen"
+                  }
+                ]
+              }
+            },
+            "name": "afw-dest-sources",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "Workspace",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              },
+              {
+                "parameterName": "Destination",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              }
+            ]
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let D = trim(@'\\s+', @'{Destination}');\nlet DHost = tostring(split(D, ':')[0]);\nlet DPort = toint(split(D, ':')[1]);\nlet Flows = materialize(union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string,\n        Action: string, RuleName: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(DHost) and DestinationIp startswith DHost and (isnull(DPort) or DestinationPort == DPort)\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', '')))),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where isnotempty(DHost) and Fqdn contains DHost and (isnull(DPort) or DestinationPort == DPort)\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', ''))))\n| where _ResourceId in~ ({Firewalls}));\nlet Top = Flows | summarize Connections = count() by SourceIp | top 10 by Connections desc | project SourceIp;\nFlows\n| where SourceIp in (Top)\n| summarize Connections = count() by bin(TimeGenerated, {TimeRange:grain}), SourceIp",
+              "size": 0,
+              "title": "Connections from the top 10 sources",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "afw-dest-trend",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "Workspace",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              },
+              {
+                "parameterName": "Destination",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              }
+            ]
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcecontainers\n| where type =~ 'microsoft.resources/subscriptions'\n| take 1\n| mv-expand Ip = dynamic([{SourceIps}])\n| project Ip = tostring(Ip)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | mv-expand ipc = properties.ipConfigurations limit 50\n    | project Ip = tostring(ipc.properties.privateIPAddress), Nic = id,\n        Vm = tostring(properties.virtualMachine.id), Pe = tostring(properties.privateEndpoint.id)\n  ) on Ip\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 400\n    | extend prefixes = iff(isnotempty(tostring(s.properties.addressPrefix)), pack_array(tostring(s.properties.addressPrefix)),\n        s.properties.addressPrefixes)\n    | mv-expand Ip = dynamic([{SourceIps}])\n    | where ipv4_is_in_any_range(tostring(Ip), prefixes)\n    | project Ip = tostring(Ip), Subnet = tostring(s.name), Vnet = id\n  ) on Ip\n| project Source = Ip, Resource = coalesce(Vm, Pe, Nic),\n    Kind = case(isnotempty(Vm), 'Virtual machine', isnotempty(Pe), 'Private endpoint', isnotempty(Nic), 'Network interface',\n        isnotempty(Subnet), 'Address in this subnet (scale set, AKS node or service)',\n        'Not in a VNet you can read (on-premises, VPN or another tenant)'),\n    Subnet, Vnet\n| order by Kind asc, Source asc",
+              "size": 0,
+              "title": "What these sources are (the 50 busiest)",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No sources to look up.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Resource",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Vnet",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Kind",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Virtual machine",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Private endpoint",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Network interface",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not in a VNet you can read (on-premises, VPN or another tenant)",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Address in this subnet (scale set, AKS node or service)",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Vnet",
+                    "label": "VNet"
+                  }
+                ]
+              }
+            },
+            "name": "afw-dest-resolve",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "Destination",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              },
+              {
+                "parameterName": "Workspace",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**Reading this.** A destination with a huge connection count from one or two sources is usually a server relaying\nfor others: a DNS server or domain controller forwarding every query to an external resolver (port 53), a proxy, or\nan update or monitoring server. Each DNS query over UDP is a new flow with its own SNAT port, which is why DNS\nforwarders top the SNAT list. For DNS, point the forwarders at the firewall's DNS proxy or Azure DNS (168.63.129.16)\nwhere policy allows, or give that traffic its own outbound path (a NAT gateway). For HTTP and HTTPS, look at the\nsource application's connection reuse.",
+              "style": "info"
+            },
+            "name": "afw-dest-note"
+          }
+        ]
+      },
+      "name": "afw-tab-destination",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "destination"
       }
     },
     {

@@ -433,6 +433,7 @@ firewall logs.
 |---|---|---|
 | Overview | Resource Graph, Metrics | Tiles for firewalls, hub VNet firewalls with no NAT gateway, outbound on one public IP, private traffic SNATed, not zone-redundant, not provisioned; health, SNAT, capacity, throughput and latency per firewall; inventory with tier, hub, policy, zones and public IPs |
 | SNAT ports | Resource Graph, Metrics, Logs* | Per firewall: outbound through its public IPs or a NAT gateway, SNAT ports that gives, what is not SNATed, and the fix that applies; SNAT use by protocol beside observed capacity; new outbound connections over time*; the destinations and sources taking the most connections a minute*; the busiest minutes, with every connection in the one selected*; what to do, in order of effect |
+| Sources by destination | Logs*, Resource Graph | For one destination (an IP, IP:port or part of an FQDN): every source connecting to it, with its share, peak per minute, allowed and denied counts and the rules that let it through*; the top sources over time*; and what each source is: its VM, private endpoint or network interface, subnet and VNet, or not in Azure (on-premises or VPN) |
 | Health & capacity | Metrics | Health, latency probe, throughput, observed capacity, data processed, rule hits |
 | Policy | Resource Graph | Each policy's tier, threat intel, IDPS, TLS inspection, DNS proxy, SNAT private ranges, parent, rule counts, and the firewalls using it |
 | Traffic & threats | Logs* | Top denied flows, threat intelligence and IDPS hits, DNS proxy queries by response code and the top failures |
@@ -443,7 +444,7 @@ firewall logs.
 **SNAT port exhaustion.** Azure Firewall has 2,496 SNAT ports per public IP per instance, and a port is reused only
 for a different destination IP and port, so ports usually run out because of many connections to **one
 destination**, not total traffic. The SNAT tab ranks destinations and sources by their peak connections a minute,
-so the cause is normally the top row. The logs record new connections, so they show how fast ports are taken
+so the cause is normally the top row; type that destination into *Sources by destination* to see which machines are behind it. The logs record new connections, so they show how fast ports are taken
 rather than how many are held: line the busiest minutes up with the SNAT chart. The biggest fix is usually a NAT
 gateway on `AzureFirewallSubnet` (64,512 ports per public IP); a firewall in a Virtual WAN secured hub cannot use
 one, so add public IPs to it instead.

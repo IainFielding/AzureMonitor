@@ -16,7 +16,7 @@ firewall-troubleshoot. Built from the helpers in build_workbook.py so the workbo
 import pathlib
 
 from build_workbook import (AVG, DAY_MS, MAX, ONE_TILE, PROVISIONING, SUM, WORKSPACE_SET, WORKSPACE_UNSET, arg,
-                            big_number_tiles, export_row, gid, group, high_is_good, la, low_is_good, m, metric_grid,
+                            big_number_tiles, export_row, free_text_param, gid, group, high_is_good, la, low_is_good, m, metric_grid,
                             metrics, notebook, params, resource_link, resource_param, status_fmt, subscription_param,
                             text, time_param, when_set, workspace_param, write_workbook)
 
@@ -28,6 +28,7 @@ NS = "microsoft.network/azurefirewalls"
 TABS = [
     ("overview", "Overview"),
     ("snat", "SNAT ports"),
+    ("destination", "Sources by destination"),
     ("health", "Health & capacity"),
     ("policy", "Policy"),
     ("traffic", "Traffic & threats"),
@@ -201,6 +202,107 @@ MINUTE_Q = FLOWS + """Flows
 | top 100 by Connections desc
 """
 
+# One destination, typed as an IP, IP:port, FQDN or FQDN:port. The IP matches from its start, so a partial address
+# finds every address it begins; the FQDN matches anywhere in the name. Filtering on the raw columns before building
+# anything keeps the scan cheap on a busy firewall. Denied connections are kept, to show sources being refused.
+DEST_FLOWS = f"""let D = trim(@'\\s+', @'{{Destination}}');
+let DHost = tostring(split(D, ':')[0]);
+let DPort = toint(split(D, ':')[1]);
+let Flows = materialize(union isfuzzy=true
+    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string,
+        Action: string, RuleName: string)[]),
+    (AZFWNetworkRule
+    | where TimeGenerated {{TimeRange}}
+    | where isnotempty(DHost) and DestinationIp startswith DHost and (isnull(DPort) or DestinationPort == DPort)
+    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,
+        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', '')))),
+    (AZFWApplicationRule
+    | where TimeGenerated {{TimeRange}}
+    | where isnotempty(DHost) and Fqdn contains DHost and (isnull(DPort) or DestinationPort == DPort)
+    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,
+        Action, RuleName = strcat(tostring(column_ifexists('RuleCollection', '')), ' / ', tostring(column_ifexists('Rule', ''))))
+{ON_FIREWALLS});
+"""
+
+DEST_SOURCES_Q = DEST_FLOWS + """let Total = toscalar(Flows | count);
+Flows
+| summarize Connections = count(), Allowed = countif(Action !~ 'Deny'), Denied = countif(Action =~ 'Deny'),
+    Destinations = strcat_array(make_set(Destination, 5), ', '), Rules = strcat_array(make_set(RuleName, 3), ', '),
+    FirstSeen = min(TimeGenerated), LastSeen = max(TimeGenerated) by SourceIp
+| join kind=inner (
+    Flows
+    | summarize PerMinute = count() by SourceIp, bin(TimeGenerated, 1m)
+    | summarize PeakPerMinute = max(PerMinute) by SourceIp
+  ) on SourceIp
+| project SourceIp, Connections, Share = round(100.0 * Connections / Total, 1), PeakPerMinute, Allowed, Denied,
+    Destinations, Rules, FirstSeen, LastSeen
+| order by Connections desc
+| take 200
+"""
+
+DEST_TREND_Q = DEST_FLOWS + """let Top = Flows | summarize Connections = count() by SourceIp | top 10 by Connections desc | project SourceIp;
+Flows
+| where SourceIp in (Top)
+| summarize Connections = count() by bin(TimeGenerated, {TimeRange:grain}), SourceIp
+"""
+
+# The 50 busiest sources as a quoted list, for the Resource Graph lookup below (logs and Resource Graph cannot be
+# joined in one query, so the list is handed over through a hidden parameter).
+DEST_SOURCE_LIST_Q = DEST_FLOWS + """Flows
+| summarize Connections = count() by SourceIp
+| top 50 by Connections desc
+| summarize Ips = strcat_array(make_list(strcat("'", SourceIp, "'")), ',')
+"""
+
+# What each source address is: the network interface holding it (and the VM or private endpoint it belongs to), and
+# the subnet whose range contains it. Scale set and AKS node interfaces are not in Resource Graph, so those addresses
+# are found by subnet alone; an address in no readable subnet is on-premises, over VPN, or in another tenant.
+DEST_RESOLVE_Q = r"""
+resourcecontainers
+| where type =~ 'microsoft.resources/subscriptions'
+| take 1
+| mv-expand Ip = dynamic([{SourceIps}])
+| project Ip = tostring(Ip)
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.network/networkinterfaces'
+    | mv-expand ipc = properties.ipConfigurations limit 50
+    | project Ip = tostring(ipc.properties.privateIPAddress), Nic = id,
+        Vm = tostring(properties.virtualMachine.id), Pe = tostring(properties.privateEndpoint.id)
+  ) on Ip
+| join kind=leftouter (
+    resources
+    | where type =~ 'microsoft.network/virtualnetworks'
+    | mv-expand s = properties.subnets limit 400
+    | extend prefixes = iff(isnotempty(tostring(s.properties.addressPrefix)), pack_array(tostring(s.properties.addressPrefix)),
+        s.properties.addressPrefixes)
+    | mv-expand Ip = dynamic([{SourceIps}])
+    | where ipv4_is_in_any_range(tostring(Ip), prefixes)
+    | project Ip = tostring(Ip), Subnet = tostring(s.name), Vnet = id
+  ) on Ip
+| project Source = Ip, Resource = coalesce(Vm, Pe, Nic),
+    Kind = case(isnotempty(Vm), 'Virtual machine', isnotempty(Pe), 'Private endpoint', isnotempty(Nic), 'Network interface',
+        isnotempty(Subnet), 'Address in this subnet (scale set, AKS node or service)',
+        'Not in a VNet you can read (on-premises, VPN or another tenant)'),
+    Subnet, Vnet
+| order by Kind asc, Source asc
+"""
+
+DEST_INTRO = """\
+### Sources by destination
+Type a destination at the top of this tab, as shown on the *SNAT ports* tab: an IP address, `IP:port`, or part of an
+FQDN (`208.67.222.222:53`, `208.67.222.222`, `events.data.microsoft.com`). An address matches from its start, so a
+partial one finds every address it begins. This shows who connects to it, how hard, through which rules, and what
+each source is in Azure."""
+
+DEST_NOTE = """\
+**Reading this.** A destination with a huge connection count from one or two sources is usually a server relaying
+for others: a DNS server or domain controller forwarding every query to an external resolver (port 53), a proxy, or
+an update or monitoring server. Each DNS query over UDP is a new flow with its own SNAT port, which is why DNS
+forwarders top the SNAT list. For DNS, point the forwarders at the firewall's DNS proxy or Azure DNS (168.63.129.16)
+where policy allows, or give that traffic its own outbound path (a NAT gateway). For HTTP and HTTPS, look at the
+source application's connection reuse."""
+
 DENIED_Q = f"""union isfuzzy=true
     (datatable(TimeGenerated: datetime, _ResourceId: string, Rule: string, SourceIp: string, Destination: string, Protocol: string)[]),
     (AZFWNetworkRule | where TimeGenerated {{TimeRange}} | where Action == 'Deny'
@@ -259,7 +361,8 @@ SNAT_LOGS_NOTE = """\
 The logs record each **new** connection, so these panels show how fast ports are taken, not how many are held; a
 port stays taken for a while after its connection closes. Line the busiest minutes up with the SNAT chart above.
 Application rule rows name the FQDN rather than the address it resolved to. To find what a source address is, use
-the **Routing** workbook."""
+the **Routing** workbook. To see every source of one destination, and what each source is, use the
+**Sources by destination** tab."""
 
 SNAT_FIX = """\
 **What to do, in order of effect**
@@ -357,6 +460,38 @@ def snat_tab():
     ], tab="snat")
 
 
+def destination_tab():
+    source_list = {
+        "id": gid(f"{P}-param-SourceIps"), "version": "KqlParameterItem/1.0", "name": "SourceIps", "type": 1,
+        "query": DEST_SOURCE_LIST_Q.strip(), "crossComponentResources": ["{Workspace}"], "isHiddenWhenLocked": True,
+        "queryType": 0, "resourceType": "microsoft.operationalinsights/workspaces",
+    }
+    return group(f"{P}-tab-destination", [
+        text(f"{P}-dest-intro", DEST_INTRO),
+        params(f"{P}-dest-params", [
+            free_text_param(P, "Destination", "Destination",
+                            "An IP, IP:port, or part of an FQDN, as listed on the SNAT ports tab."),
+            source_list,
+        ]),
+        text(f"{P}-dest-hint", LOGS_HINT, "info", visible_when=WORKSPACE_UNSET),
+        when_set(la(f"{P}-dest-sources", "Sources connecting to {Destination}", DEST_SOURCES_Q,
+                    formatters=[low_is_good("PeakPerMinute", 500, 2000), low_is_good("Denied", 1, 1000)],
+                    labels={"SourceIp": "Source", "Share": "Share %", "PeakPerMinute": "Peak per minute",
+                            "Rules": "Rule collection / rule", "FirstSeen": "First seen", "LastSeen": "Last seen"},
+                    no_data="No connections to that destination in the time range."), "Destination"),
+        when_set(la(f"{P}-dest-trend", "Connections from the top 10 sources", DEST_TREND_Q, vis="timechart"),
+                 "Destination"),
+        when_set(arg(f"{P}-dest-resolve", "What these sources are (the 50 busiest)", DEST_RESOLVE_Q,
+                     formatters=[resource_link("Resource"), resource_link("Vnet"),
+                                 status_fmt("Kind", good=["Virtual machine", "Private endpoint", "Network interface"],
+                                            warn=["Not in a VNet you can read (on-premises, VPN or another tenant)"],
+                                            neutral=["Address in this subnet (scale set, AKS node or service)"])],
+                     labels={"Vnet": "VNet"},
+                     no_data="No sources to look up."), "Destination", "Workspace"),
+        text(f"{P}-dest-note", DEST_NOTE, "info"),
+    ], tab="destination")
+
+
 def health_tab():
     return group(f"{P}-tab-health", [
         metrics(f"{P}-health", "Health state %", NS, "Firewalls", [m(NS, "FirewallHealth", AVG)], width=50),
@@ -416,6 +551,7 @@ def workbook():
         tabs(),
         overview_tab(),
         snat_tab(),
+        destination_tab(),
         health_tab(),
         policy_tab(),
         traffic_tab(),

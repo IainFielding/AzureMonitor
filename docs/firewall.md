@@ -4,7 +4,7 @@
 
 Every Azure Firewall: how it is built and reaches the internet, how healthy and busy it is, why it runs short of SNAT ports and who is taking them, its policies, and the traffic it denies or flags.
 
-It has 22 panels across 5 tabs. Each is listed below with what kind of panel it is, where its data comes from and, for tables, its columns. Log Analytics panels need the named tables in the selected workspace; see *Logs to collect* in the [main README](../README.md#logs-to-collect).
+It has 25 panels across 6 tabs. Each is listed below with what kind of panel it is, where its data comes from and, for tables, its columns. Log Analytics panels need the named tables in the selected workspace; see *Logs to collect* in the [main README](../README.md#logs-to-collect).
 
 ## Parameters
 
@@ -14,6 +14,7 @@ It has 22 panels across 5 tabs. Each is listed below with what kind of panel it 
 | Firewalls | Which firewalls to include. |
 | Log Analytics workspace | The workspace that receives the firewall logs (resource-specific AZFW* tables). |
 | Time range | For the metrics and logs. |
+| Destination | An IP, IP:port, or part of an FQDN, as listed on the SNAT ports tab. |
 
 ## Tab: Overview
 
@@ -94,7 +95,8 @@ When there is nothing to show: *No outbound connections to public destinations.*
 > The logs record each **new** connection, so these panels show how fast ports are taken, not how many are held; a
 > port stays taken for a while after its connection closes. Line the busiest minutes up with the SNAT chart above.
 > Application rule rows name the FQDN rather than the address it resolved to. To find what a source address is, use
-> the **Routing** workbook.
+> the **Routing** workbook. To see every source of one destination, and what each source is, use the
+> **Sources by destination** tab.
 
 > **What to do, in order of effect**
 > 1. **Hub VNet firewall: associate a NAT gateway with `AzureFirewallSubnet`.** Outbound then uses the NAT gateway's
@@ -108,6 +110,43 @@ When there is nothing to show: *No outbound connections to public destinations.*
 > 4. **Scale out ahead of known peaks.** Each extra instance brings its own ports, but scaling out takes minutes, so a
 >    sudden burst can exhaust ports first. If *Observed capacity* stays flat while SNAT use climbs, the burst outran
 >    scale-out.
+
+## Tab: Sources by destination
+
+### Sources by destination
+Type a destination at the top of this tab, as shown on the *SNAT ports* tab: an IP address, `IP:port`, or part of an
+FQDN (`208.67.222.222:53`, `208.67.222.222`, `events.data.microsoft.com`). An address matches from its start, so a
+partial one finds every address it begins. This shows who connects to it, how hard, through which rules, and what
+each source is in Azure.
+
+> Select a **Log Analytics workspace** at the top for what the firewall logs show (needs the resource-specific firewall logs, such as `AZFWNetworkRule` and `AZFWApplicationRule`).
+
+#### Sources connecting to {Destination}
+
+*Table · Log Analytics* · reads `AZFWNetworkRule`, `AZFWApplicationRule`
+
+Columns: Source, Connections, Share %, Peak per minute, Allowed, Denied, Destinations, Rule collection / rule, First seen, Last seen.
+
+When there is nothing to show: *No connections to that destination in the time range.*
+
+#### Connections from the top 10 sources
+
+*Time chart · Log Analytics* · reads `AZFWNetworkRule`, `AZFWApplicationRule`
+
+#### What these sources are (the 50 busiest)
+
+*Table · Azure Resource Graph* · reads `resourcecontainers`
+
+Columns: Source, Resource, Kind, Subnet, VNet.
+
+When there is nothing to show: *No sources to look up.*
+
+> **Reading this.** A destination with a huge connection count from one or two sources is usually a server relaying
+> for others: a DNS server or domain controller forwarding every query to an external resolver (port 53), a proxy, or
+> an update or monitoring server. Each DNS query over UDP is a new flow with its own SNAT port, which is why DNS
+> forwarders top the SNAT list. For DNS, point the forwarders at the firewall's DNS proxy or Azure DNS (168.63.129.16)
+> where policy allows, or give that traffic its own outbound path (a NAT gateway). For HTTP and HTTPS, look at the
+> source application's connection reuse.
 
 ## Tab: Health & capacity
 
