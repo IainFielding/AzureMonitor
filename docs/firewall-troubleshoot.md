@@ -161,7 +161,7 @@ When there is nothing to show: *No failing DNS queries (or DNS proxy logs are no
 
 #### FQDNs in network rules that failed to resolve
 
-*Table · Log Analytics* · reads `AZFWFqdnResolveFailure`
+*Table · Log Analytics* · reads `AZFWInternalFqdnResolutionFailure`
 
 When there is nothing to show: *No FQDN resolution failures.*
 

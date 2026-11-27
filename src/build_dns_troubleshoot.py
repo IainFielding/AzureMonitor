@@ -271,8 +271,8 @@ RULESET_PICK_Q = "resources\n| where type =~ 'microsoft.network/dnsforwardingrul
 # ---------------------------------------------------------------------------
 
 # Every source in one shape. Each table exists only once something has written to it, so each is read through an
-# empty placeholder table and column_ifexists. Result codes are DNS RCODE names; the Windows DNS Analytics table
-# logs the number.
+# empty placeholder table and column_ifexists. Result codes are DNS RCODE names; DNS security policy and the Windows
+# DNS Analytics table log the number.
 DNS_LOGS = NAME_LETS + r"""
 let Rcode = (code: int) { case(code == 0, 'NOERROR', code == 2, 'SERVFAIL', code == 3, 'NXDOMAIN', code == 5, 'REFUSED', tostring(code)) };
 let Lookups = union isfuzzy=true
@@ -289,7 +289,7 @@ let Lookups = union isfuzzy=true
         Server = tostring(split(tostring(column_ifexists('VirtualNetworkId', '')), '/')[-1]),
         ClientIp = tostring(column_ifexists('SourceIpAddress', '')), Query = tostring(column_ifexists('QueryName', '')),
         QueryType = tostring(column_ifexists('QueryType', '')),
-        Result = toupper(coalesce(tostring(column_ifexists('ResponseCode', '')), tostring(column_ifexists('QueryResponseCode', '')))),
+        Result = Rcode(toint(column_ifexists('ResponseCode', int(null)))),
         Answer = tostring(column_ifexists('Answer', '')),
         Detail = strcat_delim(' · ', tostring(column_ifexists('ResolutionPath', '')), tostring(column_ifexists('ResolverPolicyRuleAction', '')))),
     (union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (DnsEvents)

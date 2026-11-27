@@ -610,9 +610,10 @@ union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWDnsQuery)
 | top 50 by Queries desc
 """
 
-# A network rule written with FQDNs needs DNS proxy to resolve them; when that fails, the rule never matches.
+# A network rule written with FQDNs needs DNS proxy to resolve them; when that fails, the rule never matches. The
+# diagnostic category is AZFWFqdnResolveFailure, but the table it writes is AZFWInternalFqdnResolutionFailure.
 FQDN_FAIL_Q = FILTERS + r"""
-union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWFqdnResolveFailure)
+union isfuzzy=true (datatable(TimeGenerated: datetime)[]), (AZFWInternalFqdnResolutionFailure)
 | where TimeGenerated {TimeRange}
 | extend Fqdn = tostring(column_ifexists('Fqdn', '')), ServerIp = tostring(column_ifexists('ServerIp', '')),
     ServerPort = toint(column_ifexists('ServerPort', int(null))), Error = tostring(column_ifexists('Error', '')),

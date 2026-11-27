@@ -7,8 +7,8 @@ There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
   *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
-  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Public IP addresses*, *Azure Bastion*, *Cloud
-  Center of Excellence* and *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
+  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Public IP addresses*, *Azure Bastion*, *DNS*,
+  *Cloud Center of Excellence* and *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -28,6 +28,7 @@ Each workbook has a reference page in [docs/](docs/README.md) listing every tab 
 | [Azure Policy compliance](workbook/policy-compliance.workbook.json) | Dashboard | How compliant is the estate with Azure Policy, what is exposed to the internet, which exemptions are expiring, how do we score against our regulatory initiatives, and what can be remediated automatically? | Governance and security owners, auditors |
 | [Public IP addresses](workbook/public-ip.workbook.json) | Dashboard | What uses each public IP and prefix, which are paid for but unused, on the retired Basic SKU or pinned to one zone, are they covered by DDoS Protection, what traffic do they carry, who changed them, and whose is this address? | Network team, security owners, FinOps |
 | [Azure Bastion](workbook/bastion.workbook.json) | Dashboard | Are the Bastion hosts and their subnets built right, which VMs can they reach, which NSG rules let RDP and SSH round them, who connected to what and from where, are they busy enough to need more instances, and who created shareable links? | Network team, security owners, platform operations |
+| [DNS](workbook/dns.workbook.json) | Dashboard | Is Azure Firewall DNS proxy set up so FQDN rules and private zones work, are the private DNS zones single, central and linked, are the resolvers, rulesets and DNS security policies healthy, which DNS servers does each VNet use, and what are the DNS servers failing to answer? | Network team, platform operations |
 | [Cloud Center of Excellence](workbook/cloud-center-of-excellence.workbook.json) | Dashboard | Across governance, tagging, landing zone placement, security, privileged access, savings, idle resources, monitoring, patching and retirements, where does each subscription stand, and who needs to act? | Cloud Center of Excellence, cloud governance board |
 | [Well-Architected Framework](workbook/well-architected.workbook.json) | Dashboard | For one workload, what does it get wrong against each of the five pillars (Reliability, Security, Cost Optimization, Operational Excellence, Performance Efficiency), from Azure Advisor and from its configuration? | Workload and application owners, architects running a Well-Architected review |
 | [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
@@ -51,6 +52,8 @@ Start from the symptom:
 | "It worked yesterday" | **What changed?**, scoped to the resource group, over the window since it last worked | **Why was this request refused?** if a change failed |
 | "I can't connect from A to B" | **DNS and private endpoints**, if the target is a name | **Routing** for the path and NSGs, then **Firewalls** for the rule that blocked it |
 | "My private endpoint resolves to a public IP" | **DNS and private endpoints** | The zone links, or the on-premises conditional forwarder it flags |
+| "Lots of names are failing to resolve" or "DNS is slow" | **DNS**: *Queries* (which server, which names), then *Firewall DNS proxy* for SERVFAIL, proxy errors and answer times | **DNS and private endpoints** for one of the names; *VNet DNS settings* for clients pointed at the wrong server |
+| "An FQDN network rule doesn't match" | **DNS**: *Firewall DNS proxy* (is the proxy on, do the clients use it, can the firewall resolve the FQDN?) | **Firewalls: blocked connections** for the deny itself |
 | "Connections time out but the firewall allowed them" | **Routing**, for asymmetric routing | **Firewalls**: *Allowed but no reply* and out-of-state drops |
 | "My deployment failed with RequestDisallowedByPolicy / AuthorizationFailed / ScopeLocked" | **Why was this request refused?** with the correlation id | Create a policy exemption, or grant the role it names |
 | "A user can't get onto (or is slow on) virtual desktop" | **Azure Virtual Desktop: one user** | **Platform health**: AVD and Storage (FSLogix) tabs for the host pool as a whole |
@@ -78,7 +81,7 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 | When | What |
 |---|---|
 | **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution, Sentinel operations and FinOps hubs: the Overview tiles |
-| **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams. Azure Policy compliance: Public exposure, and exemptions expiring within 30 days. Azure Bastion over 7 days: *Worth a second look* on the Sessions tab, NSG rules opening RDP or SSH to the internet, and shareable links created |
+| **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams. Azure Policy compliance: Public exposure, and exemptions expiring within 30 days. DNS: the Overview's findings and *Private Link names missing*. Azure Bastion over 7 days: *Worth a second look* on the Sessions tab, NSG rules opening RDP or SSH to the internet, and shareable links created |
 | **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Public IP addresses: *Clean-up & cost* (unused addresses and prefixes, Basic SKU) and the DDoS protection coverage. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due. Cloud Center of Excellence: the Scorecard and the subscription table, for the governance board |
 | **Each release or design review of a workload** | Well-Architected Framework, filtered to the workload: every pillar tab, recording what is fixed and what is accepted |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
@@ -121,10 +124,10 @@ them) so new resources are included automatically:
 |---|---|---|
 | Activity log (`AzureActivity`), including the *ResourceHealth* and *ServiceHealth* categories | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health, Sentinel operations, Privileged access, Monthly availability report, Azure Bastion (shareable links) |
 | Key Vault audit logs (`AzureDiagnostics` or `AZKVAuditLogs`) | Each vault's diagnostic setting | Expiry and renewals (near-expiry events), Platform health |
-| Azure Firewall, resource-specific (`AZFW*`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Firewalls, DNS, Platform health |
+| Azure Firewall, resource-specific (`AZFW*`), including *DNS query* (`AZFWDnsQuery`) and *FQDN Resolution Failure* (`AZFWInternalFqdnResolutionFailure`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Firewalls, DNS and private endpoints, DNS, Platform health |
 | Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
 | VNet flow logs with Traffic Analytics (`NTANetAnalytics`) | Network Watcher | Firewalls (NSG decisions), Platform health (Connectivity) |
-| DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints |
+| DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints, DNS |
 | Azure Virtual Desktop (`WVD*`) | Each host pool's and AVD workspace's diagnostic setting | Azure Virtual Desktop: one user, AVD disconnections and Azure Firewall, Platform health |
 | Azure Firewall metrics (`AzureMetrics`), category *AllMetrics* | Each firewall's diagnostic setting | AVD disconnections and Azure Firewall |
 | Session host performance (`Perf` or `InsightsMetrics`), including `LogicalDisk(*)` free space (AVD Insights collects only C:, which misses the FSLogix profile disks), and FSLogix / User Profile Service and System (low disk warning, event 2013) events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user, Platform health (AVD disk space) |
@@ -249,7 +252,7 @@ failures.
 
 | Platform | Logs read | Notes |
 |---|---|---|
-| Azure Firewall | `AZFWNetworkRule`, `AZFWApplicationRule`, `AZFWNatRule`, `AZFWThreatIntel`, `AZFWIdpsSignature`, `AZFWDnsQuery`, `AZFWFqdnResolveFailure` | Resource-specific diagnostic tables; the legacy `AzureDiagnostics` format is not read. Traffic that matched no rule is labelled *default deny* |
+| Azure Firewall | `AZFWNetworkRule`, `AZFWApplicationRule`, `AZFWNatRule`, `AZFWThreatIntel`, `AZFWIdpsSignature`, `AZFWDnsQuery`, `AZFWInternalFqdnResolutionFailure` (category *AZFWFqdnResolveFailure*) | Resource-specific diagnostic tables; the legacy `AzureDiagnostics` format is not read. Traffic that matched no rule is labelled *default deny* |
 | Palo Alto | `CommonSecurityLog` where the vendor is Palo Alto Networks | CEF traffic and threat logs. Rule name from the custom string labelled *Rule* |
 | Check Point | `CommonSecurityLog` where the vendor is Check Point | CEF from Log Exporter. Rule name and layer from the custom strings labelled *Rule Name* and *Layer Name* |
 | NSG | `NTANetAnalytics` | VNet flow logs with Traffic Analytics. Carries reply byte counts, so it also shows unanswered sessions |
@@ -438,6 +441,30 @@ Use **User** and **Target** at the top to follow one person, or to see everyone 
 IP address). Reach is worked out from VNet peering: in a Virtual WAN landing zone, spokes are not peered with each
 other, so a host reaches VMs in other spokes only by IP-based connection (Standard or Premium), which the workbook
 cannot check; those VMs are listed as having no Bastion path.
+
+## DNS workbook
+
+**Is DNS set up right across the estate, and what is it failing to answer?**
+[workbook/dns.workbook.json](workbook/dns.workbook.json). The estate-wide view; the **DNS and private endpoints**
+troubleshooter follows one name.
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Resource Graph, Logs* | Tiles for firewalls with DNS proxy (and findings), private DNS zones, VNets with DNS findings, DNS Private Resolvers, private endpoints without a zone group, and lookups, NXDOMAIN, SERVFAIL and missing Private Link names*; every firewall's DNS proxy state; zone findings; VNets by kind of DNS server; lookups by result* |
+| Firewall DNS proxy | Resource Graph, Logs* | Each firewall's DNS proxy address, whether the proxy is on (from its policy, the parent policy, or classic settings), where it forwards, how many VNets use it, and how many FQDN network rules depend on it, with findings; what each custom forwarder is (resolver inbound endpoint, VM, outside Azure); proxy lookups by response code, answer time, by firewall, names it failed, busiest clients, slow names and proxy errors*; FQDN network rules the firewall cannot resolve* |
+| Private DNS zones | Resource Graph, Metrics | Every zone with record set and link use against the limits, copies and findings (unlinked, duplicated, outside the central subscription, near a limit); every VNet link with its state, auto-registration and internet fallback, and links to VNets that no longer exist; private endpoints with no DNS zone group; queries and record set use per zone |
+| Resolvers & policies | Resource Graph, Resource Manager, Logs* | DNS Private Resolvers with their inbound addresses and outbound endpoints; forwarding rulesets, and for a chosen ruleset its rules and linked VNets; DNS security policies and domain lists; lookups a policy blocked or alerted on* |
+| VNet DNS settings | Resource Graph | The DNS servers every VNet hands out and what each is (Azure DNS, firewall proxy, resolver, VM, outside Azure), with findings (proxy off, mixed servers, servers outside Azure, a single DNS VM); NICs that override their VNet's servers |
+| Queries | Logs* | Lookups from every DNS log in one shape: by result over time, by log and server, Private Link names that returned NXDOMAIN, names that failed, busiest clients |
+
+\* Needs a Log Analytics workspace that receives the Azure Firewall DNS logs (resource-specific), DNS security
+policy logs or DNS server logs.
+
+The *Firewall DNS proxy* tab checks the things that break with a proxy in the path: VNets pointed at a firewall whose
+proxy is off, FQDN network rules on a firewall without the proxy (they never match) or whose clients do not use it
+(clients and firewall can get different answers), and secured virtual hub firewalls that forward to Azure DNS, which
+cannot resolve private DNS zones because a Virtual WAN hub cannot be linked to them. *Name contains* and *Client IP*
+at the top filter every log panel.
 
 ## Azure Policy compliance workbook
 
@@ -759,11 +786,12 @@ python src/build_ccoe.py
 python src/build_well_architected.py
 python src/build_public_ip.py
 python src/build_bastion.py
+python src/build_dns.py
 python src/build_grafana.py
 python src/build_docs.py
 ```
 
-Commit the scripts and every generated JSON file (twenty-one workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (twenty-two workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence
