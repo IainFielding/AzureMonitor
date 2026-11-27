@@ -1,0 +1,2768 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Public IP addresses\nEvery public IP address and prefix: what uses it, which are paid for but unused or on the retired Basic SKU, whether DDoS Protection covers them, how much traffic they carry, who changed them, and whose an address is."
+      },
+      "name": "pip-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "e124f9b6-37c6-55b3-9751-01dadd2dcf17",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "09f4c916-5bd7-5d9c-985f-3da060ae6343",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 604800000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "For the traffic charts, DDoS logs and changes. Resource Graph keeps 14 days of changes."
+          },
+          {
+            "id": "285f544e-97ab-58f3-b874-84eaa6ae15fa",
+            "version": "KqlParameterItem/1.0",
+            "name": "Search",
+            "label": "Find",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "An IP address or DNS name, for the Find an IP tab."
+          },
+          {
+            "id": "60ade801-a47a-5342-8cff-b0c6359de4cc",
+            "version": "KqlParameterItem/1.0",
+            "name": "Price",
+            "label": "Price per IP a month",
+            "type": 1,
+            "isRequired": false,
+            "value": "3.65",
+            "description": "What one Standard public IP costs you a month, in your currency, for the cost estimates."
+          },
+          {
+            "id": "0ce9f3ef-45da-5336-8941-82ef13bb49c5",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "Optional. The workspace that receives the public IPs' DDoS diagnostic logs.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "dedcdfcd-e740-5447-a627-dc3267a26b6f",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "pip-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "a5d364c9-cbfa-5cf6-b5ce-d0066650a4e3",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "9339f1b0-a148-5968-83ce-2e9a5c4831ab",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Inventory",
+            "subTarget": "inventory",
+            "style": "link"
+          },
+          {
+            "id": "a0b74258-65af-5efa-9605-e0b781b3043a",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Find an IP",
+            "subTarget": "find",
+            "style": "link"
+          },
+          {
+            "id": "c9c59585-cb37-54b2-9906-72125569e7c3",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Clean-up & cost",
+            "subTarget": "cleanup",
+            "style": "link"
+          },
+          {
+            "id": "86b5c6ce-05c3-56ea-9b48-9d4d35e3dda9",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "DDoS protection",
+            "subTarget": "ddos",
+            "style": "link"
+          },
+          {
+            "id": "dbed17a8-4295-5961-a2bf-7b8c386cd4ba",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Traffic",
+            "subTarget": "traffic",
+            "style": "link"
+          },
+          {
+            "id": "bd8ebbab-5bb1-50a3-b0cc-63f086cb042c",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Changes",
+            "subTarget": "changes",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "pip-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | project Owner = tolower(id), vm = tolower(tostring(properties.virtualMachine.id))\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| summarize Total = count(), V6 = countif(Version =~ 'IPv6'), Regions = dcount(location),\n    Unused = countif(AttachedTo in ('Not attached', 'NIC with no VM')), Basic = countif(Sku =~ 'Basic'),\n    Zonal = countif(Zones startswith 'Zone '), Disabled = countif(Ddos =~ 'Disabled'),\n    OnVms = countif(AttachedTo == 'Virtual machine')\n| extend Price = todouble(trim(@'\\s+', '{Price}'))\n| extend rows = pack_array(\n    pack('Order', 1, 'Signal', 'Public IP addresses', 'Value', Total, 'State', 'Unknown',\n        'Detail', strcat(Total - V6, ' IPv4 · ', V6, ' IPv6 · ', Regions, ' regions')),\n    pack('Order', 2, 'Signal', 'Not in use', 'Value', Unused, 'State', iff(Unused > 0, 'Degraded', 'Available'),\n        'Detail', iff(isnull(Price), 'set a price at the top', strcat('about ', toint(round(Unused * Price, 0)), ' a month'))),\n    pack('Order', 3, 'Signal', 'Basic SKU (retired)', 'Value', Basic, 'State', iff(Basic > 0, 'Unavailable', 'Available'),\n        'Detail', 'upgrade to Standard'),\n    pack('Order', 4, 'Signal', 'Pinned to one zone', 'Value', Zonal, 'State', iff(Zonal > 0, 'Degraded', 'Available'),\n        'Detail', 'lost if that zone fails'),\n    pack('Order', 5, 'Signal', 'DDoS protection disabled', 'Value', Disabled, 'State', iff(Disabled > 0, 'Degraded', 'Available'),\n        'Detail', 'turned off on the IP itself'),\n    pack('Order', 6, 'Signal', 'On virtual machines', 'Value', OnVms, 'State', 'Unknown',\n        'Detail', 'reachable from the internet if an NSG allows'))\n| mv-expand r = rows\n| project Order = toint(r.Order), Signal = tostring(r.Signal), Value = toint(r.Value), State = tostring(r.State),\n    Detail = tostring(r.Detail)\n| order by Order asc",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pip-tiles",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "1150px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipprefixes'\n| extend Length = toint(properties.prefixLength), Version = tostring(properties.publicIPAddressVersion)\n| extend Size = iff(Version =~ 'IPv6', real(null), pow(2, 32 - Length)), Used = array_length(properties.publicIPAddresses)\n| project id, Prefix = tostring(properties.ipPrefix), Version, Size = toint(Size), Used,\n    Free = toint(Size - Used), UsedPct = iff(Size > 0, round(100.0 * Used / Size, 0), real(null)),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Custom = iff(isnotempty(tostring(properties.customIPPrefix.id)), 'Your own range (BYOIP)', 'Microsoft'),\n    Provisioning = tostring(properties.provisioningState), subscriptionId, ResourceGroup = resourceGroup,\n    Location = location\n| summarize Prefixes = count(), Free = sum(Free), Unused = countif(Used == 0)\n| project Signal = 'Free addresses in prefixes', Value = Free,\n    State = iff(Unused > 0, 'Degraded', 'Unknown'),\n    Detail = strcat('in ', Prefixes, ' prefixes · ', Unused, ' wholly unused')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "pip-tile-prefixes",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | project Owner = tolower(id), vm = tolower(tostring(properties.virtualMachine.id))\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| summarize PublicIPs = count() by AttachedTo\n| order by PublicIPs desc",
+              "size": 0,
+              "title": "Public IPs by what uses them",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Not attached",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "NIC with no VM",
+                    "color": "orange"
+                  }
+                ]
+              }
+            },
+            "name": "pip-by-attached",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | project Owner = tolower(id), vm = tolower(tostring(properties.virtualMachine.id))\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| summarize PublicIPs = count() by Region = location\n| order by PublicIPs desc",
+              "size": 0,
+              "title": "Public IPs by region",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart"
+            },
+            "name": "pip-by-region",
+            "customWidth": "50"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | project Owner = tolower(id), vm = tolower(tostring(properties.virtualMachine.id))\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| extend Issues = array_concat(\n    iff(AttachedTo == 'Not attached', dynamic(['Not attached']), dynamic([])),\n    iff(AttachedTo == 'NIC with no VM', dynamic(['On a NIC with no VM']), dynamic([])),\n    iff(Sku =~ 'Basic', dynamic(['Basic SKU']), dynamic([])),\n    iff(Zones startswith 'Zone ', dynamic(['Pinned to one zone']), dynamic([])),\n    iff(Ddos =~ 'Disabled', dynamic(['DDoS protection disabled']), dynamic([])),\n    iff(Provisioning !~ 'Succeeded', dynamic(['Provisioning failed']), dynamic([])))\n| mv-expand Issue = Issues to typeof(string)\n| where isnotempty(Issue)\n| extend Fix = case(\n    Issue == 'Not attached', 'Delete it, unless the address is kept on purpose (allow-listed by a partner, a DNS record)',\n    Issue == 'On a NIC with no VM', 'Delete the NIC left behind by a deleted VM, then the IP',\n    Issue == 'Basic SKU', 'Upgrade to Standard (Basic was retired on 30 September 2025); the address is kept if it is static',\n    Issue == 'Pinned to one zone', 'Replace with a zone-redundant IP when the service is next rebuilt',\n    Issue == 'DDoS protection disabled', 'Set DDoS protection to Inherited from virtual network, or enable IP Protection',\n    'See the resource')\n| project Issue, id, IP, AttachedTo, Owner, Sku, Zones, Fix, Subscription, ResourceGroup = resourceGroup\n| order by case(Issue == 'Basic SKU', 0, Issue == 'Provisioning failed', 1, Issue in ('Not attached', 'On a NIC with no VM'), 2, 3) asc, Issue asc",
+              "size": 0,
+              "title": "Needs attention",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every public IP is in use, Standard SKU, not pinned to one zone and has DDoS protection left on.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Issue",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not attached",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "On a NIC with no VM",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Pinned to one zone",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "DDoS protection disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Basic SKU",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Provisioning failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Owner",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Sku",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Basic",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Zones",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone-redundant",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 2",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 3",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No zone set",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Public IP"
+                  },
+                  {
+                    "columnId": "IP",
+                    "label": "Address"
+                  },
+                  {
+                    "columnId": "AttachedTo",
+                    "label": "Attached to"
+                  },
+                  {
+                    "columnId": "Owner",
+                    "label": "Used by"
+                  },
+                  {
+                    "columnId": "Sku",
+                    "label": "SKU"
+                  },
+                  {
+                    "columnId": "Ddos",
+                    "label": "DDoS protection"
+                  },
+                  {
+                    "columnId": "DnsName",
+                    "label": "DNS name"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "From prefix"
+                  },
+                  {
+                    "columnId": "IpTags",
+                    "label": "IP tags"
+                  },
+                  {
+                    "columnId": "IdleMinutes",
+                    "label": "Idle timeout (min)"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Issue"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "pip-attention"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**Zones.** *Zone-redundant* survives the loss of a zone; *Zone 1/2/3* is pinned to that zone and goes down\nwith it. *No zone set* is either a region without availability zones or an IP created without a zone: Microsoft\nhas been making Standard IPs created without a zone zone-redundant in regions that have zones, but Resource Graph\nstill shows no zones for them, so check the IP's *Overview* blade before replacing it. A zone cannot be changed on\nan existing IP: it has to be recreated, which changes the address.",
+              "style": "info"
+            },
+            "name": "pip-zones-note"
+          }
+        ]
+      },
+      "name": "pip-tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | project Owner = tolower(id), vm = tolower(tostring(properties.virtualMachine.id))\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project id, IP, AttachedTo, Owner, DnsName, Sku, Tier, Allocation, Version, Zones, Ddos, Prefix, IpTags,\n    IdleMinutes, Provisioning, Subscription, ResourceGroup = resourceGroup, Location = location\n| order by AttachedTo asc, tostring(id) asc",
+              "size": 0,
+              "title": "Public IP addresses",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No public IP addresses in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Owner",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Prefix",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "AttachedTo",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not attached",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NIC with no VM",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Sku",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Basic",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Zones",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone-redundant",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 2",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 3",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No zone set",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Ddos",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Enabled",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "n/a (Basic)",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Public IP"
+                  },
+                  {
+                    "columnId": "IP",
+                    "label": "Address"
+                  },
+                  {
+                    "columnId": "AttachedTo",
+                    "label": "Attached to"
+                  },
+                  {
+                    "columnId": "Owner",
+                    "label": "Used by"
+                  },
+                  {
+                    "columnId": "Sku",
+                    "label": "SKU"
+                  },
+                  {
+                    "columnId": "Ddos",
+                    "label": "DDoS protection"
+                  },
+                  {
+                    "columnId": "DnsName",
+                    "label": "DNS name"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "From prefix"
+                  },
+                  {
+                    "columnId": "IpTags",
+                    "label": "IP tags"
+                  },
+                  {
+                    "columnId": "IdleMinutes",
+                    "label": "Idle timeout (min)"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "AttachedTo"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "pip-inventory"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*Used by* is the resource the address is attached to: a virtual machine (rather than its NIC), load balancer, gateway, firewall, Bastion or NAT gateway. *NIC with no VM* is an address on a network interface whose VM was deleted. *IP tags* show a routing preference (`RoutingPreference=Internet` sends traffic over the public internet rather than Microsoft's network) or a first-party service tag.",
+              "style": "info"
+            },
+            "name": "pip-inventory-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipprefixes'\n| extend Length = toint(properties.prefixLength), Version = tostring(properties.publicIPAddressVersion)\n| extend Size = iff(Version =~ 'IPv6', real(null), pow(2, 32 - Length)), Used = array_length(properties.publicIPAddresses)\n| project id, Prefix = tostring(properties.ipPrefix), Version, Size = toint(Size), Used,\n    Free = toint(Size - Used), UsedPct = iff(Size > 0, round(100.0 * Used / Size, 0), real(null)),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Custom = iff(isnotempty(tostring(properties.customIPPrefix.id)), 'Your own range (BYOIP)', 'Microsoft'),\n    Provisioning = tostring(properties.provisioningState), subscriptionId, ResourceGroup = resourceGroup,\n    Location = location\n| order by UsedPct asc",
+              "size": 0,
+              "title": "Public IP prefixes",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No public IP prefixes in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Zones",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone-redundant",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 2",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 3",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No zone set",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "UsedPct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "blue"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Prefix"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "Range"
+                  },
+                  {
+                    "columnId": "Size",
+                    "label": "Addresses"
+                  },
+                  {
+                    "columnId": "UsedPct",
+                    "label": "Used %"
+                  },
+                  {
+                    "columnId": "Custom",
+                    "label": "Range owner"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "pip-prefixes"
+          }
+        ]
+      },
+      "name": "pip-tab-inventory",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "inventory"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Type an **IP address** or a public IP's **DNS name** (for example `myapp.westeurope.cloudapp.azure.com`) in\n*Find* at the top. The search covers public IP addresses and prefixes in the selected subscriptions, and also the\naddresses Azure manages for you that are not public IP resources: App Service outbound addresses, the public\naddresses of secured virtual hub firewalls (Virtual WAN), and Virtual WAN VPN gateways.",
+              "style": "info"
+            },
+            "name": "pip-find-howto"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type in~ ('microsoft.network/publicipaddresses', 'microsoft.network/publicipprefixes', 'microsoft.web/sites',\n    'microsoft.network/azurefirewalls', 'microsoft.network/vpngateways')\n| extend q = tolower(trim(@'[\\s.]+', '{Search}'))\n| extend fqdn = tolower(trim_end(@'\\.', tostring(properties.dnsSettings.fqdn)))\n| extend Match = case(\n    type =~ 'microsoft.network/publicipaddresses' and (tostring(properties.ipAddress) == q or fqdn == q), 'Public IP address',\n    type =~ 'microsoft.network/publicipprefixes' and isnotnull(parse_ipv4(q))\n        and ipv4_is_in_range(q, tostring(properties.ipPrefix)), strcat('Inside public IP prefix ', tostring(properties.ipPrefix)),\n    type =~ 'microsoft.web/sites' and strcat(',', tostring(properties.possibleOutboundIpAddresses), ',') contains strcat(',', q, ','),\n        'App Service outbound address (may be shared with other apps)',\n    type =~ 'microsoft.network/azurefirewalls' and tostring(properties.hubIPAddresses.publicIPs.addresses) contains strcat('\"', q, '\"'),\n        'Secured virtual hub firewall',\n    type =~ 'microsoft.network/vpngateways' and tostring(properties.ipConfigurations) contains strcat('\"', q, '\"'),\n        'Virtual WAN VPN gateway',\n    '')\n| where isnotempty(Match)\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend UsedBy = case(type !~ 'microsoft.network/publicipaddresses', '', isnotempty(nat), nat,\n    extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config))\n| extend UsedBy = iff(type =~ 'microsoft.network/publicipaddresses' and isempty(UsedBy), 'Not attached', UsedBy)\n| project Match, id, Address = coalesce(tostring(properties.ipAddress), tostring(properties.ipPrefix), q), UsedBy,\n    DnsName = tostring(properties.dnsSettings.fqdn), subscriptionId, ResourceGroup = resourceGroup, Location = location\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project-away subscriptionId, subscriptionId1",
+              "size": 0,
+              "title": "Who has {Search}?",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "The address is not in the selected subscriptions. It may belong to a subscription you cannot read, be a Microsoft-owned address shared by a platform service (check the Azure IP ranges and service tags download), or not be an Azure address at all.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "UsedBy",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "UsedBy",
+                    "label": "Used by"
+                  },
+                  {
+                    "columnId": "DnsName",
+                    "label": "DNS name"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "pip-find",
+            "conditionalVisibility": {
+              "parameterName": "Search",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**Not covered:** addresses Azure assigns to a service without a public IP resource, other than those above:\ndefault outbound access of VMs with no public IP, NAT gateway or load balancer (a Microsoft-owned address that can\nchange, retired for new VNets from 30 September 2025), Azure Front Door and API Management's shared addresses,\nand the ExpressRoute and VPN gateways' own management addresses.",
+              "style": "info"
+            },
+            "name": "pip-find-note"
+          }
+        ]
+      },
+      "name": "pip-tab-find",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "find"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### Paid for but not in use"
+            },
+            "name": "pip-unused-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | project Owner = tolower(id), vm = tolower(tostring(properties.virtualMachine.id))\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| where AttachedTo in ('Not attached', 'NIC with no VM')\n| extend Price = todouble(trim(@'\\s+', '{Price}'))\n| project id, IP, AttachedTo, Owner, Sku, Allocation, DnsName, Prefix,\n    PerMonth = iff(Sku =~ 'Basic' and Allocation =~ 'Dynamic', 0.0, Price),\n    Kept = iff(isnotempty(tostring(tags)) and tostring(tags) has_any ('keep', 'reserved', 'allowlist', 'whitelist', 'dr'), 'Tagged as kept', ''),\n    Subscription, ResourceGroup = resourceGroup, Location = location\n| order by Kept asc, Subscription asc",
+              "size": 0,
+              "title": "Public IPs not attached to anything",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every public IP is attached to something.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Owner",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Prefix",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "AttachedTo",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not attached",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NIC with no VM",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Sku",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Basic",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Kept",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Tagged as kept",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Public IP"
+                  },
+                  {
+                    "columnId": "IP",
+                    "label": "Address"
+                  },
+                  {
+                    "columnId": "AttachedTo",
+                    "label": "Attached to"
+                  },
+                  {
+                    "columnId": "Owner",
+                    "label": "NIC"
+                  },
+                  {
+                    "columnId": "Sku",
+                    "label": "SKU"
+                  },
+                  {
+                    "columnId": "Ddos",
+                    "label": "DDoS protection"
+                  },
+                  {
+                    "columnId": "DnsName",
+                    "label": "DNS name"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "From prefix"
+                  },
+                  {
+                    "columnId": "IpTags",
+                    "label": "IP tags"
+                  },
+                  {
+                    "columnId": "IdleMinutes",
+                    "label": "Idle timeout (min)"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  },
+                  {
+                    "columnId": "PerMonth",
+                    "label": "Est. per month"
+                  },
+                  {
+                    "columnId": "Kept",
+                    "label": "Kept on purpose?"
+                  }
+                ]
+              }
+            },
+            "name": "pip-unused"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**What an unused address costs.** A Standard public IP is billed by the hour whether or not it is attached,\nabout 3.65 a month in US dollars at list price (set *Price per IP a month* at the top to your own rate). A\ndynamic Basic IP is free while unattached, but Basic is retired. An IP taken from a **public IP prefix** is paid\nfor through the prefix, which bills for every address in it whether used or not, so deleting the IP alone saves\nnothing: reuse it, or shrink the prefix.\n\nBefore deleting, check the address is not kept on purpose: allow-listed by a partner or a SaaS provider, held for\ndisaster recovery, or behind a DNS record (a deleted address left in DNS is a subdomain takeover risk). Rows tagged\nwith *keep*, *reserved*, *allowlist* or *dr* are listed last.",
+              "style": "info"
+            },
+            "name": "pip-cost-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipprefixes'\n| extend Length = toint(properties.prefixLength), Version = tostring(properties.publicIPAddressVersion)\n| extend Size = iff(Version =~ 'IPv6', real(null), pow(2, 32 - Length)), Used = array_length(properties.publicIPAddresses)\n| project id, Prefix = tostring(properties.ipPrefix), Version, Size = toint(Size), Used,\n    Free = toint(Size - Used), UsedPct = iff(Size > 0, round(100.0 * Used / Size, 0), real(null)),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Custom = iff(isnotempty(tostring(properties.customIPPrefix.id)), 'Your own range (BYOIP)', 'Microsoft'),\n    Provisioning = tostring(properties.provisioningState), subscriptionId, ResourceGroup = resourceGroup,\n    Location = location\n| where Used == 0 or UsedPct < 50\n| order by Used asc, Free desc",
+              "size": 0,
+              "title": "Public IP prefixes less than half used",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Every public IP prefix is at least half used.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "UsedPct",
+                    "formatter": 4,
+                    "formatOptions": {
+                      "min": 0,
+                      "max": 100,
+                      "palette": "blue"
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Prefix"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "Range"
+                  },
+                  {
+                    "columnId": "Size",
+                    "label": "Addresses"
+                  },
+                  {
+                    "columnId": "UsedPct",
+                    "label": "Used %"
+                  },
+                  {
+                    "columnId": "Custom",
+                    "label": "Range owner"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "pip-unused-prefixes"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Basic SKU (retired)"
+            },
+            "name": "pip-basic-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networkinterfaces'\n    | project Owner = tolower(id), vm = tolower(tostring(properties.virtualMachine.id))\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| where Sku =~ 'Basic'\n| project id, IP, AttachedTo, Owner, Allocation, DnsName, Subscription, ResourceGroup = resourceGroup, Location = location\n| order by AttachedTo asc",
+              "size": 0,
+              "title": "Basic SKU public IPs",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Basic SKU public IPs.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Owner",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "AttachedTo",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not attached",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NIC with no VM",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Public IP"
+                  },
+                  {
+                    "columnId": "IP",
+                    "label": "Address"
+                  },
+                  {
+                    "columnId": "AttachedTo",
+                    "label": "Attached to"
+                  },
+                  {
+                    "columnId": "Owner",
+                    "label": "Used by"
+                  },
+                  {
+                    "columnId": "Sku",
+                    "label": "SKU"
+                  },
+                  {
+                    "columnId": "Ddos",
+                    "label": "DDoS protection"
+                  },
+                  {
+                    "columnId": "DnsName",
+                    "label": "DNS name"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "From prefix"
+                  },
+                  {
+                    "columnId": "IpTags",
+                    "label": "IP tags"
+                  },
+                  {
+                    "columnId": "IdleMinutes",
+                    "label": "Idle timeout (min)"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "pip-basic"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Basic SKU public IPs were retired on **30 September 2025**: they no longer have an SLA or support, and Microsoft\nmay stop them working. Upgrade a static Basic IP to Standard in place (the address is kept); a dynamic one must be\nmade static first, and a Basic IP on a Basic load balancer or VPN gateway is upgraded with that resource. Standard\nIPs are closed to inbound traffic unless an NSG allows it, so add the NSG rules the service needs before upgrading\nan IP on a VM.",
+              "style": "warning"
+            },
+            "name": "pip-basic-note"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Azure Advisor"
+            },
+            "name": "pip-advisor-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "advisorresources\n| where type =~ 'microsoft.advisor/recommendations'\n| extend rid = tolower(tostring(properties.resourceMetadata.resourceId))\n| where rid contains '/microsoft.network/publicipaddresses/' or rid contains '/microsoft.network/publicipprefixes/'\n| project id = rid, Category = tostring(properties.category), Impact = tostring(properties.impact),\n    Problem = tostring(properties.shortDescription.problem), Solution = tostring(properties.shortDescription.solution),\n    Updated = todatetime(properties.lastUpdated)\n| order by case(Impact =~ 'High', 0, Impact =~ 'Medium', 1, 2) asc",
+              "size": 0,
+              "title": "Advisor recommendations for public IPs and prefixes",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "Advisor has no recommendations for public IPs.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Impact",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  }
+                ]
+              }
+            },
+            "name": "pip-advisor"
+          }
+        ]
+      },
+      "name": "pip-tab-cleanup",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "cleanup"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.network/networkinterfaces', 'microsoft.network/azurefirewalls', 'microsoft.network/bastionhosts',\n        'microsoft.network/virtualnetworkgateways', 'microsoft.network/applicationgateways')\n    | extend cfgs = iff(type =~ 'microsoft.network/applicationgateways', properties.gatewayIPConfigurations, properties.ipConfigurations)\n    | mv-expand cfg = cfgs\n    | extend Vnet = tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(cfg.properties.subnet.id)))\n    | summarize Vnet = take_anyif(Vnet, isnotempty(Vnet)), vm = take_any(tolower(tostring(properties.virtualMachine.id))) by Owner = tolower(id)\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | project Vnet = tolower(id), VnetDdos = tobool(properties.enableDdosProtection), Plan = tolower(tostring(properties.ddosProtectionPlan.id))\n  ) on Vnet\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| extend Protection = case(\n    Sku =~ 'Basic', 'Basic SKU: platform default only',\n    Ddos =~ 'Enabled', 'IP Protection',\n    Ddos =~ 'Disabled', 'Disabled on the IP',\n    VnetDdos == true, 'Network Protection (VNet plan)',\n    AttachedTo in ('Not attached', 'NIC with no VM'), 'Not in use',\n    AttachedTo in ('Load balancer', 'AKS load balancer'), 'Follows the backend VNet',\n    isnotempty(Vnet), 'Platform default only (VNet has no plan)',\n    'Unknown')\n| project id, IP, Protection, AttachedTo, Owner, Vnet, Plan, Ddos, Subscription, ResourceGroup = resourceGroup\n| summarize PublicIPs = count() by Protection\n| order by PublicIPs desc",
+              "size": 0,
+              "title": "Effective DDoS protection",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "IP Protection",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "Network Protection (VNet plan)",
+                    "color": "greenDark"
+                  },
+                  {
+                    "seriesName": "Platform default only (VNet has no plan)",
+                    "color": "orange"
+                  },
+                  {
+                    "seriesName": "Disabled on the IP",
+                    "color": "redBright"
+                  },
+                  {
+                    "seriesName": "Basic SKU: platform default only",
+                    "color": "redBright"
+                  },
+                  {
+                    "seriesName": "Not in use",
+                    "color": "gray"
+                  },
+                  {
+                    "seriesName": "Follows the backend VNet",
+                    "color": "blue"
+                  }
+                ]
+              }
+            },
+            "name": "pip-ddos-pie",
+            "customWidth": "40"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/ddosprotectionplans'\n| project id, ProtectedVnets = array_length(properties.virtualNetworks), Provisioning = tostring(properties.provisioningState),\n    subscriptionId, ResourceGroup = resourceGroup, Location = location\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| project-away subscriptionId, subscriptionId1",
+              "size": 0,
+              "title": "DDoS protection plans",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No DDoS protection plans: public IPs have platform default protection only, unless IP Protection is enabled on them.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Plan"
+                  },
+                  {
+                    "columnId": "ProtectedVnets",
+                    "label": "VNets linked"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "pip-ddos-plans",
+            "customWidth": "60"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Every public IP gets Azure's **platform default** protection against large volumetric attacks, tuned to protect\nAzure rather than your service. **DDoS Network Protection** (a plan linked to the VNet) and **DDoS IP Protection**\n(per IP) add mitigation tuned to each IP's normal traffic, attack alerts and logs, and cost protection. A public\nIP's *DDoS protection* setting is *Inherited from virtual network* by default, so it is covered when the VNet of\nthe resource using it is linked to a plan. *Follows the backend VNet* is a load balancer frontend: it is covered\nwhen the backend VNet is.",
+              "style": "info"
+            },
+            "name": "pip-ddos-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| extend config = tolower(tostring(properties.ipConfiguration.id)), nat = tolower(tostring(properties.natGateway.id))\n| extend Owner = iff(isnotempty(nat), nat,\n        extract(@'^(/subscriptions/[^/]+/resourcegroups/[^/]+/providers/[^/]+/[^/]+/[^/]+)', 1, config)),\n    AttachedTo = case(\n        isnotempty(nat), 'NAT gateway',\n        config contains '/virtualmachinescalesets/', 'VM scale set',\n        config contains '/networkinterfaces/', 'Virtual machine',\n        config contains '/loadbalancers/kubernetes/', 'AKS load balancer',\n        config contains '/loadbalancers/', 'Load balancer',\n        config contains '/applicationgateways/', 'Application gateway',\n        config contains '/azurefirewalls/', 'Azure Firewall',\n        config contains '/bastionhosts/', 'Bastion',\n        config contains '/virtualnetworkgateways/', 'VPN or ExpressRoute gateway',\n        config contains '/virtualhubs/', 'Virtual hub (route server)',\n        isnotempty(config), 'Other',\n        'Not attached')\n| join kind=leftouter (\n    resources\n    | where type in~ ('microsoft.network/networkinterfaces', 'microsoft.network/azurefirewalls', 'microsoft.network/bastionhosts',\n        'microsoft.network/virtualnetworkgateways', 'microsoft.network/applicationgateways')\n    | extend cfgs = iff(type =~ 'microsoft.network/applicationgateways', properties.gatewayIPConfigurations, properties.ipConfigurations)\n    | mv-expand cfg = cfgs\n    | extend Vnet = tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(cfg.properties.subnet.id)))\n    | summarize Vnet = take_anyif(Vnet, isnotempty(Vnet)), vm = take_any(tolower(tostring(properties.virtualMachine.id))) by Owner = tolower(id)\n  ) on Owner\n| extend AttachedTo = iff(AttachedTo == 'Virtual machine' and isempty(vm), 'NIC with no VM', AttachedTo),\n    Owner = iff(isnotempty(vm), vm, Owner)\n| extend IP = tostring(properties.ipAddress),\n    Version = tostring(properties.publicIPAddressVersion),\n    Sku = tostring(sku.name),\n    Tier = tostring(sku.tier),\n    Allocation = tostring(properties.publicIPAllocationMethod),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])),\n        'No zone set'),\n    Ddos = iff(sku.name =~ 'Basic', 'n/a (Basic)', coalesce(tostring(properties.ddosSettings.protectionMode), 'VirtualNetworkInherited')),\n    DnsName = tostring(properties.dnsSettings.fqdn),\n    Prefix = tostring(properties.publicIPPrefix.id),\n    IpTags = replace_string(replace_string(replace_regex(tostring(properties.ipTags), @'[\\[\\]{}\"]', ''), 'ipTagType:', ''),\n        ',tag:', '='),\n    IdleMinutes = toint(properties.idleTimeoutInMinutes),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | project Vnet = tolower(id), VnetDdos = tobool(properties.enableDdosProtection), Plan = tolower(tostring(properties.ddosProtectionPlan.id))\n  ) on Vnet\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n| extend Protection = case(\n    Sku =~ 'Basic', 'Basic SKU: platform default only',\n    Ddos =~ 'Enabled', 'IP Protection',\n    Ddos =~ 'Disabled', 'Disabled on the IP',\n    VnetDdos == true, 'Network Protection (VNet plan)',\n    AttachedTo in ('Not attached', 'NIC with no VM'), 'Not in use',\n    AttachedTo in ('Load balancer', 'AKS load balancer'), 'Follows the backend VNet',\n    isnotempty(Vnet), 'Platform default only (VNet has no plan)',\n    'Unknown')\n| project id, IP, Protection, AttachedTo, Owner, Vnet, Plan, Ddos, Subscription, ResourceGroup = resourceGroup\n| order by Protection asc",
+              "size": 0,
+              "title": "Protection of each public IP",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No public IP addresses in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Protection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "IP Protection",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Network Protection (VNet plan)",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Platform default only (VNet has no plan)",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Disabled on the IP",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Basic SKU: platform default only",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not in use",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Follows the backend VNet",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Owner",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Vnet",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Plan",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Public IP"
+                  },
+                  {
+                    "columnId": "IP",
+                    "label": "Address"
+                  },
+                  {
+                    "columnId": "AttachedTo",
+                    "label": "Attached to"
+                  },
+                  {
+                    "columnId": "Owner",
+                    "label": "Used by"
+                  },
+                  {
+                    "columnId": "Sku",
+                    "label": "SKU"
+                  },
+                  {
+                    "columnId": "Ddos",
+                    "label": "Setting on the IP"
+                  },
+                  {
+                    "columnId": "DnsName",
+                    "label": "DNS name"
+                  },
+                  {
+                    "columnId": "Prefix",
+                    "label": "From prefix"
+                  },
+                  {
+                    "columnId": "IpTags",
+                    "label": "IP tags"
+                  },
+                  {
+                    "columnId": "IdleMinutes",
+                    "label": "Idle timeout (min)"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  },
+                  {
+                    "columnId": "Vnet",
+                    "label": "VNet"
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Protection"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "pip-ddos"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Attacks and mitigations"
+            },
+            "name": "pip-ddos-logs-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for the DDoS notifications, mitigation reports and flow logs. The attack charts on the *Traffic* tab need no workspace.",
+              "style": "info"
+            },
+            "name": "pip-ddos-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated: datetime, Category: string, ResourceId: string)[]), (AzureDiagnostics\n    | where Category in ('DDoSProtectionNotifications', 'DDoSMitigationReports'))\n| where TimeGenerated {TimeRange}\n| extend Event = coalesce(tostring(column_ifexists('type_s', '')), tostring(column_ifexists('ReportType_s', ''))),\n    Address = tostring(column_ifexists('publicIpAddress_s', '')),\n    Detail = coalesce(tostring(column_ifexists('Message', '')), tostring(column_ifexists('message_s', '')),\n        tostring(column_ifexists('AttackVectors_s', '')), tostring(column_ifexists('attackVectors_s', '')))\n| project TimeGenerated, Category, Event, Address, id = tolower(ResourceId), Detail\n| order by TimeGenerated desc\n| take 500",
+              "size": 0,
+              "title": "Mitigation notifications and reports",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No DDoS mitigations in the time range. These logs exist only for IPs with Network or IP Protection whose diagnostic settings send DDoSProtectionNotifications and DDoSMitigationReports here.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Event",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "MitigationStopped",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "MitigationStarted",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Time"
+                  },
+                  {
+                    "columnId": "id",
+                    "label": "Public IP"
+                  }
+                ]
+              }
+            },
+            "name": "pip-ddos-events",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true (datatable(TimeGenerated: datetime, Category: string, ResourceId: string)[]), (AzureDiagnostics\n    | where Category == 'DDoSMitigationFlowLogs')\n| where TimeGenerated {TimeRange}\n| extend Source = tostring(column_ifexists('sourcePublicIpAddress_s', '')),\n    Target = tostring(column_ifexists('publicIpAddress_s', column_ifexists('destPublicIpAddress_s', ''))),\n    Protocol = tostring(column_ifexists('protocol_s', '')), Action = tostring(column_ifexists('action_s', ''))\n| summarize Flows = count(), First = min(TimeGenerated), Last = max(TimeGenerated) by Source, Target, Protocol, Action\n| top 100 by Flows desc",
+              "size": 0,
+              "title": "Traffic dropped or forwarded during mitigation, busiest sources",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No DDoS mitigation flow logs in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Target",
+                    "label": "Public IP"
+                  }
+                ]
+              }
+            },
+            "name": "pip-ddos-flows",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "pip-tab-ddos",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "ddos"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "9cce8f52-1420-580b-9f83-37b3b304feb2",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "PublicIps",
+                  "label": "Public IPs",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/publicipaddresses'\n| where isnotempty(tostring(properties.ipConfiguration.id)) or isnotempty(tostring(properties.natGateway.id))\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::10",
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::10",
+                  "value": [
+                    "value::10"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "pip-traffic-params"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Charts start with the first 10 attached public IPs; choose others, or **All**, in the picker. *Data path availability* is Azure's probe of the address from inside its own network.",
+              "style": "info"
+            },
+            "name": "pip-traffic-note"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookafb490bc-2eda-5752-a74e-247fc9dc5125",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.network/publicipaddresses",
+              "metricScope": 0,
+              "resourceParameter": "PublicIps",
+              "resourceIds": [
+                "{PublicIps}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--VipAvailability",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--ByteCount",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--PacketCount",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--SynCount",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--IfUnderDDoSAttack",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Public IP metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/publicipaddresses--VipAvailability Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/publicipaddresses--ByteCount Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/publicipaddresses--PacketCount Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/publicipaddresses--SynCount Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/publicipaddresses--IfUnderDDoSAttack Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/publicipaddresses--VipAvailability$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99.9",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/publicipaddresses--IfUnderDDoSAttack$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--VipAvailability",
+                    "label": "Data path availability %"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--ByteCount",
+                    "label": "Bytes"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--PacketCount",
+                    "label": "Packets"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--SynCount",
+                    "label": "SYN packets"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--IfUnderDDoSAttack",
+                    "label": "Under DDoS attack"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--VipAvailability Timeline",
+                    "label": "Data path availability % trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--ByteCount Timeline",
+                    "label": "Bytes trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--PacketCount Timeline",
+                    "label": "Packets trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--SynCount Timeline",
+                    "label": "SYN packets trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/publicipaddresses--IfUnderDDoSAttack Timeline",
+                    "label": "Under DDoS attack trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "pip-traffic-grid"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbooke2cbb509-eaad-5d0e-9f44-8f4a2eb97ef6",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/publicipaddresses",
+              "metricScope": 0,
+              "resourceParameter": "PublicIps",
+              "resourceIds": [
+                "{PublicIps}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--ByteCount",
+                  "aggregation": 1,
+                  "splitBy": "Direction",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Bytes",
+              "showOpenInMe": true
+            },
+            "name": "pip-bytes",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook74d6ccad-2336-5b0a-90cd-85f9e3af5a4c",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/publicipaddresses",
+              "metricScope": 0,
+              "resourceParameter": "PublicIps",
+              "resourceIds": [
+                "{PublicIps}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--PacketCount",
+                  "aggregation": 1,
+                  "splitBy": "Direction",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "Packets",
+              "showOpenInMe": true
+            },
+            "name": "pip-packets",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook754365c5-2673-5c96-9b53-5d18672a8a92",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/publicipaddresses",
+              "metricScope": 0,
+              "resourceParameter": "PublicIps",
+              "resourceIds": [
+                "{PublicIps}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--SynCount",
+                  "aggregation": 1,
+                  "splitBy": "Direction",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "SYN packets (new TCP connections)",
+              "showOpenInMe": true
+            },
+            "name": "pip-syn",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook2e61da71-4cbb-5407-ae51-6e78ebc161be",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/publicipaddresses",
+              "metricScope": 0,
+              "resourceParameter": "PublicIps",
+              "resourceIds": [
+                "{PublicIps}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--VipAvailability",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Data path availability",
+              "showOpenInMe": true
+            },
+            "name": "pip-availability",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook0b07bd41-7a7d-57bb-8073-fed0b9e71170",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/publicipaddresses",
+              "metricScope": 0,
+              "resourceParameter": "PublicIps",
+              "resourceIds": [
+                "{PublicIps}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--IfUnderDDoSAttack",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Under DDoS attack (1 = yes)",
+              "showOpenInMe": true
+            },
+            "name": "pip-attack",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook1852f847-d048-5be8-b519-29be293b6b04",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/publicipaddresses",
+              "metricScope": 0,
+              "resourceParameter": "PublicIps",
+              "resourceIds": [
+                "{PublicIps}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/publicipaddresses",
+                  "metric": "microsoft.network/publicipaddresses--PacketsDroppedDDoS",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Inbound packets dropped by DDoS mitigation",
+              "showOpenInMe": true
+            },
+            "name": "pip-dropped",
+            "customWidth": "50"
+          }
+        ]
+      },
+      "name": "pip-tab-traffic",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "traffic"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| extend Type = tolower(tostring(properties.targetResourceType))\n| where Type in ('microsoft.network/publicipaddresses', 'microsoft.network/publicipprefixes')\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend changes = properties.changes\n| project Time, ChangeType = tostring(properties.changeType), id = tolower(tostring(properties.targetResourceId)),\n    What = strcat_array(bag_keys(changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy), Client = tostring(properties.changeAttributes.clientType),\n    Operation = tostring(properties.changeAttributes.operation), Kind = iff(Type endswith 'prefixes', 'Prefix', 'Public IP')\n| order by Time desc\n| take 1000",
+              "size": 0,
+              "title": "Public IPs and prefixes created, changed and deleted",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No public IPs or prefixes changed in the time range (Resource Graph keeps 14 days).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "ChangeType",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Create",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Update",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Delete",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ChangeType",
+                    "label": "Change"
+                  },
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "What",
+                    "label": "Properties changed"
+                  },
+                  {
+                    "columnId": "ChangedBy",
+                    "label": "Changed by"
+                  }
+                ]
+              }
+            },
+            "name": "pip-changes"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend changes = properties.changes\n| mv-expand key = bag_keys(changes) to typeof(string)\n| where key contains 'publicIPAddress' or key contains 'ipConfiguration.id' or key contains 'natGateway.id'\n    or key contains 'publicIpAddresses'\n| extend c = changes[key]\n| project Time, id = tolower(tostring(properties.targetResourceId)), Property = key,\n    Before = tostring(c.previousValue), After = tostring(c.newValue),\n    ChangedBy = tostring(properties.changeAttributes.changedBy), Client = tostring(properties.changeAttributes.clientType)\n| order by Time desc\n| take 500",
+              "size": 0,
+              "title": "Public IPs attached, detached or moved",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No public IP was attached or detached in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Before",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "After",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Resource"
+                  },
+                  {
+                    "columnId": "ChangedBy",
+                    "label": "Changed by"
+                  }
+                ]
+              }
+            },
+            "name": "pip-associations"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "From Resource Graph's change history, which keeps 14 days. *Changed by* is filled in for changes made through Azure Resource Manager; a change made by the platform (an AKS cluster adding a load balancer IP) shows the service's identity. For older changes, use the **What changed?** workbook with the Activity log in a workspace.",
+              "style": "info"
+            },
+            "name": "pip-changes-note"
+          }
+        ]
+      },
+      "name": "pip-tab-changes",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "changes"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

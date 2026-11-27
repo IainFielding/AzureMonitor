@@ -7,8 +7,8 @@ There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
   *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
-  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Cloud Center of Excellence* and
-  *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
+  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Public IP addresses*, *Cloud Center of
+  Excellence* and *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -26,6 +26,7 @@ Each workbook has a reference page in [docs/](docs/README.md) listing every tab 
 | [Expiry and renewals](workbook/expiry.workbook.json) | Dashboard | What expires or retires in the next 90 days: certificates, Key Vault objects, storage keys, AVD registration tokens, policy exemptions, service retirements, planned maintenance, reservations and savings plans? | Platform operations, FinOps |
 | [FinOps hubs](workbook/finops-hubs.workbook.json) | Dashboard | Are the FinOps hubs (FinOps toolkit v15) healthy and up to date, are the Cost Management exports landing, are the Data Factory pipelines and triggers running, and is Azure Data Explorer ingesting and holding current data? | FinOps team, platform operations |
 | [Azure Policy compliance](workbook/policy-compliance.workbook.json) | Dashboard | How compliant is the estate with Azure Policy, what is exposed to the internet, which exemptions are expiring, how do we score against our regulatory initiatives, and what can be remediated automatically? | Governance and security owners, auditors |
+| [Public IP addresses](workbook/public-ip.workbook.json) | Dashboard | What uses each public IP and prefix, which are paid for but unused, on the retired Basic SKU or pinned to one zone, are they covered by DDoS Protection, what traffic do they carry, who changed them, and whose is this address? | Network team, security owners, FinOps |
 | [Cloud Center of Excellence](workbook/cloud-center-of-excellence.workbook.json) | Dashboard | Across governance, tagging, landing zone placement, security, privileged access, savings, idle resources, monitoring, patching and retirements, where does each subscription stand, and who needs to act? | Cloud Center of Excellence, cloud governance board |
 | [Well-Architected Framework](workbook/well-architected.workbook.json) | Dashboard | For one workload, what does it get wrong against each of the five pillars (Reliability, Security, Cost Optimization, Operational Excellence, Performance Efficiency), from Azure Advisor and from its configuration? | Workload and application owners, architects running a Well-Architected review |
 | [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
@@ -54,6 +55,7 @@ Start from the symptom:
 | "A user can't get onto (or is slow on) virtual desktop" | **Azure Virtual Desktop: one user** | **Platform health**: AVD and Storage (FSLogix) tabs for the host pool as a whole |
 | "Lots of users keep dropping off virtual desktop" | **AVD disconnections and Azure Firewall**: *Does the firewall explain the disconnections?* | **Firewalls: blocked connections** for any deny it finds; **Azure Virtual Desktop: one user** if nothing lines up |
 | "The FinOps reports stopped updating" (Power BI shows old or missing months) | **FinOps hubs**: Overview, then Data Explorer *Data in the hub* | Data Factory tab for stopped triggers and failed runs; Storage & exports for the exports' last run |
+| "Whose IP address is this?" (a partner's allow-list, an abuse report, an address in a log) | **Public IP addresses**: *Find an IP* | **What changed?** for the resource it belongs to; **Routing** if it is meant to be the egress address |
 | "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
 | "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
 | "Something is wrong in AVS" (VMs slow, vSAN full, workloads unreachable) | **Azure VMware Solution**: Overview, then Capacity or Logs | *Private cloud* tab for the hub connection, Global Reach and NSX segments; **Platform health** ExpressRoute tab for the gateway |
@@ -74,7 +76,7 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 |---|---|
 | **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution, Sentinel operations and FinOps hubs: the Overview tiles |
 | **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams. Azure Policy compliance: Public exposure, and exemptions expiring within 30 days |
-| **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due. Cloud Center of Excellence: the Scorecard and the subscription table, for the governance board |
+| **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Public IP addresses: *Clean-up & cost* (unused addresses and prefixes, Basic SKU) and the DDoS protection coverage. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due. Cloud Center of Excellence: the Scorecard and the subscription table, for the governance board |
 | **Each release or design review of a workload** | Well-Architected Framework, filtered to the workload: every pillar tab, recording what is fixed and what is accepted |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
 
@@ -124,6 +126,7 @@ them) so new resources are included automatically:
 | Azure Firewall metrics (`AzureMetrics`), category *AllMetrics* | Each firewall's diagnostic setting | AVD disconnections and Azure Firewall |
 | Session host performance (`Perf` or `InsightsMetrics`), including `LogicalDisk(*)` free space (AVD Insights collects only C:, which misses the FSLogix profile disks), and FSLogix / User Profile Service and System (low disk warning, event 2013) events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user, Platform health (AVD disk space) |
 | Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity), Privileged access (including `AADNonInteractiveUserSignInLogs` for break-glass accounts) |
+| DDoS Protection notifications, mitigation reports and flow logs (`AzureDiagnostics`) | Each public IP's diagnostic setting (only IPs with DDoS Network or IP Protection log anything) | Public IP addresses (*DDoS protection*) |
 | Query audit (`LAQueryLogs`) | The workspace's own diagnostic setting, category *Audit* | Log Analytics: cost and noise (*Who reads it*) |
 | Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
 | VMware syslog (`AVSSyslog`): vCenter, ESXi, vSAN and NSX, including NSX firewall rule logging | Each AVS private cloud's diagnostic setting, category *VMware Syslog* | Azure VMware Solution |
@@ -385,6 +388,29 @@ an uploaded certificate, so the tab shows where each one comes from instead: one
 versionless id renews itself. Reading reservations needs the *Reservations Reader* role at the tenant (and *Savings
 plan Reader* for savings plans). Entra ID application secrets are in Microsoft Graph, which workbooks cannot query,
 so they are not covered.
+
+## Public IP addresses workbook
+
+**What are our public IPs used for, which could go, and are they protected?**
+[workbook/public-ip.workbook.json](workbook/public-ip.workbook.json). Every public IP address and public IP prefix in
+the selected subscriptions, from Resource Graph, with Azure Monitor metrics for traffic and attacks.
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Resource Graph | Tiles for total addresses, not in use (with an estimated monthly cost), Basic SKU, pinned to one zone, DDoS protection disabled, on virtual machines, and free addresses in prefixes; addresses by what uses them and by region; every problem found, one row per address and problem, with the fix |
+| Inventory | Resource Graph | Every public IP with its address, what it is attached to (the VM rather than its NIC), DNS name, SKU and tier, allocation, zones, DDoS setting, prefix, IP tags (routing preference) and idle timeout; every public IP prefix with how much of it is used |
+| Find an IP | Resource Graph | Whose an address or DNS name is: public IPs, prefixes that contain it, and the addresses Azure manages without a public IP resource (App Service outbound addresses, secured virtual hub firewalls, Virtual WAN VPN gateways) |
+| Clean-up & cost | Resource Graph | Addresses not attached to anything or left on a NIC whose VM was deleted, with the cost per month and whether they are tagged as kept; prefixes less than half used; Basic SKU addresses to upgrade; Azure Advisor recommendations |
+| DDoS protection | Resource Graph, Logs* | Effective protection of each address (IP Protection, Network Protection through its VNet's plan, or platform default only), worked out from the VNet of the resource using it; DDoS protection plans; mitigation notifications, reports and flow logs* |
+| Traffic | Metrics | Data path availability, bytes, packets, SYN packets and DDoS attack state for the selected addresses (the first 10 attached by default) |
+| Changes | Resource Graph | Public IPs and prefixes created, changed and deleted in the last 14 days, and addresses attached, detached or moved between resources |
+
+\* Needs a Log Analytics workspace that receives the public IPs' DDoS diagnostic logs.
+
+Set **Price per IP a month** at the top to what a Standard public IP costs you (the default, 3.65, is the US dollar
+list price). An address taken from a public IP prefix is paid for through the prefix, so deleting it saves nothing
+until the prefix is shrunk. *Find an IP* cannot see addresses in subscriptions you cannot read, or Microsoft's
+shared platform addresses (use the Azure IP ranges and service tags download for those).
 
 ## Azure Policy compliance workbook
 
@@ -704,11 +730,12 @@ python src/build_finops_hubs.py
 python src/build_policy_compliance.py
 python src/build_ccoe.py
 python src/build_well_architected.py
+python src/build_public_ip.py
 python src/build_grafana.py
 python src/build_docs.py
 ```
 
-Commit the scripts and every generated JSON file (eighteen workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (twenty workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence
