@@ -30,6 +30,7 @@ python src/build_ccoe.py
 python src/build_well_architected.py
 python src/build_public_ip.py
 python src/build_bastion.py
+python src/build_firewall.py
 python src/build_dns.py
 python src/build_grafana.py
 ```

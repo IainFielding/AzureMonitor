@@ -45,6 +45,7 @@ jobs:
           python3 src/build_well_architected.py
           python3 src/build_public_ip.py
           python3 src/build_bastion.py
+          python3 src/build_firewall.py
           python3 src/build_dns.py
           python3 src/build_grafana.py
           python3 src/build_docs.py
@@ -76,6 +77,7 @@ jobs:
             echo "    python src/build_well_architected.py"
             echo "    python src/build_public_ip.py"
             echo "    python src/build_bastion.py"
+            echo "    python src/build_firewall.py"
             echo "    python src/build_dns.py"
             echo "    python src/build_grafana.py"
             echo "    python src/build_docs.py"

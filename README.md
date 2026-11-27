@@ -7,7 +7,7 @@ There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
   *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
-  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Public IP addresses*, *Azure Bastion*, *DNS*,
+  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Public IP addresses*, *Azure Bastion*, *Azure Firewall*, *DNS*,
   *Cloud Center of Excellence* and *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
@@ -27,10 +27,11 @@ Each workbook has a reference page in [docs/](docs/README.md) listing every tab 
 | [FinOps hubs](workbook/finops-hubs.workbook.json) | Dashboard | Are the FinOps hubs (FinOps toolkit v15) healthy and up to date, are the Cost Management exports landing, are the Data Factory pipelines and triggers running, and is Azure Data Explorer ingesting and holding current data? | FinOps team, platform operations |
 | [Azure Policy compliance](workbook/policy-compliance.workbook.json) | Dashboard | How compliant is the estate with Azure Policy, what is exposed to the internet, which exemptions are expiring, how do we score against our regulatory initiatives, and what can be remediated automatically? | Governance and security owners, auditors |
 | [Public IP addresses](workbook/public-ip.workbook.json) | Dashboard | What uses each public IP and prefix, which are paid for but unused, on the retired Basic SKU or pinned to one zone, are they covered by DDoS Protection, what traffic do they carry, who changed them, and whose is this address? | Network team, security owners, FinOps |
+| [Azure Firewall](workbook/firewall.workbook.json) | Dashboard | How is each Azure Firewall built and how does it reach the internet, is it healthy and keeping up, why is it running short of SNAT ports and who is taking them, and what does it deny or flag? | Network team, platform operations |
 | [Azure Bastion](workbook/bastion.workbook.json) | Dashboard | Are the Bastion hosts and their subnets built right, which VMs can they reach, which NSG rules let RDP and SSH round them, who connected to what and from where, are they busy enough to need more instances, and who created shareable links? | Network team, security owners, platform operations |
 | [DNS](workbook/dns.workbook.json) | Dashboard | Is Azure Firewall DNS proxy set up so FQDN rules and private zones work, are the private DNS zones single, central and linked, are the resolvers, rulesets and DNS security policies healthy, which DNS servers does each VNet use, and what are the DNS servers failing to answer? | Network team, platform operations |
 | [Cloud Center of Excellence](workbook/cloud-center-of-excellence.workbook.json) | Dashboard | Across governance, tagging, landing zone placement, security, privileged access, savings, idle resources, monitoring, patching and retirements, where does each subscription stand, and who needs to act? | Cloud Center of Excellence, cloud governance board |
-| [Well-Architected Framework](workbook/well-architected.workbook.json) | Dashboard | For one workload, what does it get wrong against each of the five pillars (Reliability, Security, Cost Optimization, Operational Excellence, Performance Efficiency), from Azure Advisor and from its configuration? | Workload and application owners, architects running a Well-Architected review |
+| [Well-Architected Framework](workbook/well-architected.workbook.json) | Dashboard | For one workload, what does it get wrong against each of the five pillars (Reliability, Security, Cost Optimization, Operational Excellence, Performance Efficiency), from Azure Advisor, its configuration and optionally its logs; how does it answer the Well-Architected checklist; and how do all the workloads compare? | Workload and application owners, architects running a Well-Architected review |
 | [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
 | [Firewalls: blocked connections](workbook/firewall-troubleshoot.workbook.json) | Troubleshooter | Is a firewall blocking this connection, and which rule did it? | Network team |
 | [Routing](workbook/routing.workbook.json) | Troubleshooter | What path does traffic from A to B take, and does the reply come back the same way? | Network team |
@@ -60,6 +61,7 @@ Start from the symptom:
 | "Lots of users keep dropping off virtual desktop" | **AVD disconnections and Azure Firewall**: *Does the firewall explain the disconnections?* | **Firewalls: blocked connections** for any deny it finds; **Azure Virtual Desktop: one user** if nothing lines up |
 | "The FinOps reports stopped updating" (Power BI shows old or missing months) | **FinOps hubs**: Overview, then Data Explorer *Data in the hub* | Data Factory tab for stopped triggers and failed runs; Storage & exports for the exports' last run |
 | "Whose IP address is this?" (a partner's allow-list, an abuse report, an address in a log) | **Public IP addresses**: *Find an IP* | **What changed?** for the resource it belongs to; **Routing** if it is meant to be the egress address |
+| "The firewall is running out of SNAT ports" (outbound connections failing or timing out under load) | **Azure Firewall**: *SNAT ports*, top to bottom: capacity, the SNAT chart, then the destinations and busiest minutes | *Health & capacity* for whether scale-out kept up; **Routing** to find what a source address is |
 | "I can't connect to my VM through Bastion" | **Azure Bastion**: *Reach & bypass* (is there a Bastion in its VNet or a peered VNet?), then *Configuration* (the AzureBastionSubnet's NSG and route table) | *Health & capacity* for communication status and concurrent sessions; **Routing** for an IP-based connection |
 | "Who logged on to this server, and from where?" | **Azure Bastion**: *Sessions*, with the VM in *Target* at the top | **What changed?** for the VM over the same window |
 | "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
@@ -124,7 +126,7 @@ them) so new resources are included automatically:
 |---|---|---|
 | Activity log (`AzureActivity`), including the *ResourceHealth* and *ServiceHealth* categories | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health, Sentinel operations, Privileged access, Monthly availability report, Azure Bastion (shareable links) |
 | Key Vault audit logs (`AzureDiagnostics` or `AZKVAuditLogs`) | Each vault's diagnostic setting | Expiry and renewals (near-expiry events), Platform health |
-| Azure Firewall, resource-specific (`AZFW*`), including *DNS query* (`AZFWDnsQuery`) and *FQDN Resolution Failure* (`AZFWInternalFqdnResolutionFailure`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Firewalls, DNS and private endpoints, DNS, Platform health |
+| Azure Firewall, resource-specific (`AZFW*`), including *DNS query* (`AZFWDnsQuery`) and *FQDN Resolution Failure* (`AZFWInternalFqdnResolutionFailure`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Azure Firewall, Firewalls, DNS and private endpoints, DNS, Platform health |
 | Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
 | VNet flow logs with Traffic Analytics (`NTANetAnalytics`) | Network Watcher | Firewalls (NSG decisions), Platform health (Connectivity) |
 | DNS security policy (`DNSQueryLogs`), Windows DNS server events (`DnsEvents` or `ASimDnsActivityLogs`) | DNS security policy on the hub and spoke networks; DNS servers | DNS and private endpoints, DNS |
@@ -138,6 +140,7 @@ them) so new resources are included automatically:
 | Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
 | VMware syslog (`AVSSyslog`): vCenter, ESXi, vSAN and NSX, including NSX firewall rule logging | Each AVS private cloud's diagnostic setting, category *VMware Syslog* | Azure VMware Solution |
 | Sentinel health and audit (`SentinelHealth`, `SentinelAudit`) | Sentinel → Settings → *Auditing and health monitoring* | Sentinel operations |
+| Machine heartbeats and performance (`Heartbeat`, `Perf` or `InsightsMetrics`), workspace-based Application Insights (`AppRequests`), Key Vault audit and storage blob logs (`AZKVAuditLogs` or `AzureDiagnostics`, `StorageBlobLogs`) | The Azure Monitor Agent's data collection rules, Application Insights, each vault's and account's diagnostic setting | Well-Architected Framework (availability, request failures, refused access, right-sizing) |
 | FinOps hub Data Factory runs (`ADFPipelineRun`, `ADFActivityRun`, `ADFTriggerRun`, or `AzureDiagnostics`), Data Explorer ingestion and commands (`SucceededIngestion`, `FailedIngestion`, `ADXCommand`), blob logs (`StorageBlobLogs`) | Each hub data factory's, cluster's and data lake storage account's diagnostic setting | FinOps hubs |
 
 The Platform health workbook's *Monitoring* tab lists platform resources that are not logging, and the cost
@@ -419,6 +422,32 @@ list price). An address taken from a public IP prefix is paid for through the pr
 until the prefix is shrunk. *Find an IP* cannot see addresses in subscriptions you cannot read, or Microsoft's
 shared platform addresses (use the Azure IP ranges and service tags download for those).
 
+## Azure Firewall workbook
+
+**Are the firewalls healthy, and why are they running out of SNAT ports?**
+[workbook/firewall.workbook.json](workbook/firewall.workbook.json). Every Azure Firewall in the selected subscriptions
+(narrow them with **Firewalls** at the top), from Resource Graph, Azure Monitor metrics and the resource-specific
+firewall logs.
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Resource Graph, Metrics | Tiles for firewalls, hub VNet firewalls with no NAT gateway, outbound on one public IP, private traffic SNATed, not zone-redundant, not provisioned; health, SNAT, capacity, throughput and latency per firewall; inventory with tier, hub, policy, zones and public IPs |
+| SNAT ports | Resource Graph, Metrics, Logs* | Per firewall: outbound through its public IPs or a NAT gateway, SNAT ports that gives, what is not SNATed, and the fix that applies; SNAT use by protocol beside observed capacity; new outbound connections over time*; the destinations and sources taking the most connections a minute*; the busiest minutes, with every connection in the one selected*; what to do, in order of effect |
+| Health & capacity | Metrics | Health, latency probe, throughput, observed capacity, data processed, rule hits |
+| Policy | Resource Graph | Each policy's tier, threat intel, IDPS, TLS inspection, DNS proxy, SNAT private ranges, parent, rule counts, and the firewalls using it |
+| Traffic & threats | Logs* | Top denied flows, threat intelligence and IDPS hits, DNS proxy queries by response code and the top failures |
+
+\* Needs a Log Analytics workspace that receives the resource-specific firewall logs (`AZFWNetworkRule`,
+`AZFWApplicationRule`, `AZFWThreatIntel`, `AZFWIdpsSignature`, `AZFWDnsQuery`).
+
+**SNAT port exhaustion.** Azure Firewall has 2,496 SNAT ports per public IP per instance, and a port is reused only
+for a different destination IP and port, so ports usually run out because of many connections to **one
+destination**, not total traffic. The SNAT tab ranks destinations and sources by their peak connections a minute,
+so the cause is normally the top row. The logs record new connections, so they show how fast ports are taken
+rather than how many are held: line the busiest minutes up with the SNAT chart. The biggest fix is usually a NAT
+gateway on `AzureFirewallSubnet` (64,512 ports per public IP); a firewall in a Virtual WAN secured hub cannot use
+one, so add public IPs to it instead.
+
 ## Azure Bastion workbook
 
 **Are our Bastion hosts right, and who is using them?**
@@ -527,26 +556,36 @@ or the FinOps hubs data.
 **What does this workload get wrong against the Well-Architected Framework?**
 [workbook/well-architected.workbook.json](workbook/well-architected.workbook.json). A Well-Architected review is
 done per workload, so pick one (or more) at the top: workloads are found from the values of the **Workload tag**
-(`workload` unless you change it). *All* covers everything in the selected subscriptions, tagged or not. It reads
-only Resource Graph, so it needs no workspace.
+(`workload` unless you change it). *All* covers everything in the selected subscriptions, tagged or not. Everything
+except the log panels reads Resource Graph, so it needs no workspace; pick a **Log Analytics workspace** (and a
+**Time range**) to add the checks only logs can answer.
 
 | Tab | What it shows |
 |---|---|
-| Overview | A tile per pillar counting failed configuration checks plus Azure Advisor recommendations (red when any is high severity); Advisor score per pillar; Advisor recommendations by pillar and impact; the list of every check |
-| Reliability | Single VMs and App Service plans, resources not spread across availability zones, LRS storage, retired Basic public IPs and load balancers, Application Gateway v1, non-AZ gateways, SQL, AKS, Redis and Cosmos DB redundancy, Key Vault purge protection; VMs with no backup or replication; resources currently unavailable |
-| Security | Storage, Key Vault and SQL public network access, anonymous blob access, HTTP and TLS below 1.2, shared key and local authentication, SQL authentication, AKS API exposure and local accounts, container registry admin user and anonymous pull, VMs without Trusted Launch; Defender for Cloud recommendations for the workload; secure score |
-| Cost Optimization | Idle resources (the same checks as the Cloud Center of Excellence workbook), VMs and SQL Server VMs not using Azure Hybrid Benefit, deallocated VMs on Premium SSD, workspaces keeping data searchable for over 90 days; Advisor's cost recommendations with its savings a year |
-| Operational Excellence | Patch assessment off, AKS with no monitoring or auto-upgrade, classic Application Insights, disabled alert rules and action groups; the monitoring agent on each machine; patching; changes by tool and those made in the portal (14 days); retirements |
-| Performance Efficiency | Older VM sizes, Standard HDD disks, accelerated networking off, general-purpose v1 storage, App Service Premium v2 or older, AKS with no autoscaling; autoscale on scale sets and App Service plans |
+| Overview | A tile per pillar counting failed configuration checks plus Azure Advisor recommendations (red when any is high severity); Advisor score per pillar; the self-assessment score per pillar from the Assessment tab; Advisor recommendations by pillar and impact; the list of every check |
+| Workloads | Every workload side by side: its resources, failed checks per pillar, high-severity findings and Advisor recommendations, with *(untagged)* for resources no workload claims |
+| Reliability | Single VMs and App Service plans, resources not spread across availability zones, LRS storage and backup vaults, retired SKUs and services (Basic public IPs and load balancers, Application Gateway v1, API Management stv1, PostgreSQL, MySQL and MariaDB single servers, CDN from Edgio, Front Door and CDN classic), non-AZ gateways, SQL, AKS, Redis, Cosmos DB, API Management, Container Apps and PostgreSQL/MySQL high availability, Key Vault purge protection and vault soft delete; VMs with no backup or replication; resources currently unavailable; machine availability from heartbeats* and Application Insights request failures and response times* |
+| Security | Storage, Key Vault, SQL, Cosmos DB, AI services and PostgreSQL/MySQL public network access, anonymous blob access, HTTP and TLS below 1.2 (including API Management and messaging), shared key, local and password authentication, AKS API exposure and local accounts, container registry admin user and anonymous pull, WAF policies in Detection mode and Application Gateways with no WAF, VMs without Trusted Launch; Defender for Cloud recommendations and alerts (30 days); secure score; requests Key Vault and Storage refused* |
+| Cost Optimization | Idle resources (the same checks as the Cloud Center of Excellence workbook), unused DDoS protection plans, stopped database servers, VMs and SQL Server VMs not using Azure Hybrid Benefit, deallocated VMs on Premium SSD, workspaces keeping data searchable for over 90 days or on a legacy pricing tier; Advisor's cost recommendations with its savings a year; billable log ingestion by resource* (loads when asked) |
+| Operational Excellence | Patch assessment off, AKS with no monitoring or auto-upgrade, classic Application Insights, Container Apps logging nowhere, unapproved private endpoints, disabled alert rules and action groups; the monitoring agent on each machine; patching; changes by tool and those made in the portal (14 days); retirements; alerts fired (30 days); resources that sent nothing to the workspace in a day* (loads when asked) |
+| Performance Efficiency | Older VM sizes, Standard HDD disks, accelerated networking off, general-purpose v1 storage, App Service Premium v2 or older, AKS with no autoscaling or on managed OS disks, Burstable database servers; autoscale on scale sets and App Service plans; machine CPU and memory with a right-sizing verdict* |
+| Assessment | The Well-Architected checklist for each pillar (RE:01 to PE:12, 59 questions), answered Yes, Partly, No or Not applicable, with a score per pillar, notes, where this workbook has evidence for each question, and every No and Partly as the gaps to act on |
+
+\* Needs a workspace. The log panels are narrowed to the workload through a hidden list of its resource ids (logs
+carry no tags), matched on the top-level resource, so a storage account's blob service or a SQL server's databases
+count as the account or server. The two panels that read every table (ingestion, resources sending nothing) load
+only when their button is selected.
 
 On every pillar tab, selecting an Advisor recommendation lists its resources, and the failed checks are summarised
 with what to do before being listed resource by resource. Tag names in **Workload tag** match case. The workload
-filter reaches Advisor, Defender for Cloud, Resource Health and change records through the resource they are about,
-so recommendations on a subscription (reservations, for example) drop out once a workload is picked; *Advisor
-score* and the secure score are per subscription and are never narrowed. The checks are the settings a reviewer
-would otherwise look up one resource at a time; they do not replace the
-[Azure Well-Architected Review](https://learn.microsoft.com/assessments/azure-architecture-review/) assessment,
-which covers design, process and recovery testing.
+filter reaches Advisor, Defender for Cloud, Resource Health, alerts and change records through the resource they
+are about, so recommendations on a subscription (reservations, for example) drop out once a workload is picked;
+*Advisor score* and the secure score are per subscription and are never narrowed.
+
+The **Assessment** tab covers what no setting shows: design, process and recovery testing, following the same
+checklist as the [Azure Well-Architected Review](https://learn.microsoft.com/assessments/azure-architecture-review/).
+Each answer is a workbook parameter, so the answers are kept only when the workbook is **saved**: save a copy per
+workload (and per review, to keep the history), and export the tables to Excel for the review record.
 
 ## Monthly availability report
 
@@ -786,12 +825,13 @@ python src/build_ccoe.py
 python src/build_well_architected.py
 python src/build_public_ip.py
 python src/build_bastion.py
+python src/build_firewall.py
 python src/build_dns.py
 python src/build_grafana.py
 python src/build_docs.py
 ```
 
-Commit the scripts and every generated JSON file (twenty-two workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (twenty-three workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence

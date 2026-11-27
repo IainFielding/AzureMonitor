@@ -1,0 +1,1837 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Azure Firewall\nEvery Azure Firewall: how it is built and reaches the internet, how healthy and busy it is, why it runs short of SNAT ports and who is taking them, its policies, and the traffic it denies or flags."
+      },
+      "name": "afw-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "a3b05d08-1298-573a-b4fa-515cf9305c94",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "3b7d6cf6-44be-5165-af85-f1ab45365dbc",
+            "version": "KqlParameterItem/1.0",
+            "name": "Firewalls",
+            "label": "Firewalls",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "607c176e-990b-58c6-82f2-7dd98df0209f",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace that receives the firewall logs (resource-specific AZFW* tables).",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "ab31e629-9d35-545d-9600-437c1f73e90a",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 86400000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 3600000
+                },
+                {
+                  "durationMs": 14400000
+                },
+                {
+                  "durationMs": 43200000
+                },
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "For the metrics and logs."
+          },
+          {
+            "id": "df0b9a3c-ba45-5017-9ef9-ff408de71bfc",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "afw-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "db4bfa97-3754-5ac7-b445-01cf2af2df3b",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "a61d099f-3640-5166-8b54-08a84334c265",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "SNAT ports",
+            "subTarget": "snat",
+            "style": "link"
+          },
+          {
+            "id": "9f5aa4f7-60a0-5f93-b16e-8249ca0b04ae",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Health & capacity",
+            "subTarget": "health",
+            "style": "link"
+          },
+          {
+            "id": "5f4ea89f-5ef1-5a7f-93bf-3012d19be49f",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Policy",
+            "subTarget": "policy",
+            "style": "link"
+          },
+          {
+            "id": "dff619ca-a73d-555c-8033-f3c7ef7b5a41",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Traffic & threats",
+            "subTarget": "traffic",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "afw-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| where id in~ ({Firewalls})\n| extend InHub = isnotempty(tostring(properties.virtualHub.id))\n| project id, Tier = tostring(properties.sku.tier), InHub, Zones = strcat_array(zones, ','),\n    FirewallIPs = toint(iff(InHub, toint(properties.hubIPAddresses.publicIPs['count']), array_length(properties.ipConfigurations))),\n    PrivateIP = coalesce(tostring(properties.hubIPAddresses.privateIPAddress),\n        tostring(properties.ipConfigurations[0].properties.privateIPAddress)),\n    subnetId = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id)),\n    policyId = tolower(tostring(properties.firewallPolicy.id)),\n    Hub = iff(InHub, tostring(split(tostring(properties.virtualHub.id), '/')[8]), 'Hub VNet'),\n    ClassicRanges = tostring(properties.additionalProperties['Network.SNAT.PrivateRanges']),\n    Provisioning = tostring(properties.provisioningState), ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 400\n    | where tostring(s.name) =~ 'AzureFirewallSubnet'\n    | project subnetId = tolower(tostring(s.id)), natId = tolower(tostring(s.properties.natGateway.id))\n  ) on subnetId\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/natgateways'\n    | project natId = tolower(id), NatIPs = coalesce(array_length(properties.publicIpAddresses), 0),\n        NatPrefixes = coalesce(array_length(properties.publicIpPrefixes), 0)\n  ) on natId\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/firewallpolicies'\n    | project policyId = tolower(id), Policy = name, PolicyRanges = strcat_array(properties.snat.privateRanges, ', ')\n  ) on policyId\n| extend NatGateway = isnotempty(natId), Ranges = coalesce(PolicyRanges, ClassicRanges)\n| extend SnatAll = Ranges has '255.255.255.255/32'\n| extend OutboundVia = iff(NatGateway, 'NAT gateway', 'Firewall public IPs'),\n    NatIPs = iff(NatGateway, NatIPs, int(null)), NatPrefixes = iff(NatGateway, NatPrefixes, int(null)),\n    PortsPerInstance = iff(NatGateway, int(null), FirewallIPs * 2496),\n    NatGatewayPorts = iff(NatGateway, NatIPs * 64512, int(null)),\n    PrivateRanges = iff(isempty(Ranges), 'IANA private ranges (default)', Ranges),\n    Advice = case(\n        SnatAll, 'Private ranges are 255.255.255.255/32, so traffic to private addresses is SNATed too: SNAT only traffic leaving for the internet',\n        NatGateway and NatIPs + NatPrefixes < 2, 'Add public IPs or a prefix to the NAT gateway (64,512 ports each, up to 16 addresses)',\n        NatGateway, 'Outbound already uses a NAT gateway: find the destination taking the ports in the logs below',\n        InHub, 'Add public IPs to the firewall (2,496 ports each per instance, up to 250): a secured hub cannot use a NAT gateway',\n        'Associate a NAT gateway with AzureFirewallSubnet: 64,512 ports per public IP, up to 16 addresses')\n| summarize Firewalls = count(), NoNat = countif(not(NatGateway) and not(InHub)), OneIp = countif(not(NatGateway) and FirewallIPs < 2),\n    SnatEverything = countif(SnatAll), NoZones = countif(isempty(Zones)), Failed = countif(Provisioning !~ 'Succeeded')\n| extend rows = pack_array(\n    pack('Signal', 'Firewalls', 'Value', Firewalls, 'Detail', 'selected', 'State', 'Available'),\n    pack('Signal', 'Hub VNet firewalls with no NAT gateway', 'Value', NoNat, 'Detail', '2,496 SNAT ports per IP per instance',\n        'State', iff(NoNat > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Outbound on one public IP', 'Value', OneIp, 'Detail', 'and no NAT gateway',\n        'State', iff(OneIp > 0, 'Degraded', 'Available')),\n    pack('Signal', 'SNAT private traffic too', 'Value', SnatEverything, 'Detail', 'private ranges 255.255.255.255/32',\n        'State', iff(SnatEverything > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Not zone-redundant', 'Value', NoZones, 'Detail', 'no availability zones',\n        'State', iff(NoZones > 0, 'Degraded', 'Available')),\n    pack('Signal', 'Not provisioned', 'Value', Failed, 'Detail', 'provisioning state not Succeeded',\n        'State', iff(Failed > 0, 'Unavailable', 'Available')))\n| mv-expand r = rows\n| project Signal = tostring(r.Signal), Value = toint(r.Value), Detail = tostring(r.Detail), State = tostring(r.State)",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "afw-tiles"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook9eb53315-944e-5df6-8f8a-8e34d7164699",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallHealth",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--SNATPortUtilization",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--ObservedCapacity",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--Throughput",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallLatencyPng",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Key metrics over the time range",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallHealth Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--SNATPortUtilization Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--ObservedCapacity Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--Throughput Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallLatencyPng Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallHealth$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "99",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--SNATPortUtilization$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/azurefirewalls--FirewallLatencyPng$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "20",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "10",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--FirewallHealth",
+                    "label": "Health %"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--SNATPortUtilization",
+                    "label": "Max SNAT %"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--ObservedCapacity",
+                    "label": "Observed capacity units (max)"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--Throughput",
+                    "label": "Avg throughput"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--FirewallLatencyPng",
+                    "label": "Latency probe (ms)"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--FirewallHealth Timeline",
+                    "label": "Health % trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--SNATPortUtilization Timeline",
+                    "label": "Max SNAT % trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--ObservedCapacity Timeline",
+                    "label": "Observed capacity units (max) trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--Throughput Timeline",
+                    "label": "Avg throughput trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/azurefirewalls--FirewallLatencyPng Timeline",
+                    "label": "Latency probe (ms) trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "afw-kpis"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| where id in~ ({Firewalls})\n| extend InHub = isnotempty(tostring(properties.virtualHub.id))\n| project id, Tier = tostring(properties.sku.tier), InHub, Zones = strcat_array(zones, ','),\n    FirewallIPs = toint(iff(InHub, toint(properties.hubIPAddresses.publicIPs['count']), array_length(properties.ipConfigurations))),\n    PrivateIP = coalesce(tostring(properties.hubIPAddresses.privateIPAddress),\n        tostring(properties.ipConfigurations[0].properties.privateIPAddress)),\n    subnetId = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id)),\n    policyId = tolower(tostring(properties.firewallPolicy.id)),\n    Hub = iff(InHub, tostring(split(tostring(properties.virtualHub.id), '/')[8]), 'Hub VNet'),\n    ClassicRanges = tostring(properties.additionalProperties['Network.SNAT.PrivateRanges']),\n    Provisioning = tostring(properties.provisioningState), ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 400\n    | where tostring(s.name) =~ 'AzureFirewallSubnet'\n    | project subnetId = tolower(tostring(s.id)), natId = tolower(tostring(s.properties.natGateway.id))\n  ) on subnetId\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/natgateways'\n    | project natId = tolower(id), NatIPs = coalesce(array_length(properties.publicIpAddresses), 0),\n        NatPrefixes = coalesce(array_length(properties.publicIpPrefixes), 0)\n  ) on natId\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/firewallpolicies'\n    | project policyId = tolower(id), Policy = name, PolicyRanges = strcat_array(properties.snat.privateRanges, ', ')\n  ) on policyId\n| extend NatGateway = isnotempty(natId), Ranges = coalesce(PolicyRanges, ClassicRanges)\n| extend SnatAll = Ranges has '255.255.255.255/32'\n| extend OutboundVia = iff(NatGateway, 'NAT gateway', 'Firewall public IPs'),\n    NatIPs = iff(NatGateway, NatIPs, int(null)), NatPrefixes = iff(NatGateway, NatPrefixes, int(null)),\n    PortsPerInstance = iff(NatGateway, int(null), FirewallIPs * 2496),\n    NatGatewayPorts = iff(NatGateway, NatIPs * 64512, int(null)),\n    PrivateRanges = iff(isempty(Ranges), 'IANA private ranges (default)', Ranges),\n    Advice = case(\n        SnatAll, 'Private ranges are 255.255.255.255/32, so traffic to private addresses is SNATed too: SNAT only traffic leaving for the internet',\n        NatGateway and NatIPs + NatPrefixes < 2, 'Add public IPs or a prefix to the NAT gateway (64,512 ports each, up to 16 addresses)',\n        NatGateway, 'Outbound already uses a NAT gateway: find the destination taking the ports in the logs below',\n        InHub, 'Add public IPs to the firewall (2,496 ports each per instance, up to 250): a secured hub cannot use a NAT gateway',\n        'Associate a NAT gateway with AzureFirewallSubnet: 64,512 ports per public IP, up to 16 addresses')\n| project id, Tier, Hub, Policy, Zones = iff(isempty(Zones), 'No zones', Zones), FirewallIPs, OutboundVia,\n    PrivateIP, Provisioning, ResourceGroup, Location\n| order by id asc",
+              "size": 0,
+              "title": "Firewalls",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Azure Firewalls found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "OutboundVia",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NAT gateway",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Firewall public IPs",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Zones",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No zones",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Firewall"
+                  },
+                  {
+                    "columnId": "FirewallIPs",
+                    "label": "Public IPs"
+                  },
+                  {
+                    "columnId": "OutboundVia",
+                    "label": "Outbound through"
+                  },
+                  {
+                    "columnId": "PrivateIP",
+                    "label": "Private IP"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "afw-inventory"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Running short of SNAT ports? Start on the **SNAT ports** tab. For a connection the firewall blocks, use the **Firewalls: blocked connections** workbook.",
+              "style": "info"
+            },
+            "name": "afw-overview-note"
+          }
+        ]
+      },
+      "name": "afw-tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "### SNAT ports\nEvery outbound connection the firewall translates to a public IP takes a **SNAT port**. Azure Firewall has 2,496\nports per public IP per instance, and a port can be reused only for a *different* destination IP and port. So\nports usually run out because many connections go to **one destination** (a storage or API endpoint, an external DNS\nserver) faster than ports are freed, rather than because of total traffic. When they run out, new connections fail\nwhile existing ones carry on. Work down the page: is the firewall built with enough ports, when did use peak, and\nwhich destinations and sources were taking them at the time."
+            },
+            "name": "afw-snat-intro"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/azurefirewalls'\n| where id in~ ({Firewalls})\n| extend InHub = isnotempty(tostring(properties.virtualHub.id))\n| project id, Tier = tostring(properties.sku.tier), InHub, Zones = strcat_array(zones, ','),\n    FirewallIPs = toint(iff(InHub, toint(properties.hubIPAddresses.publicIPs['count']), array_length(properties.ipConfigurations))),\n    PrivateIP = coalesce(tostring(properties.hubIPAddresses.privateIPAddress),\n        tostring(properties.ipConfigurations[0].properties.privateIPAddress)),\n    subnetId = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id)),\n    policyId = tolower(tostring(properties.firewallPolicy.id)),\n    Hub = iff(InHub, tostring(split(tostring(properties.virtualHub.id), '/')[8]), 'Hub VNet'),\n    ClassicRanges = tostring(properties.additionalProperties['Network.SNAT.PrivateRanges']),\n    Provisioning = tostring(properties.provisioningState), ResourceGroup = resourceGroup, Location = location\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | mv-expand s = properties.subnets limit 400\n    | where tostring(s.name) =~ 'AzureFirewallSubnet'\n    | project subnetId = tolower(tostring(s.id)), natId = tolower(tostring(s.properties.natGateway.id))\n  ) on subnetId\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/natgateways'\n    | project natId = tolower(id), NatIPs = coalesce(array_length(properties.publicIpAddresses), 0),\n        NatPrefixes = coalesce(array_length(properties.publicIpPrefixes), 0)\n  ) on natId\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/firewallpolicies'\n    | project policyId = tolower(id), Policy = name, PolicyRanges = strcat_array(properties.snat.privateRanges, ', ')\n  ) on policyId\n| extend NatGateway = isnotempty(natId), Ranges = coalesce(PolicyRanges, ClassicRanges)\n| extend SnatAll = Ranges has '255.255.255.255/32'\n| extend OutboundVia = iff(NatGateway, 'NAT gateway', 'Firewall public IPs'),\n    NatIPs = iff(NatGateway, NatIPs, int(null)), NatPrefixes = iff(NatGateway, NatPrefixes, int(null)),\n    PortsPerInstance = iff(NatGateway, int(null), FirewallIPs * 2496),\n    NatGatewayPorts = iff(NatGateway, NatIPs * 64512, int(null)),\n    PrivateRanges = iff(isempty(Ranges), 'IANA private ranges (default)', Ranges),\n    Advice = case(\n        SnatAll, 'Private ranges are 255.255.255.255/32, so traffic to private addresses is SNATed too: SNAT only traffic leaving for the internet',\n        NatGateway and NatIPs + NatPrefixes < 2, 'Add public IPs or a prefix to the NAT gateway (64,512 ports each, up to 16 addresses)',\n        NatGateway, 'Outbound already uses a NAT gateway: find the destination taking the ports in the logs below',\n        InHub, 'Add public IPs to the firewall (2,496 ports each per instance, up to 250): a secured hub cannot use a NAT gateway',\n        'Associate a NAT gateway with AzureFirewallSubnet: 64,512 ports per public IP, up to 16 addresses')\n| project id, Hub, OutboundVia, FirewallIPs, NatIPs, NatPrefixes, PortsPerInstance, NatGatewayPorts,\n    PrivateRanges, Advice\n| order by OutboundVia desc, FirewallIPs asc",
+              "size": 0,
+              "title": "SNAT capacity and settings by firewall",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Azure Firewalls selected.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "OutboundVia",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "NAT gateway",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Firewall public IPs",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "FirewallIPs",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "2",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "2",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Firewall"
+                  },
+                  {
+                    "columnId": "OutboundVia",
+                    "label": "Outbound through"
+                  },
+                  {
+                    "columnId": "FirewallIPs",
+                    "label": "Firewall public IPs"
+                  },
+                  {
+                    "columnId": "NatIPs",
+                    "label": "NAT gateway IPs"
+                  },
+                  {
+                    "columnId": "NatPrefixes",
+                    "label": "NAT gateway prefixes"
+                  },
+                  {
+                    "columnId": "PortsPerInstance",
+                    "label": "SNAT ports per instance"
+                  },
+                  {
+                    "columnId": "NatGatewayPorts",
+                    "label": "NAT gateway SNAT ports"
+                  },
+                  {
+                    "columnId": "PrivateRanges",
+                    "label": "Not SNATed (private ranges)"
+                  },
+                  {
+                    "columnId": "Advice",
+                    "label": "What to do"
+                  }
+                ]
+              }
+            },
+            "name": "afw-snat-config"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook0e002bda-0aab-5071-b40b-3203303427d2",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--SNATPortUtilization",
+                  "aggregation": 3,
+                  "splitBy": "Protocol",
+                  "splitBySortOrder": -1,
+                  "splitByLimit": 10
+                }
+              ],
+              "title": "SNAT port use % by protocol (max)",
+              "showOpenInMe": true
+            },
+            "name": "afw-snat-util",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook58b45016-5d27-54ff-9180-164a4e745089",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--ObservedCapacity",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Observed capacity units (max): did scale-out keep up?",
+              "showOpenInMe": true
+            },
+            "name": "afw-snat-capacity",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for what the firewall logs show (needs the resource-specific firewall logs, such as `AZFWNetworkRule` and `AZFWApplicationRule`).",
+              "style": "info"
+            },
+            "name": "afw-snat-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Flows = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string, Rule: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny' and isnotempty(DestinationIp) and not(ipv4_is_private(DestinationIp))\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Rule = 'Network'),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny'\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Rule = 'Application')\n| where _ResourceId in~ ({Firewalls});\nFlows\n| summarize Connections = count() by bin(TimeGenerated, {TimeRange:grain}), Protocol",
+              "size": 0,
+              "title": "New outbound connections taking SNAT ports, by protocol",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No allowed outbound connections logged (or the structured firewall logs are not enabled)."
+            },
+            "name": "afw-snat-rate",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Flows = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string, Rule: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny' and isnotempty(DestinationIp) and not(ipv4_is_private(DestinationIp))\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Rule = 'Network'),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny'\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Rule = 'Application')\n| where _ResourceId in~ ({Firewalls});\nFlows\n| summarize PerMinute = count(), Sources = dcount(SourceIp) by Destination, Protocol, Minute = bin(TimeGenerated, 1m)\n| summarize Connections = sum(PerMinute), PeakPerMinute = max(PerMinute), MostSources = max(Sources) by Destination, Protocol\n| top 50 by PeakPerMinute desc",
+              "size": 0,
+              "title": "Destinations taking the most connections (ports run out per destination)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No outbound connections to public destinations.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PeakPerMinute",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "2000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "500",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "PeakPerMinute",
+                    "label": "Peak per minute"
+                  },
+                  {
+                    "columnId": "MostSources",
+                    "label": "Most sources in a minute"
+                  }
+                ]
+              }
+            },
+            "name": "afw-snat-destinations",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Flows = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string, Rule: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny' and isnotempty(DestinationIp) and not(ipv4_is_private(DestinationIp))\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Rule = 'Network'),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny'\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Rule = 'Application')\n| where _ResourceId in~ ({Firewalls});\nFlows\n| summarize PerMinute = count(), Destinations = dcount(Destination) by SourceIp, Minute = bin(TimeGenerated, 1m)\n| summarize Connections = sum(PerMinute), PeakPerMinute = max(PerMinute), MostDestinations = max(Destinations) by SourceIp\n| top 50 by PeakPerMinute desc",
+              "size": 0,
+              "title": "Sources opening the most outbound connections",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No outbound connections to public destinations.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "PeakPerMinute",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "2000",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "500",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SourceIp",
+                    "label": "Source"
+                  },
+                  {
+                    "columnId": "PeakPerMinute",
+                    "label": "Peak per minute"
+                  },
+                  {
+                    "columnId": "MostDestinations",
+                    "label": "Most destinations in a minute"
+                  }
+                ]
+              }
+            },
+            "name": "afw-snat-sources",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Flows = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string, Rule: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny' and isnotempty(DestinationIp) and not(ipv4_is_private(DestinationIp))\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Rule = 'Network'),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny'\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Rule = 'Application')\n| where _ResourceId in~ ({Firewalls});\nFlows\n| summarize Connections = count(), Sources = dcount(SourceIp), Destinations = dcount(Destination)\n    by Minute = bin(TimeGenerated, 1m)\n| top 20 by Connections desc",
+              "size": 0,
+              "title": "Busiest minutes (select one to see who was connecting)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No outbound connections to public destinations.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              },
+              "exportFieldName": "Minute",
+              "exportParameterName": "SnatMinute",
+              "exportDefaultValue": ""
+            },
+            "name": "afw-snat-busiest",
+            "customWidth": "40",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Flows = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, Destination: string, Protocol: string, Rule: string)[]),\n    (AZFWNetworkRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny' and isnotempty(DestinationIp) and not(ipv4_is_private(DestinationIp))\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol,\n        Rule = 'Network'),\n    (AZFWApplicationRule\n    | where TimeGenerated {TimeRange}\n    | where Action !~ 'Deny'\n    | project TimeGenerated, _ResourceId, SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol,\n        Rule = 'Application')\n| where _ResourceId in~ ({Firewalls});\nFlows\n| where bin(TimeGenerated, 1m) == todatetime('{SnatMinute}')\n| summarize Connections = count() by SourceIp, Destination, Protocol, Rule\n| top 100 by Connections desc",
+              "size": 0,
+              "title": "Connections in the selected minute",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "SourceIp",
+                    "label": "Source"
+                  }
+                ]
+              }
+            },
+            "name": "afw-snat-minute",
+            "customWidth": "60",
+            "conditionalVisibilities": [
+              {
+                "parameterName": "Workspace",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              },
+              {
+                "parameterName": "SnatMinute",
+                "comparison": "isNotEqualTo",
+                "value": ""
+              }
+            ]
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The logs record each **new** connection, so these panels show how fast ports are taken, not how many are held; a\nport stays taken for a while after its connection closes. Line the busiest minutes up with the SNAT chart above.\nApplication rule rows name the FQDN rather than the address it resolved to. To find what a source address is, use\nthe **Routing** workbook.",
+              "style": "info"
+            },
+            "name": "afw-snat-logs-note",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**What to do, in order of effect**\n1. **Hub VNet firewall: associate a NAT gateway with `AzureFirewallSubnet`.** Outbound then uses the NAT gateway's\n   64,512 ports per public IP (up to 16 addresses, or a prefix) instead of 2,496 per IP per instance. A firewall in a\n   Virtual WAN secured hub cannot use a NAT gateway: add public IPs to it instead (up to 250).\n2. **Stop SNATing what does not need it.** With private ranges set to `255.255.255.255/32`, traffic to private\n   addresses takes ports too. Reach Azure PaaS services through private endpoints rather than their public addresses.\n3. **Fix the heaviest destination.** Where one destination takes most connections, the client is usually opening a\n   new connection per request: reuse connections (HTTP keep-alive, connection pooling, one shared HTTP client). For\n   DNS, use the firewall's DNS proxy or Azure DNS rather than an external resolver.\n4. **Scale out ahead of known peaks.** Each extra instance brings its own ports, but scaling out takes minutes, so a\n   sudden burst can exhaust ports first. If *Observed capacity* stays flat while SNAT use climbs, the burst outran\n   scale-out."
+            },
+            "name": "afw-snat-fix"
+          }
+        ]
+      },
+      "name": "afw-tab-snat",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "snat"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook9eade21c-75e1-5f55-bb8c-139544ee9050",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallHealth",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Health state %",
+              "showOpenInMe": true
+            },
+            "name": "afw-health",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook8706aaeb-e98a-58c8-a1d6-282a82dd8bbc",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--FirewallLatencyPng",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Latency probe (ms)",
+              "showOpenInMe": true
+            },
+            "name": "afw-latency",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookafce6f5d-9209-57cb-98f0-b49913aaf5de",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--Throughput",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Throughput",
+              "showOpenInMe": true
+            },
+            "name": "afw-throughput",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookacf14968-9cb7-5ead-ba78-29ffee190a4c",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--ObservedCapacity",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Observed capacity units (max)",
+              "showOpenInMe": true
+            },
+            "name": "afw-capacity",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookab825865-7c3b-5350-8a22-52047a265df8",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--DataProcessed",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Data processed",
+              "showOpenInMe": true
+            },
+            "name": "afw-data",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook92b73ea0-e135-52c1-b000-42860625202d",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/azurefirewalls",
+              "metricScope": 0,
+              "resourceParameter": "Firewalls",
+              "resourceIds": [
+                "{Firewalls}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--NetworkRuleHit",
+                  "aggregation": 1
+                },
+                {
+                  "namespace": "microsoft.network/azurefirewalls",
+                  "metric": "microsoft.network/azurefirewalls--ApplicationRuleHit",
+                  "aggregation": 1
+                }
+              ],
+              "title": "Rule hits",
+              "showOpenInMe": true
+            },
+            "name": "afw-rulehits",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Health below 100% with SNAT use near 100% is SNAT exhaustion: health includes SNAT port use. Low health with normal SNAT use and no scaling is worth raising with Microsoft support, with the firewall and the times.",
+              "style": "info"
+            },
+            "name": "afw-health-note"
+          }
+        ]
+      },
+      "name": "afw-tab-health",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "health"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/firewallpolicies'\n| extend Tier = tostring(properties.sku.tier)\n| project id = tolower(id), Tier,\n    ThreatIntel = tostring(properties.threatIntelMode),\n    Idps = iff(Tier =~ 'Premium', coalesce(tostring(properties.intrusionDetection.mode), 'Off'), 'n/a'),\n    TlsInspection = case(Tier !~ 'Premium', 'n/a',\n        isnotempty(tostring(properties.transportSecurity.certificateAuthority.keyVaultSecretId)), 'Yes', 'No'),\n    DnsProxy = coalesce(tostring(properties.dnsSettings.enableProxy), 'false'),\n    SnatPrivateRanges = strcat_array(properties.snat.privateRanges, ', '),\n    Firewalls = coalesce(array_length(properties.firewalls), 0),\n    ParentPolicy = tostring(split(tostring(properties.basePolicy.id), '/')[8]),\n    RuleCollectionGroups = coalesce(array_length(properties.ruleCollectionGroups), 0),\n    Provisioning = tostring(properties.provisioningState),\n    ResourceGroup = resourceGroup\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/firewallpolicies/rulecollectiongroups'\n    | mv-expand rc = properties.ruleCollections limit 400\n    | summarize RuleCollections = count(), Rules = sum(array_length(rc.rules))\n        by id = tostring(split(tolower(id), '/rulecollectiongroups/')[0])\n  ) on id\n| project id, Tier, ThreatIntel, Idps, TlsInspection, DnsProxy,\n    SnatPrivateRanges = iff(isempty(SnatPrivateRanges), 'IANA private ranges (default)', SnatPrivateRanges), Firewalls,\n    ParentPolicy, RuleCollectionGroups, RuleCollections = coalesce(RuleCollections, 0), Rules = coalesce(Rules, 0),\n    Provisioning, ResourceGroup",
+              "size": 0,
+              "title": "Firewall policies",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No firewall policies found.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ThreatIntel",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deny",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Idps",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deny",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Alert",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Off",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "n/a",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "TlsInspection",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "n/a",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "DnsProxy",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "true",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "false",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Firewalls",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "0",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Policy"
+                  },
+                  {
+                    "columnId": "ThreatIntel",
+                    "label": "Threat intel"
+                  },
+                  {
+                    "columnId": "Idps",
+                    "label": "IDPS"
+                  },
+                  {
+                    "columnId": "TlsInspection",
+                    "label": "TLS inspection"
+                  },
+                  {
+                    "columnId": "DnsProxy",
+                    "label": "DNS proxy"
+                  },
+                  {
+                    "columnId": "SnatPrivateRanges",
+                    "label": "Not SNATed (private ranges)"
+                  },
+                  {
+                    "columnId": "ParentPolicy",
+                    "label": "Parent policy"
+                  },
+                  {
+                    "columnId": "RuleCollectionGroups",
+                    "label": "Rule collection groups"
+                  },
+                  {
+                    "columnId": "RuleCollections",
+                    "label": "Rule collections"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "afw-policies"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A policy attached to no firewall is flagged. Rule counts are totals across the policy's own rule collection groups; rules inherited from a parent policy are counted on the parent. DNS proxy must be on for FQDNs in network rules to resolve the same way the clients do.",
+              "style": "info"
+            },
+            "name": "afw-policy-note"
+          }
+        ]
+      },
+      "name": "afw-tab-policy",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "policy"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for what the firewall logs show (needs the resource-specific firewall logs, such as `AZFWNetworkRule` and `AZFWApplicationRule`).",
+              "style": "info"
+            },
+            "name": "afw-traffic-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, Rule: string, SourceIp: string, Destination: string, Protocol: string)[]),\n    (AZFWNetworkRule | where TimeGenerated {TimeRange} | where Action == 'Deny'\n        | project TimeGenerated, _ResourceId, Rule = 'Network', SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Protocol),\n    (AZFWApplicationRule | where TimeGenerated {TimeRange} | where Action == 'Deny'\n        | project TimeGenerated, _ResourceId, Rule = 'Application', SourceIp, Destination = strcat(Fqdn, ':', DestinationPort), Protocol)\n| where _ResourceId in~ ({Firewalls})\n| summarize Hits = count(), LastSeen = max(TimeGenerated) by Rule, SourceIp, Destination, Protocol\n| top 50 by Hits desc",
+              "size": 0,
+              "title": "Top denied flows",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No denied flows (or the structured firewall logs are not enabled).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "afw-denied",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, Source: string, SourceIp: string, Destination: string, Action: string, Detail: string)[]),\n    (AZFWThreatIntel | where TimeGenerated {TimeRange}\n        | project TimeGenerated, _ResourceId, Source = 'Threat intel', SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Action, Detail = ThreatDescription),\n    (AZFWIdpsSignature | where TimeGenerated {TimeRange}\n        | project TimeGenerated, _ResourceId, Source = 'IDPS', SourceIp, Destination = strcat(DestinationIp, ':', DestinationPort), Action, Detail = Description)\n| where _ResourceId in~ ({Firewalls})\n| summarize Hits = count(), LastSeen = max(TimeGenerated) by Source, Action, Detail, SourceIp, Destination\n| top 50 by Hits desc",
+              "size": 0,
+              "title": "Threat intel and IDPS detections",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No threat intel or IDPS hits.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "afw-threats",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, QueryName: string, QueryType: string, ResponseCode: string)[]),\n    (AZFWDnsQuery | where TimeGenerated {TimeRange})\n| where _ResourceId in~ ({Firewalls})\n| summarize Queries = count() by bin(TimeGenerated, {TimeRange:grain}), ResponseCode",
+              "size": 0,
+              "title": "DNS proxy queries by response code",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No DNS proxy queries (DNS proxy off, or its logs are not enabled)."
+            },
+            "name": "afw-dns-codes",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "union isfuzzy=true\n    (datatable(TimeGenerated: datetime, _ResourceId: string, SourceIp: string, QueryName: string, QueryType: string, ResponseCode: string)[]),\n    (AZFWDnsQuery | where TimeGenerated {TimeRange})\n| where _ResourceId in~ ({Firewalls})\n| where ResponseCode !~ 'NOERROR'\n| summarize Queries = count(), Sources = dcount(SourceIp), LastSeen = max(TimeGenerated) by QueryName, QueryType, ResponseCode\n| top 50 by Queries desc",
+              "size": 0,
+              "title": "Top failing DNS proxy queries",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No failing DNS queries.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true
+              }
+            },
+            "name": "afw-dns-failed",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "afw-tab-traffic",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "traffic"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}
