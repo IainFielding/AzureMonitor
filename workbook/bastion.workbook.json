@@ -1,0 +1,2516 @@
+{
+  "version": "Notebook/1.0",
+  "items": [
+    {
+      "type": 1,
+      "content": {
+        "json": "# Azure Bastion\nEvery Bastion host: how it is configured, whether its subnet is right, which VMs it can reach, the rules that let RDP and SSH round it, who connected to what, how busy it is, and who changed it."
+      },
+      "name": "bas-header"
+    },
+    {
+      "type": 9,
+      "content": {
+        "version": "KqlParameterItem/1.0",
+        "parameters": [
+          {
+            "id": "47327c55-322d-5430-873c-1f4a974e0a50",
+            "version": "KqlParameterItem/1.0",
+            "name": "Subscription",
+            "label": "Subscriptions",
+            "type": 6,
+            "isRequired": true,
+            "multiSelect": true,
+            "quote": "'",
+            "delimiter": ",",
+            "query": "summarize by subscriptionId\n| project value = strcat('/subscriptions/', subscriptionId), label = subscriptionId",
+            "crossComponentResources": [
+              "value::all"
+            ],
+            "typeSettings": {
+              "additionalResourceOptions": [
+                "value::all"
+              ],
+              "showDefault": false
+            },
+            "defaultValue": "value::all",
+            "value": [
+              "value::all"
+            ],
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources"
+          },
+          {
+            "id": "e5394a5d-abf9-58d0-b14e-00b7fad4be1d",
+            "version": "KqlParameterItem/1.0",
+            "name": "Workspace",
+            "label": "Log Analytics workspace",
+            "type": 5,
+            "isRequired": false,
+            "multiSelect": true,
+            "query": "resources\n| where type =~ 'microsoft.operationalinsights/workspaces'\n| project id",
+            "crossComponentResources": [
+              "{Subscription}"
+            ],
+            "typeSettings": {
+              "resourceTypeFilter": {
+                "microsoft.operationalinsights/workspaces": true
+              },
+              "additionalResourceOptions": [],
+              "showDefault": false
+            },
+            "queryType": 1,
+            "resourceType": "microsoft.resourcegraph/resources",
+            "description": "The workspace that receives the Bastion audit logs and the Activity log.",
+            "quote": "'",
+            "delimiter": ","
+          },
+          {
+            "id": "c907d010-c856-51ba-b69d-aef4c1adb170",
+            "version": "KqlParameterItem/1.0",
+            "name": "TimeRange",
+            "label": "Time range",
+            "type": 4,
+            "isRequired": true,
+            "value": {
+              "durationMs": 604800000
+            },
+            "typeSettings": {
+              "selectableValues": [
+                {
+                  "durationMs": 86400000
+                },
+                {
+                  "durationMs": 259200000
+                },
+                {
+                  "durationMs": 604800000
+                },
+                {
+                  "durationMs": 1209600000
+                },
+                {
+                  "durationMs": 2592000000
+                },
+                {
+                  "durationMs": 5184000000
+                },
+                {
+                  "durationMs": 7776000000
+                }
+              ],
+              "allowCustom": true
+            },
+            "description": "For sessions, metrics and changes. Resource Graph keeps 14 days of changes."
+          },
+          {
+            "id": "47f38c91-a007-5f15-adc1-d91dd46d183b",
+            "version": "KqlParameterItem/1.0",
+            "name": "User",
+            "label": "User",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. Part of a user's name or email, to follow one person's sessions."
+          },
+          {
+            "id": "f1e71249-b2a1-563b-87b4-ef31038071ef",
+            "version": "KqlParameterItem/1.0",
+            "name": "Target",
+            "label": "Target",
+            "type": 1,
+            "isRequired": false,
+            "value": "",
+            "description": "Optional. A VM name, part of its resource id, or its IP address, to see who connected to it."
+          },
+          {
+            "id": "ca60fa53-cded-53a4-8f25-4236c561afeb",
+            "version": "KqlParameterItem/1.0",
+            "name": "selectedTab",
+            "type": 1,
+            "value": "overview",
+            "isHiddenWhenLocked": true
+          }
+        ],
+        "style": "pills",
+        "queryType": 1,
+        "resourceType": "microsoft.resourcegraph/resources"
+      },
+      "name": "bas-params"
+    },
+    {
+      "type": 11,
+      "content": {
+        "version": "LinkItem/1.0",
+        "style": "tabs",
+        "links": [
+          {
+            "id": "a4a795e1-e59b-5851-81e4-498cd78c1cd4",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Overview",
+            "subTarget": "overview",
+            "style": "link"
+          },
+          {
+            "id": "c02b7507-d0ef-5eeb-bf08-22564cc63964",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Configuration",
+            "subTarget": "config",
+            "style": "link"
+          },
+          {
+            "id": "209f6575-8400-5ce7-800b-8ccebc299e05",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Reach & bypass",
+            "subTarget": "reach",
+            "style": "link"
+          },
+          {
+            "id": "c8ad4cdc-b745-54f1-aa54-72d6c5c1b64a",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Sessions",
+            "subTarget": "sessions",
+            "style": "link"
+          },
+          {
+            "id": "ed12d459-2fce-59df-99bd-b8b7bebcbb72",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Health & capacity",
+            "subTarget": "health",
+            "style": "link"
+          },
+          {
+            "id": "6ce55458-7308-5ebe-929a-be7ee82c5619",
+            "cellValue": "selectedTab",
+            "linkTarget": "parameter",
+            "linkLabel": "Changes & admin",
+            "subTarget": "changes",
+            "style": "link"
+          }
+        ]
+      },
+      "name": "bas-tabs"
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/bastionhosts'\n| extend subnet = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id))\n| extend Sku = tostring(sku.name),\n    Vnet = coalesce(extract(@'^(.*/virtualnetworks/[^/]+)/subnets/', 1, subnet), tolower(tostring(properties.virtualNetwork.id))),\n    PublicIp = tolower(tostring(properties.ipConfigurations[0].properties.publicIPAddress.id)),\n    ScaleUnits = toint(properties.scaleUnits),\n    NativeClient = iff(tobool(properties.enableTunneling) == true, 'Yes', 'No'),\n    IpConnect = iff(tobool(properties.enableIpConnect) == true, 'Yes', 'No'),\n    ShareableLink = iff(tobool(properties.enableShareableLink) == true, 'Yes', 'No'),\n    FileCopy = iff(tobool(properties.enableFileCopy) == true, 'Yes', 'No'),\n    CopyPaste = iff(tobool(properties.disableCopyPaste) == true, 'Blocked', 'Allowed'),\n    Kerberos = iff(tobool(properties.enableKerberos) == true, 'Yes', 'No'),\n    Recording = iff(tobool(properties.enableSessionRecording) == true, 'Yes', 'No'),\n    Access = iff(tobool(properties.enablePrivateOnlyBastion) == true, 'Private only', iff(sku.name =~ 'Developer', 'Shared (Developer)', 'Public IP')),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])), 'No zone set'),\n    DnsName = tostring(properties.dnsName),\n    Provisioning = tostring(properties.provisioningState)\n| summarize Hosts = count(), Failed = countif(Provisioning !~ 'Succeeded'),\n    Dev = countif(Sku =~ 'Developer'), Basic = countif(Sku =~ 'Basic'), Std = countif(Sku =~ 'Standard'), Prem = countif(Sku =~ 'Premium')\n| project Signal = 'Bastion hosts', Value = Hosts, State = iff(Failed > 0, 'Unavailable', 'Available'),\n    Detail = strcat_delim(' · ', strcat(Prem, ' Premium'), strcat(Std, ' Standard'), strcat(Basic, ' Basic'), strcat(Dev, ' Developer'))",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bas-tile-hosts",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets\n| where tostring(s.name) =~ 'AzureBastionSubnet'\n| extend subnet = tolower(tostring(s.id)),\n    Prefix = coalesce(tostring(s.properties.addressPrefix), tostring(s.properties.addressPrefixes[0])),\n    Nsg = tolower(tostring(s.properties.networkSecurityGroup.id)),\n    RouteTable = tolower(tostring(s.properties.routeTable.id))\n| extend Size = toint(extract(@'/(\\d+)$', 1, Prefix))\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/bastionhosts'\n    | project subnet = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id)), Bastion = tolower(id),\n        PrivateOnly = tobool(properties.enablePrivateOnlyBastion)\n  ) on subnet\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networksecuritygroups'\n    | mv-expand r = properties.securityRules\n    | extend dir = tostring(r.properties.direction), access = tostring(r.properties.access),\n        src = tostring(r.properties.sourceAddressPrefix), dst = tostring(r.properties.destinationAddressPrefix),\n        ports = strcat(tostring(r.properties.destinationPortRange), ',', strcat_array(r.properties.destinationPortRanges, ','))\n    | extend allowIn = dir =~ 'Inbound' and access =~ 'Allow', allowOut = dir =~ 'Outbound' and access =~ 'Allow'\n    | summarize HttpsFromInternet = countif(allowIn and src in~ ('Internet', '*') and (ports has '443' or ports contains '*')) > 0,\n        FromGatewayManager = countif(allowIn and src =~ 'GatewayManager') > 0,\n        ToVms = countif(allowOut and dst in~ ('VirtualNetwork', '*') and (ports has '3389' or ports has '22' or ports contains '*')) > 0,\n        ToAzureCloud = countif(allowOut and dst in~ ('AzureCloud', '*')) > 0\n        by Nsg = tolower(id)\n  ) on Nsg\n| extend Problems = array_concat(\n    iff(Size > 26, dynamic(['Smaller than /26']), dynamic([])),\n    iff(isnotempty(RouteTable), dynamic(['Route table attached (not supported)']), dynamic([])),\n    iff(isnotempty(Nsg) and PrivateOnly != true and HttpsFromInternet != true, dynamic(['NSG: no HTTPS in from Internet']), dynamic([])),\n    iff(isnotempty(Nsg) and FromGatewayManager != true, dynamic(['NSG: no GatewayManager in']), dynamic([])),\n    iff(isnotempty(Nsg) and ToVms != true, dynamic(['NSG: no RDP/SSH out to VirtualNetwork']), dynamic([])),\n    iff(isnotempty(Nsg) and ToAzureCloud != true, dynamic(['NSG: no HTTPS out to AzureCloud']), dynamic([])))\n| project Vnet = tolower(id), Prefix, Bastion, Nsg, RouteTable,\n    State = case(array_length(Problems) > 0, 'Problem', isempty(Bastion), 'No Bastion in it', 'OK'),\n    Problems = strcat_array(Problems, ' · '), subscriptionId, ResourceGroup = resourceGroup\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project-away subscriptionId, subscriptionId1\n| order by case(State == 'Problem', 0, State == 'OK', 1, 2) asc\n\n| summarize Problems = countif(State == 'Problem'), Subnets = count()\n| project Signal = 'Bastion subnets with problems', Value = Problems, State = iff(Problems > 0, 'Unavailable', 'Available'),\n    Detail = strcat('of ', Subnets, ' AzureBastionSubnets')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bas-tile-subnets",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/networkinterfaces'\n| where isnotempty(tostring(properties.virtualMachine.id))\n| extend vm = tolower(tostring(properties.virtualMachine.id)),\n    vnet = tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(properties.ipConfigurations[0].properties.subnet.id))),\n    VmIp = tostring(properties.ipConfigurations[0].properties.privateIPAddress)\n| summarize vnet = take_any(vnet), VmIp = take_any(VmIp) by vm, subscriptionId, resourceGroup\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | extend vnet = tolower(id)\n    | mv-expand p = iff(array_length(properties.virtualNetworkPeerings) > 0, properties.virtualNetworkPeerings, pack_array(dynamic({})))\n    | extend remote = iff(tostring(p.properties.peeringState) =~ 'Connected', tolower(tostring(p.properties.remoteVirtualNetwork.id)), '')\n    | mv-expand cand = pack_array(vnet, remote) to typeof(string)\n    | where isnotempty(cand)\n    | join kind=inner (\n        resources\n        | where type =~ 'microsoft.network/bastionhosts'\n        | extend cand = coalesce(tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(properties.ipConfigurations[0].properties.subnet.id))),\n            tolower(tostring(properties.virtualNetwork.id)))\n        | project cand, Bastion = tolower(id), BastionSku = tostring(sku.name)\n      ) on cand\n    | extend Path = iff(cand == vnet, 'Same VNet', 'Peered VNet')\n    | where Path == 'Same VNet' or BastionSku !~ 'Developer'\n    | summarize Path = max(Path), Bastions = make_set(Bastion, 5) by vnet\n  ) on vnet\n| extend Reach = iff(isempty(Path), 'No Bastion in its VNet or a peered VNet', Path), Bastion = tostring(Bastions[0])\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| summarize VMs = count(), Without = countif(Reach startswith 'No ')\n| project Signal = 'VMs with no Bastion path', Value = Without, State = iff(Without > 0, 'Degraded', 'Available'),\n    Detail = strcat('of ', VMs, ' VMs (own or peered VNet)')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bas-tile-reach",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/networksecuritygroups'\n| where tostring(properties.subnets) !contains '/subnets/azurebastionsubnet'\n| mv-expand r = properties.securityRules\n| extend src = tostring(r.properties.sourceAddressPrefix), srcs = r.properties.sourceAddressPrefixes\n| where tostring(r.properties.direction) =~ 'Inbound' and tostring(r.properties.access) =~ 'Allow'\n| where src in ('*', 'Internet', '0.0.0.0/0', 'Any') or set_has_element(srcs, '*') or set_has_element(srcs, 'Internet')\n    or set_has_element(srcs, '0.0.0.0/0')\n| extend portList = array_concat(pack_array(tostring(r.properties.destinationPortRange)),\n    iff(isnull(r.properties.destinationPortRanges), dynamic([]), r.properties.destinationPortRanges))\n| mv-expand port = portList to typeof(string)\n| extend lo = toint(split(port, '-')[0]), hi = toint(iff(port contains '-', tostring(split(port, '-')[1]), port))\n| extend Rdp = port == '*' or (lo <= 3389 and hi >= 3389), Ssh = port == '*' or (lo <= 22 and hi >= 22)\n| where Rdp or Ssh\n| summarize Ports = strcat_array(make_set(port), ', '), Rdp = max(toint(Rdp)), Ssh = max(toint(Ssh))\n    by id, Rule = tostring(r.name), Priority = toint(r.properties.priority), Source = iff(isnotempty(src), src, strcat_array(srcs, ', ')),\n    Subnets = array_length(properties.subnets), Nics = array_length(properties.networkInterfaces), subscriptionId, resourceGroup\n| extend Exposes = case(Rdp == 1 and Ssh == 1, 'RDP and SSH', Rdp == 1, 'RDP', 'SSH'),\n    InUse = iff(coalesce(Subnets, 0) + coalesce(Nics, 0) > 0, 'Attached', 'Not attached')\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Exposes, id, Rule, Priority, Source, Ports, InUse, Subnets, Nics, Subscription, ResourceGroup = resourceGroup\n| order by case(InUse == 'Attached', 0, 1) asc, Exposes asc\n\n| summarize Rules = count(), Attached = countif(InUse == 'Attached')\n| project Signal = 'RDP/SSH open to the internet', Value = Attached, State = iff(Attached > 0, 'Unavailable', 'Available'),\n    Detail = strcat('NSG rules in use · ', Rules - Attached, ' more on unattached NSGs')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bas-tile-bypass",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/bastionhosts'\n| extend subnet = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id))\n| extend Sku = tostring(sku.name),\n    Vnet = coalesce(extract(@'^(.*/virtualnetworks/[^/]+)/subnets/', 1, subnet), tolower(tostring(properties.virtualNetwork.id))),\n    PublicIp = tolower(tostring(properties.ipConfigurations[0].properties.publicIPAddress.id)),\n    ScaleUnits = toint(properties.scaleUnits),\n    NativeClient = iff(tobool(properties.enableTunneling) == true, 'Yes', 'No'),\n    IpConnect = iff(tobool(properties.enableIpConnect) == true, 'Yes', 'No'),\n    ShareableLink = iff(tobool(properties.enableShareableLink) == true, 'Yes', 'No'),\n    FileCopy = iff(tobool(properties.enableFileCopy) == true, 'Yes', 'No'),\n    CopyPaste = iff(tobool(properties.disableCopyPaste) == true, 'Blocked', 'Allowed'),\n    Kerberos = iff(tobool(properties.enableKerberos) == true, 'Yes', 'No'),\n    Recording = iff(tobool(properties.enableSessionRecording) == true, 'Yes', 'No'),\n    Access = iff(tobool(properties.enablePrivateOnlyBastion) == true, 'Private only', iff(sku.name =~ 'Developer', 'Shared (Developer)', 'Public IP')),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])), 'No zone set'),\n    DnsName = tostring(properties.dnsName),\n    Provisioning = tostring(properties.provisioningState)\n| summarize Links = countif(ShareableLink == 'Yes'), Hosts = count()\n| project Signal = 'Shareable links on', Value = Links, State = iff(Links > 0, 'Degraded', 'Available'),\n    Detail = strcat('of ', Hosts, ' hosts')",
+              "size": 3,
+              "title": "",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "tiles",
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bas-tile-links",
+            "customWidth": "0",
+            "styleSettings": {
+              "maxWidth": "220px"
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for sessions: who connected to what, from where, and for how long.",
+              "style": "info"
+            },
+            "name": "bas-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Sessions = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Bastion: string, User: string, ClientIp: string, Target: string, TargetIp: string,\n        Protocol: string, Start: datetime, End: datetime, DurationMs: long, UserAgent: string, Operation: string, Message: string)[]),\n    (MicrosoftAzureBastionAuditLogs\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Bastion = tolower(_ResourceId), User = coalesce(UserEmail, UserName), ClientIp = ClientIpAddress,\n        Target = tolower(TargetResourceId), TargetIp = TargetVMIPAddress, Protocol, Start = SessionStartTime,\n        End = todatetime(SessionEndTime), DurationMs = tolong(Duration), UserAgent, Operation = OperationName, Message),\n    (AzureDiagnostics\n    | where TimeGenerated {TimeRange}\n    | where Category == 'BastionAuditLogs'\n    | project TimeGenerated, Bastion = tolower(ResourceId),\n        User = coalesce(tostring(column_ifexists('userEmail_s', '')), tostring(column_ifexists('userName_s', ''))),\n        ClientIp = tostring(column_ifexists('clientIpAddress_s', '')), Target = tolower(tostring(column_ifexists('targetResourceId_s', ''))),\n        TargetIp = tostring(column_ifexists('targetVMIPAddress_s', '')), Protocol = tostring(column_ifexists('protocol_s', '')),\n        Start = todatetime(column_ifexists('sessionStartTime_t', datetime(null))),\n        End = todatetime(column_ifexists('sessionEndTime_t', datetime(null))),\n        DurationMs = tolong(column_ifexists('duration_d', real(null))), UserAgent = tostring(column_ifexists('userAgent_s', '')),\n        Operation = OperationName, Message = tostring(column_ifexists('message_s', '')))\n    | extend Start = coalesce(Start, TimeGenerated)\n    | extend Minutes = round(coalesce(todouble(End - Start) / 600000000.0, DurationMs / 60000.0), 1),\n        Client = case(UserAgent has_any ('mstsc', 'Remote Desktop', 'ssh', 'AzureCLI', 'azure-cli', 'python'), 'Native client',\n            UserAgent has_any ('Mozilla', 'Chrome', 'Edg/', 'Safari', 'Firefox'), 'Browser', 'Unknown'),\n        TargetName = iff(isnotempty(Target), tostring(split(Target, '/')[-1]), TargetIp)\n    | where '{User}' == '' or User contains '{User}'\n    | where '{Target}' == '' or Target contains '{Target}' or TargetIp == '{Target}' or TargetName =~ '{Target}';\nSessions\n| summarize Sessions = count(), Users = dcount(User), Targets = dcount(coalesce(Target, TargetIp)), ClientIps = dcount(ClientIp),\n    Hours = round(sum(Minutes) / 60, 1), Native = countif(Client == 'Native client'), Longest = max(Minutes)\n| extend rows = pack_array(\n    pack('Order', 1, 'Signal', 'Sessions', 'Value', Sessions, 'Detail', strcat(Hours, ' hours in all')),\n    pack('Order', 2, 'Signal', 'People', 'Value', Users, 'Detail', strcat('from ', ClientIps, ' client addresses')),\n    pack('Order', 3, 'Signal', 'Machines reached', 'Value', Targets, 'Detail', 'VMs or IP addresses'),\n    pack('Order', 4, 'Signal', 'Longest session', 'Value', round(Longest / 60, 1), 'Detail', 'hours'),\n    pack('Order', 5, 'Signal', 'Native client', 'Value', iff(Sessions > 0, round(100.0 * Native / Sessions, 0), 0.0),\n        'Detail', '% of sessions (the rest in a browser)'))\n| mv-expand r = rows\n| project Order = toint(r.Order), Signal = tostring(r.Signal), Value = toreal(r.Value), Detail = tostring(r.Detail), State = 'Unknown'\n| order by Order asc",
+              "size": 3,
+              "title": "",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "tiles",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "tileSettings": {
+                "titleContent": {
+                  "columnMatch": "Signal",
+                  "formatter": 1
+                },
+                "leftContent": {
+                  "columnMatch": "State",
+                  "formatter": 18,
+                  "formatOptions": {
+                    "thresholdsOptions": "icons",
+                    "thresholdsGrid": [
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Available",
+                        "representation": "success",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Degraded",
+                        "representation": "2",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unavailable",
+                        "representation": "4",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "==",
+                        "thresholdValue": "Unknown",
+                        "representation": "unknown",
+                        "text": "​"
+                      },
+                      {
+                        "operator": "Default",
+                        "thresholdValue": null,
+                        "representation": "Blank",
+                        "text": "​"
+                      }
+                    ]
+                  }
+                },
+                "rightContent": {
+                  "columnMatch": "Value",
+                  "formatter": 12,
+                  "formatOptions": {
+                    "palette": "none"
+                  }
+                },
+                "showBorder": true,
+                "secondaryContent": {
+                  "columnMatch": "Detail",
+                  "formatter": 1
+                }
+              }
+            },
+            "name": "bas-session-tiles",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/bastionhosts'\n| extend subnet = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id))\n| extend Sku = tostring(sku.name),\n    Vnet = coalesce(extract(@'^(.*/virtualnetworks/[^/]+)/subnets/', 1, subnet), tolower(tostring(properties.virtualNetwork.id))),\n    PublicIp = tolower(tostring(properties.ipConfigurations[0].properties.publicIPAddress.id)),\n    ScaleUnits = toint(properties.scaleUnits),\n    NativeClient = iff(tobool(properties.enableTunneling) == true, 'Yes', 'No'),\n    IpConnect = iff(tobool(properties.enableIpConnect) == true, 'Yes', 'No'),\n    ShareableLink = iff(tobool(properties.enableShareableLink) == true, 'Yes', 'No'),\n    FileCopy = iff(tobool(properties.enableFileCopy) == true, 'Yes', 'No'),\n    CopyPaste = iff(tobool(properties.disableCopyPaste) == true, 'Blocked', 'Allowed'),\n    Kerberos = iff(tobool(properties.enableKerberos) == true, 'Yes', 'No'),\n    Recording = iff(tobool(properties.enableSessionRecording) == true, 'Yes', 'No'),\n    Access = iff(tobool(properties.enablePrivateOnlyBastion) == true, 'Private only', iff(sku.name =~ 'Developer', 'Shared (Developer)', 'Public IP')),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])), 'No zone set'),\n    DnsName = tostring(properties.dnsName),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| extend Findings = array_concat(\n    iff(Provisioning !~ 'Succeeded', pack_array(strcat('Provisioning ', Provisioning)), dynamic([])),\n    iff(Sku =~ 'Developer', dynamic(['Developer SKU']), dynamic([])),\n    iff(Sku =~ 'Basic', dynamic(['Basic SKU']), dynamic([])),\n    iff(ShareableLink == 'Yes', dynamic(['Shareable links on']), dynamic([])),\n    iff(Sku in~ ('Standard', 'Premium') and ScaleUnits <= 2, dynamic(['Two instances (the minimum)']), dynamic([])),\n    iff(Sku =~ 'Premium' and Recording == 'No', dynamic(['Session recording off']), dynamic([])),\n    iff(Sku !~ 'Developer' and Zones == 'No zone set', dynamic(['No zones set']), dynamic([])))\n| mv-expand Finding = Findings to typeof(string)\n| where isnotempty(Finding)\n| extend Severity = case(Finding startswith 'Provisioning', 'High', Finding in ('Developer SKU', 'Shareable links on'), 'Medium',\n        Finding == 'Basic SKU', 'Medium', 'Low'),\n    Advice = case(\n        Finding startswith 'Provisioning', 'Open the host and retry the last operation; a failed host may not accept connections',\n        Finding == 'Developer SKU', 'Shared infrastructure with no SLA, one VNet only and no peering: use Basic or above for anything beyond testing',\n        Finding == 'Basic SKU', 'No native client, IP-based connection, Kerberos, shareable links or scaling: upgrade to Standard if any are needed (an upgrade, not a rebuild)',\n        Finding == 'Shareable links on', 'Anyone holding a link can reach the VM without Azure portal access; check the links issued (Changes & admin) and turn off if unused',\n        Finding == 'Two instances (the minimum)', 'Each instance carries about 20 RDP or 40 SSH sessions; compare with the peak on Health & capacity',\n        Finding == 'Session recording off', 'Premium can record sessions to a storage account, often required for privileged access to production',\n        Finding == 'No zones set', 'Bastion can be zone-redundant only when created so, in regions that support it; recreate to change',\n        '')\n| project Severity, Finding, id, Sku, ScaleUnits, Advice, Subscription, ResourceGroup = resourceGroup\n| order by case(Severity == 'High', 0, Severity == 'Medium', 1, 2) asc, Finding asc",
+              "size": 0,
+              "title": "Findings",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No findings: every host is provisioned, on Basic or above, with shareable links off.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Severity",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Medium",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "High",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Low",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Bastion"
+                  },
+                  {
+                    "columnId": "ScaleUnits",
+                    "label": "Instances"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "bas-findings"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Sessions = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Bastion: string, User: string, ClientIp: string, Target: string, TargetIp: string,\n        Protocol: string, Start: datetime, End: datetime, DurationMs: long, UserAgent: string, Operation: string, Message: string)[]),\n    (MicrosoftAzureBastionAuditLogs\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Bastion = tolower(_ResourceId), User = coalesce(UserEmail, UserName), ClientIp = ClientIpAddress,\n        Target = tolower(TargetResourceId), TargetIp = TargetVMIPAddress, Protocol, Start = SessionStartTime,\n        End = todatetime(SessionEndTime), DurationMs = tolong(Duration), UserAgent, Operation = OperationName, Message),\n    (AzureDiagnostics\n    | where TimeGenerated {TimeRange}\n    | where Category == 'BastionAuditLogs'\n    | project TimeGenerated, Bastion = tolower(ResourceId),\n        User = coalesce(tostring(column_ifexists('userEmail_s', '')), tostring(column_ifexists('userName_s', ''))),\n        ClientIp = tostring(column_ifexists('clientIpAddress_s', '')), Target = tolower(tostring(column_ifexists('targetResourceId_s', ''))),\n        TargetIp = tostring(column_ifexists('targetVMIPAddress_s', '')), Protocol = tostring(column_ifexists('protocol_s', '')),\n        Start = todatetime(column_ifexists('sessionStartTime_t', datetime(null))),\n        End = todatetime(column_ifexists('sessionEndTime_t', datetime(null))),\n        DurationMs = tolong(column_ifexists('duration_d', real(null))), UserAgent = tostring(column_ifexists('userAgent_s', '')),\n        Operation = OperationName, Message = tostring(column_ifexists('message_s', '')))\n    | extend Start = coalesce(Start, TimeGenerated)\n    | extend Minutes = round(coalesce(todouble(End - Start) / 600000000.0, DurationMs / 60000.0), 1),\n        Client = case(UserAgent has_any ('mstsc', 'Remote Desktop', 'ssh', 'AzureCLI', 'azure-cli', 'python'), 'Native client',\n            UserAgent has_any ('Mozilla', 'Chrome', 'Edg/', 'Safari', 'Firefox'), 'Browser', 'Unknown'),\n        TargetName = iff(isnotempty(Target), tostring(split(Target, '/')[-1]), TargetIp)\n    | where '{User}' == '' or User contains '{User}'\n    | where '{Target}' == '' or Target contains '{Target}' or TargetIp == '{Target}' or TargetName =~ '{Target}';\nSessions\n| summarize Sessions = count() by bin(Start, {TimeRange:grain}), Protocol",
+              "size": 0,
+              "title": "Sessions by protocol",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "bas-trend",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          }
+        ]
+      },
+      "name": "bas-tab-overview",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "overview"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/bastionhosts'\n| extend subnet = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id))\n| extend Sku = tostring(sku.name),\n    Vnet = coalesce(extract(@'^(.*/virtualnetworks/[^/]+)/subnets/', 1, subnet), tolower(tostring(properties.virtualNetwork.id))),\n    PublicIp = tolower(tostring(properties.ipConfigurations[0].properties.publicIPAddress.id)),\n    ScaleUnits = toint(properties.scaleUnits),\n    NativeClient = iff(tobool(properties.enableTunneling) == true, 'Yes', 'No'),\n    IpConnect = iff(tobool(properties.enableIpConnect) == true, 'Yes', 'No'),\n    ShareableLink = iff(tobool(properties.enableShareableLink) == true, 'Yes', 'No'),\n    FileCopy = iff(tobool(properties.enableFileCopy) == true, 'Yes', 'No'),\n    CopyPaste = iff(tobool(properties.disableCopyPaste) == true, 'Blocked', 'Allowed'),\n    Kerberos = iff(tobool(properties.enableKerberos) == true, 'Yes', 'No'),\n    Recording = iff(tobool(properties.enableSessionRecording) == true, 'Yes', 'No'),\n    Access = iff(tobool(properties.enablePrivateOnlyBastion) == true, 'Private only', iff(sku.name =~ 'Developer', 'Shared (Developer)', 'Public IP')),\n    Zones = case(array_length(zones) >= 2, 'Zone-redundant', array_length(zones) == 1, strcat('Zone ', tostring(zones[0])), 'No zone set'),\n    DnsName = tostring(properties.dnsName),\n    Provisioning = tostring(properties.provisioningState)\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project id, Sku, ScaleUnits, Access, Vnet, PublicIp, Zones, NativeClient, IpConnect, ShareableLink, FileCopy, CopyPaste,\n    Kerberos, Recording, Provisioning, Subscription, ResourceGroup = resourceGroup, Location = location\n| order by Subscription asc, tostring(id) asc",
+              "size": 0,
+              "title": "Bastion hosts",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Bastion hosts in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Vnet",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "PublicIp",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Provisioning",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Updating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Creating",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleting",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Canceled",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Zones",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone-redundant",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 2",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Zone 3",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No zone set",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "NativeClient",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "IpConnect",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "ShareableLink",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Recording",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Yes",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Sku",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Standard",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Premium",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Developer",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Basic",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Bastion"
+                  },
+                  {
+                    "columnId": "Sku",
+                    "label": "SKU"
+                  },
+                  {
+                    "columnId": "ScaleUnits",
+                    "label": "Instances"
+                  },
+                  {
+                    "columnId": "Vnet",
+                    "label": "VNet"
+                  },
+                  {
+                    "columnId": "PublicIp",
+                    "label": "Public IP"
+                  },
+                  {
+                    "columnId": "NativeClient",
+                    "label": "Native client"
+                  },
+                  {
+                    "columnId": "IpConnect",
+                    "label": "IP-based connection"
+                  },
+                  {
+                    "columnId": "ShareableLink",
+                    "label": "Shareable links"
+                  },
+                  {
+                    "columnId": "FileCopy",
+                    "label": "File copy"
+                  },
+                  {
+                    "columnId": "CopyPaste",
+                    "label": "Copy and paste"
+                  },
+                  {
+                    "columnId": "Recording",
+                    "label": "Session recording"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "bas-inventory"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "**What each SKU adds.** *Developer*: free, shared, one VNet, browser only, no peering. *Basic*: a dedicated host\nwith two instances, reaching VMs in its own and directly peered VNets. *Standard*: adds scaling (2 to 50 instances),\nthe native client (`az network bastion rdp/ssh`), IP-based connection (any routable address, including on-premises),\nKerberos, shareable links and file copy. *Premium*: adds session recording and private-only deployment (no public IP).",
+              "style": "info"
+            },
+            "name": "bas-sku-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/virtualnetworks'\n| mv-expand s = properties.subnets\n| where tostring(s.name) =~ 'AzureBastionSubnet'\n| extend subnet = tolower(tostring(s.id)),\n    Prefix = coalesce(tostring(s.properties.addressPrefix), tostring(s.properties.addressPrefixes[0])),\n    Nsg = tolower(tostring(s.properties.networkSecurityGroup.id)),\n    RouteTable = tolower(tostring(s.properties.routeTable.id))\n| extend Size = toint(extract(@'/(\\d+)$', 1, Prefix))\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/bastionhosts'\n    | project subnet = tolower(tostring(properties.ipConfigurations[0].properties.subnet.id)), Bastion = tolower(id),\n        PrivateOnly = tobool(properties.enablePrivateOnlyBastion)\n  ) on subnet\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/networksecuritygroups'\n    | mv-expand r = properties.securityRules\n    | extend dir = tostring(r.properties.direction), access = tostring(r.properties.access),\n        src = tostring(r.properties.sourceAddressPrefix), dst = tostring(r.properties.destinationAddressPrefix),\n        ports = strcat(tostring(r.properties.destinationPortRange), ',', strcat_array(r.properties.destinationPortRanges, ','))\n    | extend allowIn = dir =~ 'Inbound' and access =~ 'Allow', allowOut = dir =~ 'Outbound' and access =~ 'Allow'\n    | summarize HttpsFromInternet = countif(allowIn and src in~ ('Internet', '*') and (ports has '443' or ports contains '*')) > 0,\n        FromGatewayManager = countif(allowIn and src =~ 'GatewayManager') > 0,\n        ToVms = countif(allowOut and dst in~ ('VirtualNetwork', '*') and (ports has '3389' or ports has '22' or ports contains '*')) > 0,\n        ToAzureCloud = countif(allowOut and dst in~ ('AzureCloud', '*')) > 0\n        by Nsg = tolower(id)\n  ) on Nsg\n| extend Problems = array_concat(\n    iff(Size > 26, dynamic(['Smaller than /26']), dynamic([])),\n    iff(isnotempty(RouteTable), dynamic(['Route table attached (not supported)']), dynamic([])),\n    iff(isnotempty(Nsg) and PrivateOnly != true and HttpsFromInternet != true, dynamic(['NSG: no HTTPS in from Internet']), dynamic([])),\n    iff(isnotempty(Nsg) and FromGatewayManager != true, dynamic(['NSG: no GatewayManager in']), dynamic([])),\n    iff(isnotempty(Nsg) and ToVms != true, dynamic(['NSG: no RDP/SSH out to VirtualNetwork']), dynamic([])),\n    iff(isnotempty(Nsg) and ToAzureCloud != true, dynamic(['NSG: no HTTPS out to AzureCloud']), dynamic([])))\n| project Vnet = tolower(id), Prefix, Bastion, Nsg, RouteTable,\n    State = case(array_length(Problems) > 0, 'Problem', isempty(Bastion), 'No Bastion in it', 'OK'),\n    Problems = strcat_array(Problems, ' · '), subscriptionId, ResourceGroup = resourceGroup\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project-away subscriptionId, subscriptionId1\n| order by case(State == 'Problem', 0, State == 'OK', 1, 2) asc",
+              "size": 0,
+              "title": "AzureBastionSubnet in every VNet",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No VNet has an AzureBastionSubnet.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "State",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "OK",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Problem",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No Bastion in it",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Vnet",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Bastion",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Nsg",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "RouteTable",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "Vnet",
+                    "label": "VNet"
+                  },
+                  {
+                    "columnId": "Nsg",
+                    "label": "NSG"
+                  },
+                  {
+                    "columnId": "RouteTable",
+                    "label": "Route table"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "bas-subnets"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "The checks follow Microsoft's requirements for the subnet. An NSG on AzureBastionSubnet is optional, but if there is\none it must allow, at least: **inbound** HTTPS (443) from *Internet* (not needed for a private-only host) and from\n*GatewayManager*, and 8080 and 5701 within *VirtualNetwork* for the host's own data plane; **outbound** RDP and SSH\n(3389, 22) to *VirtualNetwork*, HTTPS to *AzureCloud*, and 80 to *Internet* for certificate checks. The checks here\nlook for the main ones by service tag; a rule that names address ranges instead is not recognised. Bastion does not\nsupport a route table on its subnet, so traffic from it cannot be forced through a firewall.",
+              "style": "info"
+            },
+            "name": "bas-subnets-note"
+          }
+        ]
+      },
+      "name": "bas-tab-config",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "config"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/networkinterfaces'\n| where isnotempty(tostring(properties.virtualMachine.id))\n| extend vm = tolower(tostring(properties.virtualMachine.id)),\n    vnet = tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(properties.ipConfigurations[0].properties.subnet.id))),\n    VmIp = tostring(properties.ipConfigurations[0].properties.privateIPAddress)\n| summarize vnet = take_any(vnet), VmIp = take_any(VmIp) by vm, subscriptionId, resourceGroup\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | extend vnet = tolower(id)\n    | mv-expand p = iff(array_length(properties.virtualNetworkPeerings) > 0, properties.virtualNetworkPeerings, pack_array(dynamic({})))\n    | extend remote = iff(tostring(p.properties.peeringState) =~ 'Connected', tolower(tostring(p.properties.remoteVirtualNetwork.id)), '')\n    | mv-expand cand = pack_array(vnet, remote) to typeof(string)\n    | where isnotempty(cand)\n    | join kind=inner (\n        resources\n        | where type =~ 'microsoft.network/bastionhosts'\n        | extend cand = coalesce(tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(properties.ipConfigurations[0].properties.subnet.id))),\n            tolower(tostring(properties.virtualNetwork.id)))\n        | project cand, Bastion = tolower(id), BastionSku = tostring(sku.name)\n      ) on cand\n    | extend Path = iff(cand == vnet, 'Same VNet', 'Peered VNet')\n    | where Path == 'Same VNet' or BastionSku !~ 'Developer'\n    | summarize Path = max(Path), Bastions = make_set(Bastion, 5) by vnet\n  ) on vnet\n| extend Reach = iff(isempty(Path), 'No Bastion in its VNet or a peered VNet', Path), Bastion = tostring(Bastions[0])\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| summarize VMs = count() by Reach\n| order by VMs desc",
+              "size": 0,
+              "title": "Virtual machines by Bastion path",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "piechart",
+              "chartSettings": {
+                "seriesLabelSettings": [
+                  {
+                    "seriesName": "Same VNet",
+                    "color": "green"
+                  },
+                  {
+                    "seriesName": "Peered VNet",
+                    "color": "greenDark"
+                  },
+                  {
+                    "seriesName": "No Bastion in its VNet or a peered VNet",
+                    "color": "orange"
+                  }
+                ]
+              }
+            },
+            "name": "bas-reach-pie",
+            "customWidth": "35"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Bastion reaches VMs in its own VNet and in VNets **directly peered** with it. In a Virtual WAN landing zone, spokes\nare connected to the hub rather than peered with each other, so a host in one spoke does not reach VMs in another\nby default: give each spoke that needs it a host (the Developer SKU costs nothing for testing), or use a Standard or\nPremium host with **IP-based connection**, which connects to any private address the host can route to (through\nthe hub, or on-premises) if the NSGs allow it. VMs listed as having no path may still be reachable that way.",
+              "style": "info"
+            },
+            "name": "bas-reach-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/networkinterfaces'\n| where isnotempty(tostring(properties.virtualMachine.id))\n| extend vm = tolower(tostring(properties.virtualMachine.id)),\n    vnet = tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(properties.ipConfigurations[0].properties.subnet.id))),\n    VmIp = tostring(properties.ipConfigurations[0].properties.privateIPAddress)\n| summarize vnet = take_any(vnet), VmIp = take_any(VmIp) by vm, subscriptionId, resourceGroup\n| join kind=leftouter (\n    resources\n    | where type =~ 'microsoft.network/virtualnetworks'\n    | extend vnet = tolower(id)\n    | mv-expand p = iff(array_length(properties.virtualNetworkPeerings) > 0, properties.virtualNetworkPeerings, pack_array(dynamic({})))\n    | extend remote = iff(tostring(p.properties.peeringState) =~ 'Connected', tolower(tostring(p.properties.remoteVirtualNetwork.id)), '')\n    | mv-expand cand = pack_array(vnet, remote) to typeof(string)\n    | where isnotempty(cand)\n    | join kind=inner (\n        resources\n        | where type =~ 'microsoft.network/bastionhosts'\n        | extend cand = coalesce(tolower(extract(@'(?i)^(.*/virtualnetworks/[^/]+)/subnets/', 1, tostring(properties.ipConfigurations[0].properties.subnet.id))),\n            tolower(tostring(properties.virtualNetwork.id)))\n        | project cand, Bastion = tolower(id), BastionSku = tostring(sku.name)\n      ) on cand\n    | extend Path = iff(cand == vnet, 'Same VNet', 'Peered VNet')\n    | where Path == 'Same VNet' or BastionSku !~ 'Developer'\n    | summarize Path = max(Path), Bastions = make_set(Bastion, 5) by vnet\n  ) on vnet\n| extend Reach = iff(isempty(Path), 'No Bastion in its VNet or a peered VNet', Path), Bastion = tostring(Bastions[0])\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Reach, id = vm, VmIp, Vnet = vnet, Bastion, Subscription, ResourceGroup = resourceGroup\n| order by case(Reach startswith 'No ', 0, 1) asc, Vnet asc",
+              "size": 0,
+              "title": "Virtual machines and the Bastion that reaches them",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No virtual machines in the selected subscriptions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Reach",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Same VNet",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Peered VNet",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "No Bastion in its VNet or a peered VNet",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Vnet",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Bastion",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "Virtual machine"
+                  },
+                  {
+                    "columnId": "VmIp",
+                    "label": "Private IP"
+                  },
+                  {
+                    "columnId": "Vnet",
+                    "label": "VNet"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ],
+                "hierarchySettings": {
+                  "treeType": 1,
+                  "groupBy": [
+                    "Reach"
+                  ],
+                  "expandTopLevel": false
+                }
+              }
+            },
+            "name": "bas-reach"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Around Bastion: RDP and SSH open to the internet"
+            },
+            "name": "bas-bypass-h"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resources\n| where type =~ 'microsoft.network/networksecuritygroups'\n| where tostring(properties.subnets) !contains '/subnets/azurebastionsubnet'\n| mv-expand r = properties.securityRules\n| extend src = tostring(r.properties.sourceAddressPrefix), srcs = r.properties.sourceAddressPrefixes\n| where tostring(r.properties.direction) =~ 'Inbound' and tostring(r.properties.access) =~ 'Allow'\n| where src in ('*', 'Internet', '0.0.0.0/0', 'Any') or set_has_element(srcs, '*') or set_has_element(srcs, 'Internet')\n    or set_has_element(srcs, '0.0.0.0/0')\n| extend portList = array_concat(pack_array(tostring(r.properties.destinationPortRange)),\n    iff(isnull(r.properties.destinationPortRanges), dynamic([]), r.properties.destinationPortRanges))\n| mv-expand port = portList to typeof(string)\n| extend lo = toint(split(port, '-')[0]), hi = toint(iff(port contains '-', tostring(split(port, '-')[1]), port))\n| extend Rdp = port == '*' or (lo <= 3389 and hi >= 3389), Ssh = port == '*' or (lo <= 22 and hi >= 22)\n| where Rdp or Ssh\n| summarize Ports = strcat_array(make_set(port), ', '), Rdp = max(toint(Rdp)), Ssh = max(toint(Ssh))\n    by id, Rule = tostring(r.name), Priority = toint(r.properties.priority), Source = iff(isnotempty(src), src, strcat_array(srcs, ', ')),\n    Subnets = array_length(properties.subnets), Nics = array_length(properties.networkInterfaces), subscriptionId, resourceGroup\n| extend Exposes = case(Rdp == 1 and Ssh == 1, 'RDP and SSH', Rdp == 1, 'RDP', 'SSH'),\n    InUse = iff(coalesce(Subnets, 0) + coalesce(Nics, 0) > 0, 'Attached', 'Not attached')\n\n| join kind=leftouter (\n    resourcecontainers\n    | where type =~ 'microsoft.resources/subscriptions'\n    | project subscriptionId, Subscription = name\n  ) on subscriptionId\n\n| project Exposes, id, Rule, Priority, Source, Ports, InUse, Subnets, Nics, Subscription, ResourceGroup = resourceGroup\n| order by case(InUse == 'Attached', 0, 1) asc, Exposes asc",
+              "size": 0,
+              "title": "NSG rules allowing RDP or SSH in from any address",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No NSG rule lets RDP or SSH in from the internet.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Exposes",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "RDP and SSH",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "RDP",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "SSH",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "InUse",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Attached",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Not attached",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "id",
+                    "label": "NSG"
+                  },
+                  {
+                    "columnId": "InUse",
+                    "label": "NSG in use"
+                  },
+                  {
+                    "columnId": "Nics",
+                    "label": "NICs"
+                  },
+                  {
+                    "columnId": "ResourceGroup",
+                    "label": "Resource group"
+                  }
+                ]
+              }
+            },
+            "name": "bas-bypass"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A VM is reachable through such a rule only if it also has a public IP or sits behind a public load balancer, but each rule is one change away from exposing a management port, which is what Bastion is there to avoid. Narrow the source, or remove the rule and connect through Bastion. Rules on the AzureBastionSubnet's own NSG are left out.",
+              "style": "info"
+            },
+            "name": "bas-bypass-note"
+          }
+        ]
+      },
+      "name": "bas-tab-reach",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "reach"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for sessions: who connected to what, from where, and for how long.",
+              "style": "info"
+            },
+            "name": "bas-sessions-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "From each host's **Bastion audit logs** (diagnostic setting category *BastionAuditLogs*, table\n`MicrosoftAzureBastionAuditLogs`, or `AzureDiagnostics` in the older mode). A session is logged when it ends. *Client*\nis read from the user agent: the native client (`az network bastion rdp/ssh`, or `mstsc` through a tunnel) or a\nbrowser. Filter by **User** and **Target** at the top to follow one person or one machine.",
+              "style": "info"
+            },
+            "name": "bas-sessions-note"
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Sessions = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Bastion: string, User: string, ClientIp: string, Target: string, TargetIp: string,\n        Protocol: string, Start: datetime, End: datetime, DurationMs: long, UserAgent: string, Operation: string, Message: string)[]),\n    (MicrosoftAzureBastionAuditLogs\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Bastion = tolower(_ResourceId), User = coalesce(UserEmail, UserName), ClientIp = ClientIpAddress,\n        Target = tolower(TargetResourceId), TargetIp = TargetVMIPAddress, Protocol, Start = SessionStartTime,\n        End = todatetime(SessionEndTime), DurationMs = tolong(Duration), UserAgent, Operation = OperationName, Message),\n    (AzureDiagnostics\n    | where TimeGenerated {TimeRange}\n    | where Category == 'BastionAuditLogs'\n    | project TimeGenerated, Bastion = tolower(ResourceId),\n        User = coalesce(tostring(column_ifexists('userEmail_s', '')), tostring(column_ifexists('userName_s', ''))),\n        ClientIp = tostring(column_ifexists('clientIpAddress_s', '')), Target = tolower(tostring(column_ifexists('targetResourceId_s', ''))),\n        TargetIp = tostring(column_ifexists('targetVMIPAddress_s', '')), Protocol = tostring(column_ifexists('protocol_s', '')),\n        Start = todatetime(column_ifexists('sessionStartTime_t', datetime(null))),\n        End = todatetime(column_ifexists('sessionEndTime_t', datetime(null))),\n        DurationMs = tolong(column_ifexists('duration_d', real(null))), UserAgent = tostring(column_ifexists('userAgent_s', '')),\n        Operation = OperationName, Message = tostring(column_ifexists('message_s', '')))\n    | extend Start = coalesce(Start, TimeGenerated)\n    | extend Minutes = round(coalesce(todouble(End - Start) / 600000000.0, DurationMs / 60000.0), 1),\n        Client = case(UserAgent has_any ('mstsc', 'Remote Desktop', 'ssh', 'AzureCLI', 'azure-cli', 'python'), 'Native client',\n            UserAgent has_any ('Mozilla', 'Chrome', 'Edg/', 'Safari', 'Firefox'), 'Browser', 'Unknown'),\n        TargetName = iff(isnotempty(Target), tostring(split(Target, '/')[-1]), TargetIp)\n    | where '{User}' == '' or User contains '{User}'\n    | where '{Target}' == '' or Target contains '{Target}' or TargetIp == '{Target}' or TargetName =~ '{Target}';\nSessions\n| project Start, End, Minutes, User, ClientIp, Target, TargetIp, Protocol, Client, Bastion, UserAgent\n| order by Start desc\n| take 1000",
+              "size": 0,
+              "title": "Sessions",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Bastion sessions in the time range, or the hosts do not send audit logs to this workspace.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Target",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Bastion",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Client",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Native client",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Browser",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Unknown",
+                          "representation": "unknown",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "Minutes",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "480",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "240",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ClientIp",
+                    "label": "Client address"
+                  },
+                  {
+                    "columnId": "TargetIp",
+                    "label": "Target IP"
+                  }
+                ]
+              }
+            },
+            "name": "bas-sessions",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Sessions = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Bastion: string, User: string, ClientIp: string, Target: string, TargetIp: string,\n        Protocol: string, Start: datetime, End: datetime, DurationMs: long, UserAgent: string, Operation: string, Message: string)[]),\n    (MicrosoftAzureBastionAuditLogs\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Bastion = tolower(_ResourceId), User = coalesce(UserEmail, UserName), ClientIp = ClientIpAddress,\n        Target = tolower(TargetResourceId), TargetIp = TargetVMIPAddress, Protocol, Start = SessionStartTime,\n        End = todatetime(SessionEndTime), DurationMs = tolong(Duration), UserAgent, Operation = OperationName, Message),\n    (AzureDiagnostics\n    | where TimeGenerated {TimeRange}\n    | where Category == 'BastionAuditLogs'\n    | project TimeGenerated, Bastion = tolower(ResourceId),\n        User = coalesce(tostring(column_ifexists('userEmail_s', '')), tostring(column_ifexists('userName_s', ''))),\n        ClientIp = tostring(column_ifexists('clientIpAddress_s', '')), Target = tolower(tostring(column_ifexists('targetResourceId_s', ''))),\n        TargetIp = tostring(column_ifexists('targetVMIPAddress_s', '')), Protocol = tostring(column_ifexists('protocol_s', '')),\n        Start = todatetime(column_ifexists('sessionStartTime_t', datetime(null))),\n        End = todatetime(column_ifexists('sessionEndTime_t', datetime(null))),\n        DurationMs = tolong(column_ifexists('duration_d', real(null))), UserAgent = tostring(column_ifexists('userAgent_s', '')),\n        Operation = OperationName, Message = tostring(column_ifexists('message_s', '')))\n    | extend Start = coalesce(Start, TimeGenerated)\n    | extend Minutes = round(coalesce(todouble(End - Start) / 600000000.0, DurationMs / 60000.0), 1),\n        Client = case(UserAgent has_any ('mstsc', 'Remote Desktop', 'ssh', 'AzureCLI', 'azure-cli', 'python'), 'Native client',\n            UserAgent has_any ('Mozilla', 'Chrome', 'Edg/', 'Safari', 'Firefox'), 'Browser', 'Unknown'),\n        TargetName = iff(isnotempty(Target), tostring(split(Target, '/')[-1]), TargetIp)\n    | where '{User}' == '' or User contains '{User}'\n    | where '{Target}' == '' or Target contains '{Target}' or TargetIp == '{Target}' or TargetName =~ '{Target}';\nSessions\n| summarize Sessions = count(), Machines = dcount(coalesce(Target, TargetIp)), ClientIps = dcount(ClientIp),\n    Hours = round(sum(Minutes) / 60, 1), First = min(Start), Last = max(Start),\n    Addresses = strcat_array(make_set(ClientIp, 5), ', ') by User\n| order by Sessions desc",
+              "size": 0,
+              "title": "By person",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No sessions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ClientIps",
+                    "label": "Client addresses"
+                  },
+                  {
+                    "columnId": "Addresses",
+                    "label": "Addresses used"
+                  }
+                ]
+              }
+            },
+            "name": "bas-users",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Sessions = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Bastion: string, User: string, ClientIp: string, Target: string, TargetIp: string,\n        Protocol: string, Start: datetime, End: datetime, DurationMs: long, UserAgent: string, Operation: string, Message: string)[]),\n    (MicrosoftAzureBastionAuditLogs\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Bastion = tolower(_ResourceId), User = coalesce(UserEmail, UserName), ClientIp = ClientIpAddress,\n        Target = tolower(TargetResourceId), TargetIp = TargetVMIPAddress, Protocol, Start = SessionStartTime,\n        End = todatetime(SessionEndTime), DurationMs = tolong(Duration), UserAgent, Operation = OperationName, Message),\n    (AzureDiagnostics\n    | where TimeGenerated {TimeRange}\n    | where Category == 'BastionAuditLogs'\n    | project TimeGenerated, Bastion = tolower(ResourceId),\n        User = coalesce(tostring(column_ifexists('userEmail_s', '')), tostring(column_ifexists('userName_s', ''))),\n        ClientIp = tostring(column_ifexists('clientIpAddress_s', '')), Target = tolower(tostring(column_ifexists('targetResourceId_s', ''))),\n        TargetIp = tostring(column_ifexists('targetVMIPAddress_s', '')), Protocol = tostring(column_ifexists('protocol_s', '')),\n        Start = todatetime(column_ifexists('sessionStartTime_t', datetime(null))),\n        End = todatetime(column_ifexists('sessionEndTime_t', datetime(null))),\n        DurationMs = tolong(column_ifexists('duration_d', real(null))), UserAgent = tostring(column_ifexists('userAgent_s', '')),\n        Operation = OperationName, Message = tostring(column_ifexists('message_s', '')))\n    | extend Start = coalesce(Start, TimeGenerated)\n    | extend Minutes = round(coalesce(todouble(End - Start) / 600000000.0, DurationMs / 60000.0), 1),\n        Client = case(UserAgent has_any ('mstsc', 'Remote Desktop', 'ssh', 'AzureCLI', 'azure-cli', 'python'), 'Native client',\n            UserAgent has_any ('Mozilla', 'Chrome', 'Edg/', 'Safari', 'Firefox'), 'Browser', 'Unknown'),\n        TargetName = iff(isnotempty(Target), tostring(split(Target, '/')[-1]), TargetIp)\n    | where '{User}' == '' or User contains '{User}'\n    | where '{Target}' == '' or Target contains '{Target}' or TargetIp == '{Target}' or TargetName =~ '{Target}';\nSessions\n| summarize Sessions = count(), People = dcount(User), Hours = round(sum(Minutes) / 60, 1), Last = max(Start),\n    Users = strcat_array(make_set(User, 5), ', '), Protocols = strcat_array(make_set(Protocol), ', ')\n    by Target = coalesce(Target, TargetIp)\n| order by Sessions desc",
+              "size": 0,
+              "title": "By machine",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No sessions.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Target",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "bas-targets",
+            "customWidth": "50",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Sessions = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Bastion: string, User: string, ClientIp: string, Target: string, TargetIp: string,\n        Protocol: string, Start: datetime, End: datetime, DurationMs: long, UserAgent: string, Operation: string, Message: string)[]),\n    (MicrosoftAzureBastionAuditLogs\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Bastion = tolower(_ResourceId), User = coalesce(UserEmail, UserName), ClientIp = ClientIpAddress,\n        Target = tolower(TargetResourceId), TargetIp = TargetVMIPAddress, Protocol, Start = SessionStartTime,\n        End = todatetime(SessionEndTime), DurationMs = tolong(Duration), UserAgent, Operation = OperationName, Message),\n    (AzureDiagnostics\n    | where TimeGenerated {TimeRange}\n    | where Category == 'BastionAuditLogs'\n    | project TimeGenerated, Bastion = tolower(ResourceId),\n        User = coalesce(tostring(column_ifexists('userEmail_s', '')), tostring(column_ifexists('userName_s', ''))),\n        ClientIp = tostring(column_ifexists('clientIpAddress_s', '')), Target = tolower(tostring(column_ifexists('targetResourceId_s', ''))),\n        TargetIp = tostring(column_ifexists('targetVMIPAddress_s', '')), Protocol = tostring(column_ifexists('protocol_s', '')),\n        Start = todatetime(column_ifexists('sessionStartTime_t', datetime(null))),\n        End = todatetime(column_ifexists('sessionEndTime_t', datetime(null))),\n        DurationMs = tolong(column_ifexists('duration_d', real(null))), UserAgent = tostring(column_ifexists('userAgent_s', '')),\n        Operation = OperationName, Message = tostring(column_ifexists('message_s', '')))\n    | extend Start = coalesce(Start, TimeGenerated)\n    | extend Minutes = round(coalesce(todouble(End - Start) / 600000000.0, DurationMs / 60000.0), 1),\n        Client = case(UserAgent has_any ('mstsc', 'Remote Desktop', 'ssh', 'AzureCLI', 'azure-cli', 'python'), 'Native client',\n            UserAgent has_any ('Mozilla', 'Chrome', 'Edg/', 'Safari', 'Firefox'), 'Browser', 'Unknown'),\n        TargetName = iff(isnotempty(Target), tostring(split(Target, '/')[-1]), TargetIp)\n    | where '{User}' == '' or User contains '{User}'\n    | where '{Target}' == '' or Target contains '{Target}' or TargetIp == '{Target}' or TargetName =~ '{Target}';\nlet Half = (now() - {TimeRange:start}) / 2;\nlet Seen = Sessions | where Start < {TimeRange:start} + Half | distinct User, ClientIp;\nunion\n    (Sessions | where Minutes >= 480\n        | project Start, Why = 'Session of 8 hours or more', User, ClientIp, Target = coalesce(Target, TargetIp), Minutes),\n    (Sessions | where Start >= {TimeRange:start} + Half\n        | join kind=leftanti Seen on User, ClientIp\n        | where User in ((Seen | distinct User))\n        | summarize Start = min(Start), Target = take_any(coalesce(Target, TargetIp)), Minutes = sum(Minutes) by User, ClientIp\n        | extend Why = 'New client address for this person')\n| order by Start desc\n| take 500",
+              "size": 0,
+              "title": "Worth a second look",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No sessions of 8 hours or more, and nobody connected from an address new to them.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Target",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Why",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Session of 8 hours or more",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "New client address for this person",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ClientIp",
+                    "label": "Client address"
+                  }
+                ]
+              }
+            },
+            "name": "bas-unusual",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "*New client address* compares the second half of the time range with the first: a person who connected from an address they had not used before. Expect some from home working and changing ISPs; follow up on addresses in unexpected countries.",
+              "style": "info"
+            },
+            "name": "bas-unusual-note"
+          }
+        ]
+      },
+      "name": "bas-tab-sessions",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "sessions"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 9,
+            "content": {
+              "version": "KqlParameterItem/1.0",
+              "parameters": [
+                {
+                  "id": "ca238d7c-9d05-540c-86c9-86f1ebd5a800",
+                  "version": "KqlParameterItem/1.0",
+                  "name": "Bastions",
+                  "label": "Bastion hosts",
+                  "type": 5,
+                  "isRequired": false,
+                  "multiSelect": true,
+                  "quote": "'",
+                  "delimiter": ",",
+                  "query": "resources\n| where type =~ 'microsoft.network/bastionhosts'\n| where sku.name !~ 'Developer'\n| project id",
+                  "crossComponentResources": [
+                    "{Subscription}"
+                  ],
+                  "typeSettings": {
+                    "additionalResourceOptions": [
+                      "value::all"
+                    ],
+                    "showDefault": false
+                  },
+                  "defaultValue": "value::all",
+                  "value": [
+                    "value::all"
+                  ],
+                  "queryType": 1,
+                  "resourceType": "microsoft.resourcegraph/resources"
+                }
+              ],
+              "style": "pills",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources"
+            },
+            "name": "bas-health-params"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook7d79d004-60c0-5f25-ac07-145ae22fc827",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 0,
+              "resourceType": "microsoft.network/bastionhosts",
+              "metricScope": 0,
+              "resourceParameter": "Bastions",
+              "resourceIds": [
+                "{Bastions}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--pingmesh",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--sessions",
+                  "aggregation": 3
+                },
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--usage_user",
+                  "aggregation": 4
+                },
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--used",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Bastion metrics (over time range)",
+              "showOpenInMe": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Subscription",
+                    "formatter": 5
+                  },
+                  {
+                    "columnMatch": "Name",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/bastionhosts--pingmesh Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/bastionhosts--sessions Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/bastionhosts--usage_user Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/bastionhosts--used Timeline$",
+                    "formatter": 21,
+                    "formatOptions": {
+                      "palette": "blue"
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/bastionhosts--pingmesh$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "<",
+                          "thresholdValue": "0.9",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "<",
+                          "thresholdValue": "1",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "microsoft.network/bastionhosts--usage_user$",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "90",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": ">=",
+                          "thresholdValue": "70",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "labelSettings": [
+                  {
+                    "columnId": "microsoft.network/bastionhosts--pingmesh",
+                    "label": "Communication status"
+                  },
+                  {
+                    "columnId": "microsoft.network/bastionhosts--sessions",
+                    "label": "Sessions (peak)"
+                  },
+                  {
+                    "columnId": "microsoft.network/bastionhosts--usage_user",
+                    "label": "CPU usage"
+                  },
+                  {
+                    "columnId": "microsoft.network/bastionhosts--used",
+                    "label": "Memory used"
+                  },
+                  {
+                    "columnId": "microsoft.network/bastionhosts--pingmesh Timeline",
+                    "label": "Communication status trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/bastionhosts--sessions Timeline",
+                    "label": "Sessions (peak) trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/bastionhosts--usage_user Timeline",
+                    "label": "CPU usage trend"
+                  },
+                  {
+                    "columnId": "microsoft.network/bastionhosts--used Timeline",
+                    "label": "Memory used trend"
+                  },
+                  {
+                    "columnId": "Name",
+                    "label": "Resource"
+                  }
+                ],
+                "filter": true
+              }
+            },
+            "name": "bas-kpis"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook2e41f37f-25f7-591d-a1e3-7b71c6b7f1d1",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/bastionhosts",
+              "metricScope": 0,
+              "resourceParameter": "Bastions",
+              "resourceIds": [
+                "{Bastions}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--sessions",
+                  "aggregation": 3
+                }
+              ],
+              "title": "Sessions",
+              "showOpenInMe": true
+            },
+            "name": "bas-sessions-chart",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook6619bfb9-c7c4-522f-b6aa-3648bebef730",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/bastionhosts",
+              "metricScope": 0,
+              "resourceParameter": "Bastions",
+              "resourceIds": [
+                "{Bastions}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--pingmesh",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Communication status (1 = healthy)",
+              "showOpenInMe": true
+            },
+            "name": "bas-pingmesh",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbook2c67f782-b7fe-5ef6-ace7-04e677fcdd7d",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/bastionhosts",
+              "metricScope": 0,
+              "resourceParameter": "Bastions",
+              "resourceIds": [
+                "{Bastions}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--usage_user",
+                  "aggregation": 4
+                }
+              ],
+              "title": "CPU usage",
+              "showOpenInMe": true
+            },
+            "name": "bas-cpu",
+            "customWidth": "50"
+          },
+          {
+            "type": 10,
+            "content": {
+              "chartId": "workbookc0482c4c-2c38-547b-ab91-37ac3ef670b7",
+              "version": "MetricsItem/2.0",
+              "size": 0,
+              "chartType": 2,
+              "resourceType": "microsoft.network/bastionhosts",
+              "metricScope": 0,
+              "resourceParameter": "Bastions",
+              "resourceIds": [
+                "{Bastions}"
+              ],
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "metrics": [
+                {
+                  "namespace": "microsoft.network/bastionhosts",
+                  "metric": "microsoft.network/bastionhosts--used",
+                  "aggregation": 4
+                }
+              ],
+              "title": "Memory used",
+              "showOpenInMe": true
+            },
+            "name": "bas-memory",
+            "customWidth": "50"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "### Concurrent sessions, from the audit logs"
+            },
+            "name": "bas-capacity-h"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for sessions: who connected to what, from where, and for how long.",
+              "style": "info"
+            },
+            "name": "bas-capacity-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "let Sessions = union isfuzzy=true\n    (datatable(TimeGenerated: datetime, Bastion: string, User: string, ClientIp: string, Target: string, TargetIp: string,\n        Protocol: string, Start: datetime, End: datetime, DurationMs: long, UserAgent: string, Operation: string, Message: string)[]),\n    (MicrosoftAzureBastionAuditLogs\n    | where TimeGenerated {TimeRange}\n    | project TimeGenerated, Bastion = tolower(_ResourceId), User = coalesce(UserEmail, UserName), ClientIp = ClientIpAddress,\n        Target = tolower(TargetResourceId), TargetIp = TargetVMIPAddress, Protocol, Start = SessionStartTime,\n        End = todatetime(SessionEndTime), DurationMs = tolong(Duration), UserAgent, Operation = OperationName, Message),\n    (AzureDiagnostics\n    | where TimeGenerated {TimeRange}\n    | where Category == 'BastionAuditLogs'\n    | project TimeGenerated, Bastion = tolower(ResourceId),\n        User = coalesce(tostring(column_ifexists('userEmail_s', '')), tostring(column_ifexists('userName_s', ''))),\n        ClientIp = tostring(column_ifexists('clientIpAddress_s', '')), Target = tolower(tostring(column_ifexists('targetResourceId_s', ''))),\n        TargetIp = tostring(column_ifexists('targetVMIPAddress_s', '')), Protocol = tostring(column_ifexists('protocol_s', '')),\n        Start = todatetime(column_ifexists('sessionStartTime_t', datetime(null))),\n        End = todatetime(column_ifexists('sessionEndTime_t', datetime(null))),\n        DurationMs = tolong(column_ifexists('duration_d', real(null))), UserAgent = tostring(column_ifexists('userAgent_s', '')),\n        Operation = OperationName, Message = tostring(column_ifexists('message_s', '')))\n    | extend Start = coalesce(Start, TimeGenerated)\n    | extend Minutes = round(coalesce(todouble(End - Start) / 600000000.0, DurationMs / 60000.0), 1),\n        Client = case(UserAgent has_any ('mstsc', 'Remote Desktop', 'ssh', 'AzureCLI', 'azure-cli', 'python'), 'Native client',\n            UserAgent has_any ('Mozilla', 'Chrome', 'Edg/', 'Safari', 'Firefox'), 'Browser', 'Unknown'),\n        TargetName = iff(isnotempty(Target), tostring(split(Target, '/')[-1]), TargetIp)\n    | where '{User}' == '' or User contains '{User}'\n    | where '{Target}' == '' or Target contains '{Target}' or TargetIp == '{Target}' or TargetName =~ '{Target}';\nSessions\n| where isnotnull(Start)\n| extend End = coalesce(End, Start + DurationMs * 1ms, now())\n| extend End = iff(End - Start > 7d, Start + 7d, End)\n| mv-expand Bin = range(bin(Start, 15m), End, 15m) to typeof(datetime)\n| summarize Concurrent = count() by Bin, Bastion = tostring(split(Bastion, '/')[-1])",
+              "size": 0,
+              "title": "Concurrent sessions per host (15-minute steps)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "timechart",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              }
+            },
+            "name": "bas-concurrent",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Microsoft sizes each Bastion instance for about **20 concurrent RDP** or **40 concurrent SSH** sessions for typical use (fewer for heavy graphical work). A Basic host has two instances; Standard and Premium can be scaled from 2 to 50 in *Configuration → Instance count*. If the peak approaches instances × 20, scale up before people start seeing slow or refused connections. *Communication status* below 1 means the instances cannot reach each other or the control plane: check the subnet's NSG on the *Configuration* tab. The Developer SKU has no metrics and is left out of the picker.",
+              "style": "info"
+            },
+            "name": "bas-capacity-note"
+          }
+        ]
+      },
+      "name": "bas-tab-health",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "health"
+      }
+    },
+    {
+      "type": 12,
+      "content": {
+        "version": "NotebookGroup/1.0",
+        "groupType": "editable",
+        "items": [
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "resourcechanges\n| where tolower(tostring(properties.targetResourceType)) == 'microsoft.network/bastionhosts'\n| extend Time = todatetime(properties.changeAttributes.timestamp)\n| where Time >= todatetime('{TimeRange:startISO}')\n| extend changes = properties.changes\n| project Time, ChangeType = tostring(properties.changeType), id = tolower(tostring(properties.targetResourceId)),\n    What = strcat_array(bag_keys(changes), ', '),\n    ChangedBy = tostring(properties.changeAttributes.changedBy), Client = tostring(properties.changeAttributes.clientType)\n| order by Time desc\n| take 500",
+              "size": 0,
+              "title": "Bastion hosts created, changed and deleted",
+              "queryType": 1,
+              "resourceType": "microsoft.resourcegraph/resources",
+              "crossComponentResources": [
+                "{Subscription}"
+              ],
+              "visualization": "table",
+              "noDataMessage": "No Bastion host changed in the time range (Resource Graph keeps 14 days).",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "ChangeType",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Create",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Update",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Delete",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "ChangeType",
+                    "label": "Change"
+                  },
+                  {
+                    "columnId": "id",
+                    "label": "Bastion"
+                  },
+                  {
+                    "columnId": "What",
+                    "label": "Properties changed"
+                  },
+                  {
+                    "columnId": "ChangedBy",
+                    "label": "Changed by"
+                  }
+                ]
+              }
+            },
+            "name": "bas-changes"
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "Select a **Log Analytics workspace** at the top for shareable links and session management, from the Activity log.",
+              "style": "info"
+            },
+            "name": "bas-admin-hint",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 3,
+            "content": {
+              "version": "KqlItem/1.0",
+              "query": "AzureActivity\n| where TimeGenerated {TimeRange}\n| where OperationNameValue has 'MICROSOFT.NETWORK/BASTIONHOSTS/'\n| where OperationNameValue !endswith '/READ'\n| where ActivityStatusValue in~ ('Success', 'Succeeded', 'Failed', 'Failure')\n| extend Action = case(\n    OperationNameValue has 'CREATESHAREABLELINKS', 'Shareable links created',\n    OperationNameValue has 'DELETESHAREABLELINKS', 'Shareable links deleted',\n    OperationNameValue has 'GETSHAREABLELINKS', 'Shareable links listed',\n    OperationNameValue has 'DISCONNECTACTIVESESSIONS', 'Sessions disconnected',\n    OperationNameValue has 'GETACTIVESESSIONS', 'Active sessions listed',\n    OperationNameValue endswith '/WRITE', 'Created or changed',\n    OperationNameValue endswith '/DELETE', 'Deleted',\n    tostring(split(OperationNameValue, '/')[-1]))\n| project TimeGenerated, Action, Caller, CallerIpAddress, Status = ActivityStatusValue, id = tolower(_ResourceId)\n| order by TimeGenerated desc\n| take 500",
+              "size": 0,
+              "title": "Shareable links, session management and changes (Activity log)",
+              "queryType": 0,
+              "resourceType": "microsoft.operationalinsights/workspaces",
+              "crossComponentResources": [
+                "{Workspace}"
+              ],
+              "visualization": "table",
+              "timeContextFromParameter": "TimeRange",
+              "timeContext": {
+                "durationMs": 86400000
+              },
+              "noDataMessage": "No Bastion actions in the Activity log in the time range.",
+              "showExportToExcel": true,
+              "gridSettings": {
+                "formatters": [
+                  {
+                    "columnMatch": "Action",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Shareable links created",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Sessions disconnected",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Created or changed",
+                          "representation": "2",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Deleted",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  },
+                  {
+                    "columnMatch": "id",
+                    "formatter": 13,
+                    "formatOptions": {
+                      "linkTarget": "Resource",
+                      "showIcon": true
+                    }
+                  },
+                  {
+                    "columnMatch": "Status",
+                    "formatter": 18,
+                    "formatOptions": {
+                      "thresholdsOptions": "icons",
+                      "thresholdsGrid": [
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Success",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Succeeded",
+                          "representation": "success",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failed",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "==",
+                          "thresholdValue": "Failure",
+                          "representation": "4",
+                          "text": "{0}{1}"
+                        },
+                        {
+                          "operator": "Default",
+                          "thresholdValue": null,
+                          "representation": "Blank",
+                          "text": "{0}{1}"
+                        }
+                      ]
+                    }
+                  }
+                ],
+                "filter": true,
+                "labelSettings": [
+                  {
+                    "columnId": "TimeGenerated",
+                    "label": "Time"
+                  },
+                  {
+                    "columnId": "CallerIpAddress",
+                    "label": "Caller address"
+                  },
+                  {
+                    "columnId": "id",
+                    "label": "Bastion"
+                  }
+                ]
+              }
+            },
+            "name": "bas-admin",
+            "conditionalVisibility": {
+              "parameterName": "Workspace",
+              "comparison": "isNotEqualTo",
+              "value": ""
+            }
+          },
+          {
+            "type": 1,
+            "content": {
+              "json": "A **shareable link** lets anyone who holds it reach that VM through Bastion without signing in to the Azure portal, until the link is deleted. Check who created each one, and delete links that are no longer needed (the host's *Shareable links* blade).",
+              "style": "warning"
+            },
+            "name": "bas-admin-note"
+          }
+        ]
+      },
+      "name": "bas-tab-changes",
+      "conditionalVisibility": {
+        "parameterName": "selectedTab",
+        "comparison": "isEqualTo",
+        "value": "changes"
+      }
+    }
+  ],
+  "fallbackResourceIds": [
+    "Azure Monitor"
+  ],
+  "$schema": "https://github.com/Microsoft/Application-Insights-Workbooks/blob/master/schema/workbook.json"
+}

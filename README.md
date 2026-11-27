@@ -7,8 +7,8 @@ There are two kinds of workbook:
 
 - **Dashboards** show the state of the whole estate, for routine checks. These are *Platform health*,
   *Backup & Recovery*, *Azure VMware Solution*, *Microsoft Sentinel operations*, *Privileged access* and
-  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Public IP addresses*, *Cloud Center of
-  Excellence* and *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
+  *Expiry and renewals*, *FinOps hubs*, *Azure Policy compliance*, *Public IP addresses*, *Azure Bastion*, *Cloud
+  Center of Excellence* and *Well-Architected Framework*. The *Monthly availability report* is a dashboard laid out to print, for service reviews.
 - **Troubleshooters** each answer one question. You type in what you know (an IP, a name, a user, a correlation
   id) and they work out the rest. They are for tickets and incidents.
 
@@ -27,6 +27,7 @@ Each workbook has a reference page in [docs/](docs/README.md) listing every tab 
 | [FinOps hubs](workbook/finops-hubs.workbook.json) | Dashboard | Are the FinOps hubs (FinOps toolkit v15) healthy and up to date, are the Cost Management exports landing, are the Data Factory pipelines and triggers running, and is Azure Data Explorer ingesting and holding current data? | FinOps team, platform operations |
 | [Azure Policy compliance](workbook/policy-compliance.workbook.json) | Dashboard | How compliant is the estate with Azure Policy, what is exposed to the internet, which exemptions are expiring, how do we score against our regulatory initiatives, and what can be remediated automatically? | Governance and security owners, auditors |
 | [Public IP addresses](workbook/public-ip.workbook.json) | Dashboard | What uses each public IP and prefix, which are paid for but unused, on the retired Basic SKU or pinned to one zone, are they covered by DDoS Protection, what traffic do they carry, who changed them, and whose is this address? | Network team, security owners, FinOps |
+| [Azure Bastion](workbook/bastion.workbook.json) | Dashboard | Are the Bastion hosts and their subnets built right, which VMs can they reach, which NSG rules let RDP and SSH round them, who connected to what and from where, are they busy enough to need more instances, and who created shareable links? | Network team, security owners, platform operations |
 | [Cloud Center of Excellence](workbook/cloud-center-of-excellence.workbook.json) | Dashboard | Across governance, tagging, landing zone placement, security, privileged access, savings, idle resources, monitoring, patching and retirements, where does each subscription stand, and who needs to act? | Cloud Center of Excellence, cloud governance board |
 | [Well-Architected Framework](workbook/well-architected.workbook.json) | Dashboard | For one workload, what does it get wrong against each of the five pillars (Reliability, Security, Cost Optimization, Operational Excellence, Performance Efficiency), from Azure Advisor and from its configuration? | Workload and application owners, architects running a Well-Architected review |
 | [Monthly availability report](workbook/availability-report.workbook.json) | Report | How available was each platform service last month against its target, what incidents caused the downtime, and what did Azure Service Health report? | Service owners, management service reviews |
@@ -56,6 +57,8 @@ Start from the symptom:
 | "Lots of users keep dropping off virtual desktop" | **AVD disconnections and Azure Firewall**: *Does the firewall explain the disconnections?* | **Firewalls: blocked connections** for any deny it finds; **Azure Virtual Desktop: one user** if nothing lines up |
 | "The FinOps reports stopped updating" (Power BI shows old or missing months) | **FinOps hubs**: Overview, then Data Explorer *Data in the hub* | Data Factory tab for stopped triggers and failed runs; Storage & exports for the exports' last run |
 | "Whose IP address is this?" (a partner's allow-list, an abuse report, an address in a log) | **Public IP addresses**: *Find an IP* | **What changed?** for the resource it belongs to; **Routing** if it is meant to be the egress address |
+| "I can't connect to my VM through Bastion" | **Azure Bastion**: *Reach & bypass* (is there a Bastion in its VNet or a peered VNet?), then *Configuration* (the AzureBastionSubnet's NSG and route table) | *Health & capacity* for communication status and concurrent sessions; **Routing** for an IP-based connection |
+| "Who logged on to this server, and from where?" | **Azure Bastion**: *Sessions*, with the VM in *Target* at the top | **What changed?** for the VM over the same window |
 | "Our Log Analytics bill went up" | **Log Analytics: cost and noise**, *Spikes*, then select the table | **What changed?** for the resource that started sending |
 | "Are we protected if this region or resource is lost?" | **Backup & Recovery** | **Platform health**: Governance (service retirements, locks) |
 | "Something is wrong in AVS" (VMs slow, vSAN full, workloads unreachable) | **Azure VMware Solution**: Overview, then Capacity or Logs | *Private cloud* tab for the hub connection, Global Reach and NSX segments; **Platform health** ExpressRoute tab for the gateway |
@@ -75,7 +78,7 @@ decided?). Most "the firewall is blocking me" tickets turn out to be DNS or a mi
 | When | What |
 |---|---|
 | **Daily** | Platform health: the Overview's Issues board, active Service Health events and fired alerts. Backup & Recovery, Azure VMware Solution, Sentinel operations and FinOps hubs: the Overview tiles |
-| **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams. Azure Policy compliance: Public exposure, and exemptions expiring within 30 days |
+| **Weekly** | Expiry and renewals: the Overview, with the window at 30 days. Privileged access over 7 days: approvals (rushed or self-approved), roles assigned outside PIM, break-glass sign-ins. What changed? over 7 days with *Changed by* empty, to spot changes made outside the pipelines (Client = Azure Portal). Platform health: Security and Monitoring tabs (silent alert rules, resources not logging). Why was this request refused? over 7 days, for policies that keep blocking teams. Azure Policy compliance: Public exposure, and exemptions expiring within 30 days. Azure Bastion over 7 days: *Worth a second look* on the Sessions tab, NSG rules opening RDP or SSH to the internet, and shareable links created |
 | **Monthly** | Monthly availability report for the month just ended, with commentary, for the service review. Expiry and renewals with the window at 90 days, to plan renewals and reservation exchanges. Log Analytics: cost and noise over 30 days. Public IP addresses: *Clean-up & cost* (unused addresses and prefixes, Basic SKU) and the DDoS protection coverage. Platform health: Capacity (quotas, subnet space) and Governance (service retirements, policy exemptions about to expire, orphaned resources). Backup & Recovery: test failovers due. Cloud Center of Excellence: the Scorecard and the subscription table, for the governance board |
 | **Each release or design review of a workload** | Well-Architected Framework, filtered to the workload: every pillar tab, recording what is fixed and what is accepted |
 | **After a platform change** | What changed? scoped to the change's resource groups, then Platform health for the services involved |
@@ -116,7 +119,7 @@ them) so new resources are included automatically:
 
 | Logs | Sent from | Used by |
 |---|---|---|
-| Activity log (`AzureActivity`), including the *ResourceHealth* and *ServiceHealth* categories | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health, Sentinel operations, Privileged access, Monthly availability report |
+| Activity log (`AzureActivity`), including the *ResourceHealth* and *ServiceHealth* categories | Each subscription's diagnostic setting | What changed?, Why was this request refused?, Platform health, Sentinel operations, Privileged access, Monthly availability report, Azure Bastion (shareable links) |
 | Key Vault audit logs (`AzureDiagnostics` or `AZKVAuditLogs`) | Each vault's diagnostic setting | Expiry and renewals (near-expiry events), Platform health |
 | Azure Firewall, resource-specific (`AZFW*`); optional flow trace (`AZFWFlowTrace`) | Each firewall's diagnostic setting | Firewalls, DNS, Platform health |
 | Palo Alto / Check Point CEF (`CommonSecurityLog`) | The NVAs, through a syslog forwarder with the Azure Monitor Agent | Firewalls |
@@ -127,6 +130,7 @@ them) so new resources are included automatically:
 | Session host performance (`Perf` or `InsightsMetrics`), including `LogicalDisk(*)` free space (AVD Insights collects only C:, which misses the FSLogix profile disks), and FSLogix / User Profile Service and System (low disk warning, event 2013) events (`Event`) | Data collection rules on the session hosts | Azure Virtual Desktop: one user, Platform health (AVD disk space) |
 | Entra ID sign-in and audit logs (`SigninLogs`, `AuditLogs`, …) | Entra ID diagnostic settings | Azure Virtual Desktop: one user, Platform health (Identity), Privileged access (including `AADNonInteractiveUserSignInLogs` for break-glass accounts) |
 | DDoS Protection notifications, mitigation reports and flow logs (`AzureDiagnostics`) | Each public IP's diagnostic setting (only IPs with DDoS Network or IP Protection log anything) | Public IP addresses (*DDoS protection*) |
+| Bastion audit logs (`MicrosoftAzureBastionAuditLogs`, or `AzureDiagnostics` category *BastionAuditLogs*) | Each Bastion host's diagnostic setting | Azure Bastion (*Sessions*, concurrent sessions) |
 | Query audit (`LAQueryLogs`) | The workspace's own diagnostic setting, category *Audit* | Log Analytics: cost and noise (*Who reads it*) |
 | Backup and Site Recovery, resource-specific (`AddonAzureBackupJobs`, `AzureSiteRecovery*`) | Each vault's diagnostic setting | Backup & Recovery |
 | VMware syslog (`AVSSyslog`): vCenter, ESXi, vSAN and NSX, including NSX firewall rule logging | Each AVS private cloud's diagnostic setting, category *VMware Syslog* | Azure VMware Solution |
@@ -411,6 +415,29 @@ Set **Price per IP a month** at the top to what a Standard public IP costs you (
 list price). An address taken from a public IP prefix is paid for through the prefix, so deleting it saves nothing
 until the prefix is shrunk. *Find an IP* cannot see addresses in subscriptions you cannot read, or Microsoft's
 shared platform addresses (use the Azure IP ranges and service tags download for those).
+
+## Azure Bastion workbook
+
+**Are our Bastion hosts right, and who is using them?**
+[workbook/bastion.workbook.json](workbook/bastion.workbook.json). Every Bastion host in the selected subscriptions,
+from Resource Graph, with Azure Monitor metrics for health and load and the Bastion audit logs for sessions.
+
+| Tab | Data source | What it shows |
+|---|---|---|
+| Overview | Resource Graph, Logs* | Tiles for hosts by SKU, Bastion subnets with problems, VMs with no Bastion path, NSG rules opening RDP or SSH to the internet, shareable links on; session totals*; findings per host with advice; sessions by protocol* |
+| Configuration | Resource Graph | Each host's SKU, instance count, access (public IP, private only, Developer), VNet, zones and features (native client, IP-based connection, shareable links, file copy, copy and paste, Kerberos, session recording); every AzureBastionSubnet checked for size (/26), route table and the NSG rules Bastion needs |
+| Reach & bypass | Resource Graph | Every VM and the Bastion that reaches it (its own VNet or a directly peered one), or none; NSG rules that allow RDP or SSH in from any address |
+| Sessions | Logs* | Every session with who, from which address, to which VM, protocol, length and client (native or browser); by person and by machine; sessions of 8 hours or more and people connecting from a new address |
+| Health & capacity | Metrics, Logs* | Communication status, peak sessions, CPU and memory per host; concurrent sessions per host from the audit logs*, against about 20 RDP or 40 SSH sessions per instance |
+| Changes & admin | Resource Graph, Logs† | Hosts created, changed and deleted in the last 14 days; shareable links created, listed and deleted, and sessions disconnected, from the Activity log† |
+
+\* Needs a Log Analytics workspace that receives the Bastion audit logs.
+† Needs the Activity log in the workspace.
+
+Use **User** and **Target** at the top to follow one person, or to see everyone who connected to one VM (by name or
+IP address). Reach is worked out from VNet peering: in a Virtual WAN landing zone, spokes are not peered with each
+other, so a host reaches VMs in other spokes only by IP-based connection (Standard or Premium), which the workbook
+cannot check; those VMs are listed as having no Bastion path.
 
 ## Azure Policy compliance workbook
 
@@ -731,11 +758,12 @@ python src/build_policy_compliance.py
 python src/build_ccoe.py
 python src/build_well_architected.py
 python src/build_public_ip.py
+python src/build_bastion.py
 python src/build_grafana.py
 python src/build_docs.py
 ```
 
-Commit the scripts and every generated JSON file (twenty workbooks, two dashboards). A check on every pull request regenerates them and fails
+Commit the scripts and every generated JSON file (twenty-one workbooks, two dashboards). A check on every pull request regenerates them and fails
 if the committed files differ.
 
 ## Licence
